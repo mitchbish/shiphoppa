@@ -506,3 +506,90 @@ def system_health(store: Store) -> SystemHealthResponse:
         open_admin_tasks=sum(1 for task in store.admin_tasks.values() if task.status == AdminTaskStatus.open),
         open_approvals=sum(1 for approval in store.approval_requests.values() if approval.status == ApprovalStatus.pending),
     )
+
+
+# --- Sentinel reporter ---
+# Module-level cooldown tracker so the same error code does not spam SMS.
+# Maps code -> last fired datetime.
+_SMS_COOLDOWNS: dict = {}
+SMS_COOLDOWN_SECONDS = 600  # 10 minutes per error code
+
+
+def report_sentinel_error(
+    store: Store,
+    code: str,
+    context: Optional[dict] = None,
+    related_booking_id: Optional[str] = None,
+) -> dict:
+    """
+    Log an audit event for a Sentinel error code, optionally create an
+    admin task, and fire a Twilio SMS alert for P0/P1 codes (with a per-code
+    cooldown). Returns a result dict describing what fired.
+    """
+    from .operations import create_admin_task, create_audit_event
+    from .providers import send_sms_via_twilio
+    from .models import ActorRole
+
+    definition = SENTINEL_ERROR_REGISTRY.get(code)
+    if not definition:
+        return {"reported": False, "reason": f"Unknown sentinel code {code}"}
+
+    safe_context = {k: v for k, v in (context or {}).items() if not _looks_sensitive(k)}
+
+    create_audit_event(
+        store,
+        ActorRole.system,
+        "sentinel",
+        "sentinel_error_reported",
+        "sentinel_error",
+        code,
+        definition.internal_message,
+        {
+            "code": code,
+            "category": definition.category,
+            "severity": definition.severity.value,
+            "retryable": definition.retryable,
+            **safe_context,
+        },
+    )
+
+    admin_task_id: Optional[str] = None
+    if definition.creates_admin_task and related_booking_id:
+        booking = store.bookings.get(related_booking_id)
+        if booking:
+            task = create_admin_task(
+                store,
+                booking,
+                f"sentinel_{code.lower()}",
+                f"{code} {definition.user_safe_message}",
+            )
+            admin_task_id = task.id
+
+    sms_result: Optional[dict] = None
+    if definition.sends_sms_alert and definition.severity in {SentinelSeverity.P0, SentinelSeverity.P1}:
+        last_fired = _SMS_COOLDOWNS.get(code)
+        now = now_utc()
+        if last_fired is None or (now - last_fired).total_seconds() >= SMS_COOLDOWN_SECONDS:
+            ops_phone = os.getenv("SHIP_HOPPA_OPS_PHONE")
+            if ops_phone:
+                sms_body = f"[{code}] {definition.user_safe_message}"
+                sms_result = send_sms_via_twilio(ops_phone, sms_body)
+                if sms_result.get("sent"):
+                    _SMS_COOLDOWNS[code] = now
+
+    return {
+        "reported": True,
+        "code": code,
+        "severity": definition.severity.value,
+        "admin_task_id": admin_task_id,
+        "sms": sms_result,
+    }
+
+
+def _looks_sensitive(key: str) -> bool:
+    """Strip sensitive fields out of audit context so they never reach logs/SMS."""
+    lowered = key.lower()
+    return any(token in lowered for token in (
+        "password", "token", "secret", "api_key", "auth", "card", "cvv", "ssn",
+        "bank", "iban", "swift", "account_number",
+    ))

@@ -1344,3 +1344,115 @@ class TestRealProviderHookups:
         result = get_fx_quote_via_wise("USD", "AUD", 1000)
         assert result["sent"] is False
         assert result["error_code"] == "SH-4201" or "not configured" in result["detail"].lower()
+
+
+class TestSentinelReporter:
+    def test_unknown_code_returns_not_reported(self) -> None:
+        from app.sentinel import report_sentinel_error
+        reset_store_for_tests()
+        result = report_sentinel_error(store, "SH-9999", context={"foo": "bar"})
+        assert result["reported"] is False
+
+    def test_known_code_creates_audit_event(self) -> None:
+        from app.sentinel import report_sentinel_error
+        reset_store_for_tests()
+        before = len(store.audit_events)
+        result = report_sentinel_error(store, "SH-3201", context={"job_id": "ABC"})
+        assert result["reported"] is True
+        assert len(store.audit_events) > before
+
+    def test_creates_admin_task_for_booking_when_definition_says_so(self) -> None:
+        from app.sentinel import report_sentinel_error
+        reset_store_for_tests()
+        booking_id = create_booking()
+        before_tasks = len(store.admin_tasks)
+        report_sentinel_error(store, "SH-3201", context={}, related_booking_id=booking_id)
+        assert len(store.admin_tasks) > before_tasks
+
+    def test_sensitive_context_keys_are_stripped(self) -> None:
+        from app.sentinel import report_sentinel_error
+        reset_store_for_tests()
+        report_sentinel_error(
+            store,
+            "SH-3201",
+            context={"password": "hunter2", "iban": "DE89", "ok_field": "fine"},
+        )
+        # find the audit event
+        events = [e for e in store.audit_events.values() if e.event_type == "sentinel_error_reported"]
+        assert events
+        recorded = events[-1].metadata or {}
+        assert "password" not in recorded
+        assert "iban" not in recorded
+        assert recorded.get("ok_field") == "fine"
+
+    def test_p0_with_no_phone_does_not_send_sms(self) -> None:
+        # Without SHIP_HOPPA_OPS_PHONE set, P0 alerts skip SMS
+        from app.sentinel import report_sentinel_error
+        reset_store_for_tests()
+        result = report_sentinel_error(store, "SH-3403")  # P0 email-delivery
+        assert result["reported"] is True
+        assert result["sms"] is None
+
+
+class TestCronAutoDispatch:
+    def test_cron_run_includes_outbound_dispatch_summary(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        create_booking()
+        # Queue a message
+        client.post(
+            "/outbound-messages",
+            headers=ADMIN_HEADERS,
+            json={
+                "recipient_type": "supplier",
+                "recipient_id": "x@y.com",
+                "channel": "email",
+                "template_key": "chase_packing_list",
+                "body_snapshot": "ping",
+                "subject": "test",
+                "compliance_basis": "automated_shipment_chase",
+            },
+        )
+        response = client.post("/automation/cron/run", headers=CRON_HEADERS)
+        assert response.status_code == 200
+        body = response.json()
+        assert "outbound_dispatch" in body
+        assert body["outbound_dispatch"]["sent"] + body["outbound_dispatch"]["failed"] + body["outbound_dispatch"]["deferred"] >= 1
+
+
+class TestProviderTestEndpoints:
+    def test_email_test_endpoint_returns_status(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        response = client.post(
+            "/system/test-provider/email",
+            headers=ADMIN_HEADERS,
+            json={"to": "test@example.com"},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert "sent" in body
+        assert "provider" in body
+
+    def test_sms_test_endpoint_returns_status(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        response = client.post(
+            "/system/test-provider/sms",
+            headers=ADMIN_HEADERS,
+            json={"to": "+15551234567"},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert "sent" in body
+        assert "provider" in body
+
+    def test_email_test_requires_admin(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        response = client.post(
+            "/system/test-provider/email",
+            headers=IMPORTER_HEADERS,
+            json={"to": "test@example.com"},
+        )
+        assert response.status_code == 403

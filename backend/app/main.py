@@ -456,6 +456,29 @@ def get_provider_readiness(_principal: Principal = Depends(require_admin)) -> di
     return provider_readiness()
 
 
+class TestEmailRequest(BaseModel):
+    to: str
+    subject: str = "Ship Hoppa is live"
+    body: str = "If you're reading this, the Resend wiring works."
+
+
+class TestSmsRequest(BaseModel):
+    to: str
+    body: str = "Ship Hoppa SMS test."
+
+
+@app.post("/system/test-provider/email")
+def test_provider_email(payload: TestEmailRequest, _principal: Principal = Depends(require_admin)) -> dict:
+    from .providers import send_email_via_resend
+    return send_email_via_resend([payload.to], payload.subject, payload.body)
+
+
+@app.post("/system/test-provider/sms")
+def test_provider_sms(payload: TestSmsRequest, _principal: Principal = Depends(require_admin)) -> dict:
+    from .providers import send_sms_via_twilio
+    return send_sms_via_twilio(payload.to, payload.body)
+
+
 @app.post("/source-messages", response_model=SourceMessage, status_code=201)
 def create_source_message(
     payload: SourceMessageCreate,
@@ -1196,6 +1219,24 @@ def stale_shipment_checks(_principal: Principal = Depends(require_admin)) -> Lis
 @app.post("/automation/cron/run")
 def cron_run_automation(_principal: Principal = Depends(require_cron)) -> dict:
     results = run_full_automation_cycle(store)
+
+    # After running automation, attempt to dispatch any queued outbound
+    # messages. This makes the cron loop self-contained: chase emails get
+    # generated, then sent (if live providers are enabled), every tick.
+    queued = [m for m in store.outbound_messages.values() if m.status == OutboundStatus.queued]
+    queued.sort(key=lambda m: m.created_at)
+    dispatch_sent = 0
+    dispatch_failed = 0
+    dispatch_deferred = 0
+    for msg in queued[:100]:  # cap per tick to keep cycles bounded
+        result = dispatch_outbound_message(store, msg.id)
+        if result.status == OutboundStatus.sent:
+            dispatch_sent += 1
+        elif result.status == OutboundStatus.failed:
+            dispatch_failed += 1
+        else:
+            dispatch_deferred += 1
+
     persist_store()
     chases = sum(r.chase_messages_queued for r in results.values())
     missing = sum(len(r.missing_data) for r in results.values())
@@ -1207,6 +1248,11 @@ def cron_run_automation(_principal: Principal = Depends(require_cron)) -> dict:
         "total_missing_items": missing,
         "open_admin_tasks": open_admin,
         "pending_approvals": pending_approvals,
+        "outbound_dispatch": {
+            "sent": dispatch_sent,
+            "failed": dispatch_failed,
+            "deferred": dispatch_deferred,
+        },
         "states": {bid: r.lifecycle_state.value for bid, r in results.items()},
     }
 
