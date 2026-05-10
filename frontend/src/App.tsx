@@ -90,6 +90,12 @@ import {
   getSupplierPortalPreview,
   getSupplierClaim,
   acceptSupplierClaim,
+  getLandedCostActual,
+  getInsurancePolicy,
+  listClaims,
+  createClaim,
+  listMarketplaceOrders,
+  recordMarketplaceOrder,
   getSentinelSubscribers,
   createSentinelSubscriber,
   confirmSentinelSubscriber,
@@ -142,9 +148,15 @@ import type {
   StaleCheckAlert,
 } from './api'
 import type {
+  ClaimRecord,
+  ClaimType,
   GrowthAttributionEvent,
   GrowthAttributionSummary,
   ImportProject,
+  InsurancePolicy,
+  LandedCostActual,
+  MarketplaceOrder,
+  MarketplaceProvider,
   SentinelSubscriber,
   SupplierLead,
   SupplierProfileClaimResponse,
@@ -3897,6 +3909,32 @@ function App() {
   const [supplierPreviewResult, setSupplierPreviewResult] = useState<SupplierPortalResponse | null>(null)
   const [supplierPreviewLoading, setSupplierPreviewLoading] = useState(false)
   const [supplierPreviewError, setSupplierPreviewError] = useState<string | null>(null)
+  const [landedCostActual, setLandedCostActual] = useState<LandedCostActual | null>(null)
+  const [insurancePolicy, setInsurancePolicy] = useState<InsurancePolicy | null>(null)
+  const [bookingClaims, setBookingClaims] = useState<ClaimRecord[]>([])
+  const [bookingMarketplaceOrders, setBookingMarketplaceOrders] = useState<MarketplaceOrder[]>([])
+  const [claimDraft, setClaimDraft] = useState<{ claim_type: ClaimType; claim_amount_usd: string; notes: string }>({
+    claim_type: 'damage',
+    claim_amount_usd: '',
+    notes: '',
+  })
+  const [claimMessage, setClaimMessage] = useState<string | null>(null)
+  const [claimError, setClaimError] = useState<string | null>(null)
+  const [marketplaceDraft, setMarketplaceDraft] = useState<{
+    marketplace: MarketplaceProvider
+    external_order_id: string
+    product_url: string
+    payment_method: string
+    notes: string
+  }>({
+    marketplace: 'alibaba',
+    external_order_id: '',
+    product_url: '',
+    payment_method: '',
+    notes: '',
+  })
+  const [marketplaceMessage, setMarketplaceMessage] = useState<string | null>(null)
+  const [marketplaceError, setMarketplaceError] = useState<string | null>(null)
   const [inboxMessages, setInboxMessages] = useState<SourceMessage[]>([])
   const [landedCost, setLandedCost] = useState<LandedCostSummary | null>(null)
   const [notifications, setNotifications] = useState<Notification[]>([])
@@ -4128,12 +4166,26 @@ function App() {
   useEffect(() => {
     if (view === 'money' && activeBooking) {
       getLandedCostSummary(activeBooking.id).then(setLandedCost).catch(() => setLandedCost(null))
+      getLandedCostActual(activeBooking.id).then(setLandedCostActual).catch(() => setLandedCostActual(null))
     }
   }, [view, activeBooking?.id])
 
   useEffect(() => {
     if (view === 'customs' && activeBooking) {
       getHsSuggestions(activeBooking.id).then(setHsSuggestions).catch(() => setHsSuggestions(null))
+    }
+  }, [view, activeBooking?.id])
+
+  useEffect(() => {
+    if (view === 'delivery' && activeBooking) {
+      getInsurancePolicy(activeBooking.id).then(setInsurancePolicy).catch(() => setInsurancePolicy(null))
+      listClaims(activeBooking.id).then(setBookingClaims).catch(() => setBookingClaims([]))
+    }
+  }, [view, activeBooking?.id])
+
+  useEffect(() => {
+    if (view === 'supplier' && activeBooking) {
+      listMarketplaceOrders({ booking_id: activeBooking.id }).then(setBookingMarketplaceOrders).catch(() => setBookingMarketplaceOrders([]))
     }
   }, [view, activeBooking?.id])
 
@@ -8041,6 +8093,118 @@ function App() {
                       </button>
                     </div>
                   </section>
+
+                  <section className="form-section document-step">
+                    <div className="form-section-heading">
+                      <span>4</span>
+                      <div>
+                        <strong>Marketplace order</strong>
+                        <small>Capture where this order came from. We use this to keep one source of truth across Alibaba, 1688, Made-in-China, Global Sources, and direct suppliers.</small>
+                      </div>
+                    </div>
+                    {bookingMarketplaceOrders.length > 0 ? (
+                      <div className="document-review-grid">
+                        {bookingMarketplaceOrders.map((order) => (
+                          <DetailTile
+                            key={order.id}
+                            icon={<ClipboardCheck size={18} />}
+                            label={order.marketplace.replace('_', ' ')}
+                            value={order.external_order_id ?? 'No order ID captured'}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="tab-intro-copy">No marketplace order captured yet for {activeBooking?.id ?? 'this shipment'}.</p>
+                    )}
+                    {marketplaceMessage && <p style={{ color: '#059669' }}>{marketplaceMessage}</p>}
+                    {marketplaceError && <p style={{ color: '#dc2626' }}>{marketplaceError}</p>}
+                    <form
+                      style={{ display: 'grid', gap: 8 }}
+                      onSubmit={async (event) => {
+                        event.preventDefault()
+                        setMarketplaceMessage(null)
+                        setMarketplaceError(null)
+                        if (!activeBooking) return
+                        try {
+                          await recordMarketplaceOrder({
+                            booking_id: activeBooking.id,
+                            marketplace: marketplaceDraft.marketplace,
+                            external_order_id: marketplaceDraft.external_order_id || null,
+                            product_url: marketplaceDraft.product_url || null,
+                            payment_method: marketplaceDraft.payment_method || null,
+                            protection_notes: marketplaceDraft.notes || null,
+                            sync_method: 'manual',
+                          })
+                          setBookingMarketplaceOrders(await listMarketplaceOrders({ booking_id: activeBooking.id }))
+                          setMarketplaceDraft({
+                            marketplace: 'alibaba',
+                            external_order_id: '',
+                            product_url: '',
+                            payment_method: '',
+                            notes: '',
+                          })
+                          setMarketplaceMessage('Marketplace order saved.')
+                        } catch (err) {
+                          setMarketplaceError(err instanceof Error ? err.message : 'Could not save marketplace order')
+                        }
+                      }}
+                    >
+                      <div className="form-grid two">
+                        <label>
+                          <span>Source</span>
+                          <select
+                            value={marketplaceDraft.marketplace}
+                            onChange={(e) =>
+                              setMarketplaceDraft((d) => ({ ...d, marketplace: e.target.value as MarketplaceProvider }))
+                            }
+                          >
+                            <option value="alibaba">Alibaba</option>
+                            <option value="1688">1688</option>
+                            <option value="made_in_china">Made-in-China</option>
+                            <option value="global_sources">Global Sources</option>
+                            <option value="trading_company">Trading company</option>
+                            <option value="agent">Sourcing agent</option>
+                            <option value="direct_supplier">Direct supplier</option>
+                            <option value="other">Other</option>
+                          </select>
+                        </label>
+                        <label>
+                          <span>External order ID</span>
+                          <input
+                            value={marketplaceDraft.external_order_id}
+                            onChange={(e) => setMarketplaceDraft((d) => ({ ...d, external_order_id: e.target.value }))}
+                          />
+                        </label>
+                      </div>
+                      <div className="form-grid two">
+                        <label>
+                          <span>Product URL</span>
+                          <input
+                            value={marketplaceDraft.product_url}
+                            onChange={(e) => setMarketplaceDraft((d) => ({ ...d, product_url: e.target.value }))}
+                          />
+                        </label>
+                        <label>
+                          <span>Payment method</span>
+                          <input
+                            value={marketplaceDraft.payment_method}
+                            onChange={(e) => setMarketplaceDraft((d) => ({ ...d, payment_method: e.target.value }))}
+                            placeholder="e.g. Trade Assurance"
+                          />
+                        </label>
+                      </div>
+                      <label>
+                        <span>Notes</span>
+                        <input
+                          value={marketplaceDraft.notes}
+                          onChange={(e) => setMarketplaceDraft((d) => ({ ...d, notes: e.target.value }))}
+                        />
+                      </label>
+                      <button className="primary-action small" type="submit" disabled={!activeBooking}>
+                        Save marketplace order
+                      </button>
+                    </form>
+                  </section>
                 </div>
 
                 {supplierPreviewOpen && (
@@ -9633,6 +9797,33 @@ function App() {
 
                   <InvoiceSheet invoice={invoice} booking={activeBooking} actionLabel="Pay invoice" loading={loading} onPay={handleMarkPaid} />
 
+                  {landedCostActual && (
+                    <section className="action-panel landed-cost-panel">
+                      <div>
+                        <span className={`status-chip ${landedCostActual.finalised_at ? 'green' : 'orange'}`}>
+                          {landedCostActual.finalised_at ? 'Final landed cost' : 'Landed cost in review'}
+                        </span>
+                        <h3>{formatMoney(landedCostActual.actual_total_usd)} actual total</h3>
+                        <p>
+                          {landedCostActual.estimated_total_usd != null
+                            ? `Estimate was ${formatMoney(landedCostActual.estimated_total_usd)}.`
+                            : 'No estimate captured yet.'}
+                          {landedCostActual.variance_amount_usd != null && (
+                            <>
+                              {' '}
+                              Variance{' '}
+                              <strong style={{ color: landedCostActual.variance_amount_usd < 0 ? '#059669' : '#dc2626' }}>
+                                {landedCostActual.variance_amount_usd >= 0 ? '+' : ''}
+                                {formatMoney(landedCostActual.variance_amount_usd)}
+                              </strong>
+                              {landedCostActual.variance_reason ? ` — ${landedCostActual.variance_reason}` : '.'}
+                            </>
+                          )}
+                        </p>
+                      </div>
+                    </section>
+                  )}
+
                   {landedCost && landedCost.lines.length > 0 && (
                     <section className="action-panel landed-cost-panel">
                       <div>
@@ -10087,6 +10278,104 @@ function App() {
                           </label>
                         )}
                       </div>
+                    </section>
+
+                    <section className="form-section document-step">
+                      <div className="form-section-heading">
+                        <span>4</span>
+                        <div>
+                          <strong>Insurance and claims</strong>
+                          <small>If the cargo arrived damaged, short, or never arrived, draft a claim here. We submit and follow up with the insurer.</small>
+                        </div>
+                      </div>
+                      {insurancePolicy ? (
+                        <div className="document-review-grid">
+                          <DetailTile icon={<ShieldCheck size={18} />} label="Insurance" value={insurancePolicy.insurance_required ? 'In place' : 'Waived'} />
+                          <DetailTile icon={<CircleDollarSign size={18} />} label="Insured value" value={formatMoney(insurancePolicy.insured_value)} />
+                          <DetailTile icon={<FileText size={18} />} label="Provider" value={insurancePolicy.provider ?? 'Not set'} />
+                        </div>
+                      ) : (
+                        <p className="tab-intro-copy">No insurance record yet for this shipment.</p>
+                      )}
+                      {bookingClaims.length > 0 && (
+                        <div className="document-review-grid">
+                          {bookingClaims.map((claim) => (
+                            <DetailTile
+                              key={claim.id}
+                              icon={<ShieldCheck size={18} />}
+                              label={`${claim.claim_type} claim`}
+                              value={`${formatMoney(claim.claim_amount_usd)} . ${claim.claim_status.replace('_', ' ')}`}
+                            />
+                          ))}
+                        </div>
+                      )}
+                      {claimMessage && <p style={{ color: '#059669' }}>{claimMessage}</p>}
+                      {claimError && <p style={{ color: '#dc2626' }}>{claimError}</p>}
+                      <form
+                        style={{ display: 'grid', gap: 8 }}
+                        onSubmit={async (event) => {
+                          event.preventDefault()
+                          setClaimMessage(null)
+                          setClaimError(null)
+                          if (!activeBooking) return
+                          const amount = Number(claimDraft.claim_amount_usd)
+                          if (!Number.isFinite(amount) || amount <= 0) {
+                            setClaimError('Claim amount must be more than zero.')
+                            return
+                          }
+                          try {
+                            await createClaim(activeBooking.id, {
+                              claim_type: claimDraft.claim_type,
+                              claim_amount_usd: amount,
+                              notes: claimDraft.notes || null,
+                            })
+                            setBookingClaims(await listClaims(activeBooking.id))
+                            setClaimDraft({ claim_type: 'damage', claim_amount_usd: '', notes: '' })
+                            setClaimMessage('Claim drafted. Ship Hoppa will review and submit to the insurer.')
+                          } catch (err) {
+                            setClaimError(err instanceof Error ? err.message : 'Could not create claim')
+                          }
+                        }}
+                      >
+                        <div className="form-grid two">
+                          <label>
+                            <span>What went wrong</span>
+                            <select
+                              value={claimDraft.claim_type}
+                              onChange={(e) => setClaimDraft((d) => ({ ...d, claim_type: e.target.value as ClaimType }))}
+                            >
+                              <option value="damage">Damage</option>
+                              <option value="loss">Loss</option>
+                              <option value="shortage">Shortage</option>
+                              <option value="delay">Delay</option>
+                              <option value="other">Other</option>
+                            </select>
+                          </label>
+                          <label>
+                            <span>Loss amount (USD)</span>
+                            <input
+                              type="number"
+                              min={0}
+                              step={1}
+                              value={claimDraft.claim_amount_usd}
+                              onChange={(e) => setClaimDraft((d) => ({ ...d, claim_amount_usd: e.target.value }))}
+                              required
+                            />
+                          </label>
+                        </div>
+                        <label>
+                          <span>What happened</span>
+                          <textarea
+                            rows={3}
+                            value={claimDraft.notes}
+                            onChange={(e) => setClaimDraft((d) => ({ ...d, notes: e.target.value }))}
+                            placeholder="Describe what was damaged or missing, and when you noticed."
+                          />
+                        </label>
+                        <button type="submit" className="primary-action small" disabled={!activeBooking}>
+                          Draft claim
+                        </button>
+                      </form>
                     </section>
                   </div>
                 ) : (
