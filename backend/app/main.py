@@ -18,7 +18,7 @@ from .algorithms import (
     run_release_checks,
     submit_booking,
 )
-from .auth import Principal, require_admin, require_cron, require_importer
+from .auth import Principal, require_admin, require_cron, require_importer, require_inbound_webhook
 from .automation import (
     AutomationResult,
     ExtractedFact,
@@ -115,6 +115,8 @@ from .models import (
     CarrierEtaUpdate,
     CarrierEventUpdate,
     CarrierPortalResponse,
+    InboundEmailWebhook,
+    SourceMessageType,
 )
 from .customs import HSCodeSuggestion, best_suggestion, suggest_hs_code
 from .invoices import ParsedInvoice, extract_invoice_from_pdf, extract_invoice_from_text
@@ -516,6 +518,84 @@ def create_source_message(
     principal: Principal = Depends(require_importer),
 ) -> SourceMessage:
     return persist_result(ingest_source_message(store, payload, principal.role, principal.actor_id))
+
+
+def _coerce_inbound_address(value) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        email = value.get("email")
+        if isinstance(email, str):
+            return email
+    return None
+
+
+def _coerce_inbound_addresses(value) -> List[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list):
+        results: List[str] = []
+        for item in value:
+            email = _coerce_inbound_address(item)
+            if email:
+                results.append(email)
+        return results
+    return []
+
+
+def _coerce_inbound_attachments(value) -> List[str]:
+    if not value:
+        return []
+    if not isinstance(value, list):
+        return []
+    names: List[str] = []
+    for item in value:
+        if isinstance(item, str) and item.strip():
+            names.append(item.strip())
+        elif isinstance(item, dict):
+            filename = item.get("filename") or item.get("name")
+            if isinstance(filename, str) and filename.strip():
+                names.append(filename.strip())
+    return names
+
+
+def _inbound_email_to_source_message(payload: InboundEmailWebhook) -> SourceMessageCreate:
+    from_address = _coerce_inbound_address(payload.from_field) or payload.sender or ""
+    if not from_address:
+        raise HTTPException(status_code=422, detail="Inbound email has no sender address.")
+    to_addresses = _coerce_inbound_addresses(payload.to)
+    if not to_addresses and payload.recipient:
+        to_addresses = [payload.recipient]
+    body = payload.text or payload.body_plain or payload.html or payload.body_html or ""
+    return SourceMessageCreate(
+        source_type=SourceMessageType.forwarded_email,
+        from_address=from_address,
+        to_addresses=to_addresses,
+        subject=payload.subject or "(no subject)",
+        body=body,
+        received_at=payload.received_at,
+        attachment_names=_coerce_inbound_attachments(payload.attachments),
+    )
+
+
+@app.post("/inbound/email", response_model=SourceMessage, status_code=201)
+def inbound_email(
+    payload: InboundEmailWebhook,
+    principal: Principal = Depends(require_inbound_webhook),
+) -> SourceMessage:
+    """
+    Inbound email webhook. Receives JSON from Resend Inbound, Mailgun, or any
+    forwarder that posts a compatible shape. Creates a SourceMessage and runs
+    the existing matching / extraction automation.
+    """
+    source_payload = _inbound_email_to_source_message(payload)
+    return persist_result(
+        ingest_source_message(store, source_payload, ActorRole.system, principal.actor_id)
+    )
 
 
 @app.get("/approvals", response_model=List[ApprovalRequest])

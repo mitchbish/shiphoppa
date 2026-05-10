@@ -1294,6 +1294,45 @@ class SourceMessageCreate(BaseModel):
     attachment_names: List[str] = Field(default_factory=list)
 
 
+class InboundEmailAddress(BaseModel):
+    email: str
+    name: Optional[str] = None
+
+
+class InboundEmailAttachment(BaseModel):
+    filename: Optional[str] = None
+    content_type: Optional[str] = None
+
+
+class InboundEmailWebhook(BaseModel):
+    """
+    Vendor-flexible inbound email shape. Accepts Resend Inbound and Mailgun
+    payloads.
+
+    Resend posts JSON like:
+      {"from": {"email": "...", "name": "..."},
+       "to": [{"email": "...", "name": "..."}],
+       "subject": "...", "html": "...", "text": "...",
+       "attachments": [{"filename": "..."}], "received_at": "..."}
+
+    Mailgun posts flat fields. Map common variants via field aliases.
+    """
+    model_config = {"populate_by_name": True}
+
+    from_field: Optional[Any] = Field(default=None, alias="from")
+    sender: Optional[str] = None
+    to: Optional[Any] = None
+    recipient: Optional[str] = None
+    subject: Optional[str] = None
+    text: Optional[str] = None
+    html: Optional[str] = None
+    body_plain: Optional[str] = Field(default=None, alias="body-plain")
+    body_html: Optional[str] = Field(default=None, alias="body-html")
+    received_at: Optional[datetime] = None
+    timestamp: Optional[Any] = None
+    attachments: Optional[List[Any]] = None
+
+
 class OutboundMessageCreate(BaseModel):
     recipient_type: OutboundRecipientType
     recipient_id: str
