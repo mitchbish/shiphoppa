@@ -60,6 +60,8 @@ from .models import (
     ContingencyOptionUpdate,
     LandedCostActual,
     LandedCostActualUpsert,
+    MarketplaceOrder,
+    MarketplaceOrderCreate,
     PartnerCapability,
     PartnerCapabilityCreate,
     PartnerCapabilityUpdate,
@@ -204,10 +206,12 @@ from .operations import (
     get_supplier_claim_by_token,
     list_contingency_options_for_booking,
     list_delivery_jobs_for_booking,
+    list_marketplace_orders,
     list_partner_capabilities,
     list_payment_proofs_for_booking,
     opt_out_sentinel_subscriber,
     record_landed_cost_actual,
+    record_marketplace_order,
     record_payment_proof,
     request_approval_review,
     update_contingency_option,
@@ -365,6 +369,7 @@ def reset_store_for_tests() -> None:
     store.contingency_options.clear()
     store.payment_proofs.clear()
     store.landed_cost_actuals.clear()
+    store.marketplace_orders.clear()
     store.sentinel_subscribers.clear()
     store.supplier_profile_claims.clear()
     store.idempotency_records.clear()
@@ -1954,6 +1959,26 @@ def get_landed_cost_actual(
     if not actual:
         raise HTTPException(status_code=404, detail="Landed cost actual not recorded yet")
     return actual
+
+
+@app.post("/marketplace-orders", response_model=MarketplaceOrder, status_code=201)
+def post_marketplace_order(
+    payload: MarketplaceOrderCreate,
+    principal: Principal = Depends(require_importer),
+) -> MarketplaceOrder:
+    try:
+        return persist_result(record_marketplace_order(store, payload, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/marketplace-orders", response_model=List[MarketplaceOrder])
+def get_marketplace_orders(
+    booking_id: Optional[str] = None,
+    import_project_id: Optional[str] = None,
+    _principal: Principal = Depends(require_importer),
+) -> List[MarketplaceOrder]:
+    return list_marketplace_orders(store, booking_id, import_project_id)
 
 
 @app.put("/bookings/{booking_id}/delivery-plan", response_model=DeliveryPlan)

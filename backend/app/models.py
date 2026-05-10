@@ -1995,6 +1995,63 @@ class LandedCostActual(BaseModel):
     updated_at: datetime
 
 
+class MarketplaceProvider(str, Enum):
+    alibaba = "alibaba"
+    direct_supplier = "direct_supplier"
+    agent = "agent"
+    trading_company = "trading_company"
+    marketplace_1688 = "1688"
+    global_sources = "global_sources"
+    made_in_china = "made_in_china"
+    other = "other"
+
+
+class MarketplaceSyncMethod(str, Enum):
+    email_forward = "email_forward"
+    document_upload = "document_upload"
+    browser_extension = "browser_extension"
+    official_api = "official_api"
+    manual = "manual"
+
+
+class MarketplaceOrder(BaseModel):
+    id: str
+    booking_id: Optional[str] = None
+    import_project_id: Optional[str] = None
+    marketplace: MarketplaceProvider
+    external_order_id: Optional[str] = None
+    trade_assurance_status: Optional[str] = None
+    supplier_profile_url: Optional[str] = None
+    product_url: Optional[str] = None
+    order_url: Optional[str] = None
+    buyer_account_reference: Optional[str] = None
+    agreed_terms_snapshot: Optional[str] = None
+    messages_snapshot_reference: Optional[str] = None
+    payment_method: Optional[str] = None
+    protection_notes: Optional[str] = None
+    last_synced_at: Optional[datetime] = None
+    sync_method: MarketplaceSyncMethod = MarketplaceSyncMethod.manual
+    created_at: datetime
+    updated_at: datetime
+
+
+class MarketplaceOrderCreate(BaseModel):
+    marketplace: MarketplaceProvider
+    booking_id: Optional[str] = None
+    import_project_id: Optional[str] = None
+    external_order_id: Optional[str] = None
+    trade_assurance_status: Optional[str] = None
+    supplier_profile_url: Optional[str] = None
+    product_url: Optional[str] = None
+    order_url: Optional[str] = None
+    buyer_account_reference: Optional[str] = None
+    agreed_terms_snapshot: Optional[str] = None
+    messages_snapshot_reference: Optional[str] = None
+    payment_method: Optional[str] = None
+    protection_notes: Optional[str] = None
+    sync_method: MarketplaceSyncMethod = MarketplaceSyncMethod.manual
+
+
 class LandedCostActualUpsert(BaseModel):
     actual_total_usd: float = Field(..., ge=0)
     currency: str = "USD"

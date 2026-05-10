@@ -1086,6 +1086,44 @@ export interface DeliveryJobUpdatePayload extends Partial<DeliveryJobCreatePaylo
   pod_document_id?: string
 }
 
+export type MarketplaceProvider =
+  | 'alibaba'
+  | 'direct_supplier'
+  | 'agent'
+  | 'trading_company'
+  | '1688'
+  | 'global_sources'
+  | 'made_in_china'
+  | 'other'
+
+export type MarketplaceSyncMethod =
+  | 'email_forward'
+  | 'document_upload'
+  | 'browser_extension'
+  | 'official_api'
+  | 'manual'
+
+export interface MarketplaceOrder {
+  id: string
+  booking_id: string | null
+  import_project_id: string | null
+  marketplace: MarketplaceProvider
+  external_order_id: string | null
+  trade_assurance_status: string | null
+  supplier_profile_url: string | null
+  product_url: string | null
+  order_url: string | null
+  buyer_account_reference: string | null
+  agreed_terms_snapshot: string | null
+  messages_snapshot_reference: string | null
+  payment_method: string | null
+  protection_notes: string | null
+  last_synced_at: string | null
+  sync_method: MarketplaceSyncMethod
+  created_at: string
+  updated_at: string
+}
+
 export type PaymentProofType =
   | 'supplier_invoice'
   | 'freight_invoice'

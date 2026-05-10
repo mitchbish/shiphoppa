@@ -34,6 +34,7 @@ from .models import (
     Invoice,
     LandedCostActual,
     Lane,
+    MarketplaceOrder,
     Notification,
     OutboundMessage,
     PaymentProof,
@@ -90,6 +91,7 @@ class Store:
         self.contingency_options: Dict[str, ContingencyOption] = {}
         self.payment_proofs: Dict[str, PaymentProof] = {}
         self.landed_cost_actuals: Dict[str, LandedCostActual] = {}
+        self.marketplace_orders: Dict[str, MarketplaceOrder] = {}
         self.admin_tasks: Dict[str, AdminTask] = {}
         self.purchase_orders: Dict[str, PurchaseOrder] = {}
         self.production_milestones: Dict[str, ProductionMilestone] = {}

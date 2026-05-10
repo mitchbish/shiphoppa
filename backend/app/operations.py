@@ -75,6 +75,8 @@ from .models import (
     InvoiceLineItem,
     LandedCostActual,
     LandedCostActualUpsert,
+    MarketplaceOrder,
+    MarketplaceOrderCreate,
     Notification,
     PaymentProof,
     PaymentProofCreate,
@@ -4941,3 +4943,65 @@ def record_landed_cost_actual(
         },
     )
     return actual
+
+
+def record_marketplace_order(
+    store: Store,
+    payload: MarketplaceOrderCreate,
+    actor_id: str,
+) -> MarketplaceOrder:
+    if payload.booking_id and payload.booking_id not in store.bookings:
+        raise ValueError("Booking not found")
+    if payload.import_project_id and payload.import_project_id not in store.import_projects:
+        raise ValueError("Import project not found")
+    timestamp = now_utc()
+    order = MarketplaceOrder(
+        id=store.next_id("MORD"),
+        booking_id=payload.booking_id,
+        import_project_id=payload.import_project_id,
+        marketplace=payload.marketplace,
+        external_order_id=payload.external_order_id,
+        trade_assurance_status=payload.trade_assurance_status,
+        supplier_profile_url=payload.supplier_profile_url,
+        product_url=payload.product_url,
+        order_url=payload.order_url,
+        buyer_account_reference=payload.buyer_account_reference,
+        agreed_terms_snapshot=payload.agreed_terms_snapshot,
+        messages_snapshot_reference=payload.messages_snapshot_reference,
+        payment_method=payload.payment_method,
+        protection_notes=payload.protection_notes,
+        sync_method=payload.sync_method,
+        last_synced_at=timestamp,
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+    store.marketplace_orders[order.id] = order
+    create_audit_event(
+        store,
+        ActorRole.importer,
+        actor_id,
+        "marketplace_order_recorded",
+        "marketplace_order",
+        order.id,
+        f"Marketplace order recorded ({payload.marketplace.value}).",
+        {
+            "marketplace": payload.marketplace.value,
+            "booking_id": payload.booking_id,
+            "import_project_id": payload.import_project_id,
+            "sync_method": payload.sync_method.value,
+        },
+    )
+    return order
+
+
+def list_marketplace_orders(
+    store: Store,
+    booking_id: Optional[str] = None,
+    import_project_id: Optional[str] = None,
+) -> List[MarketplaceOrder]:
+    orders = list(store.marketplace_orders.values())
+    if booking_id:
+        orders = [o for o in orders if o.booking_id == booking_id]
+    if import_project_id:
+        orders = [o for o in orders if o.import_project_id == import_project_id]
+    return sorted(orders, key=lambda o: (o.created_at, o.id), reverse=True)

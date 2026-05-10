@@ -32,6 +32,7 @@ import type {
   DeliveryJobUpdatePayload,
   DeliveryPlan,
   LandedCostActual,
+  MarketplaceOrder,
   PartnerCapability,
   PartnerProfile,
   PaymentProof,
@@ -1008,6 +1009,23 @@ export function createContingencyOption(bookingId: string, payload: Partial<Cont
 export function updateContingencyOption(optionId: string, payload: Partial<ContingencyOption>) {
   return request<ContingencyOption>(`/contingency-options/${optionId}`, {
     method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+}
+
+// --- Marketplace orders ---
+
+export function listMarketplaceOrders(params: { booking_id?: string; import_project_id?: string } = {}) {
+  const search = new URLSearchParams()
+  if (params.booking_id) search.set('booking_id', params.booking_id)
+  if (params.import_project_id) search.set('import_project_id', params.import_project_id)
+  const suffix = search.toString()
+  return request<MarketplaceOrder[]>(`/marketplace-orders${suffix ? `?${suffix}` : ''}`)
+}
+
+export function recordMarketplaceOrder(payload: Partial<MarketplaceOrder> & { marketplace: MarketplaceOrder['marketplace'] }) {
+  return request<MarketplaceOrder>('/marketplace-orders', {
+    method: 'POST',
     body: JSON.stringify(payload),
   })
 }

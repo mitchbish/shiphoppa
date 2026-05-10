@@ -278,6 +278,7 @@ Each row references the section in
 | DeliveryJob model + endpoints | DONE 2026-05-11 | Model spec (line 2968-2982), Phase 5 (line 3644-3679) | `backend/app/operations.py:create_delivery_job..update_delivery_job`, endpoints `POST/GET /bookings/{id}/delivery-jobs`, `PATCH /delivery-jobs/{id}`, frontend types + clients | `docs/plans/delivery-job/` |
 | Partner capability + contingency option skeleton | DONE 2026-05-11 | Model spec (line 2712-2759), Phase 1-2 foundational (line 1939-1987) | `backend/app/operations.py` partner/capability/contingency operations, `/partners`, `/partners/{id}/capabilities`, `/partner-capabilities/{id}`, `/bookings/{id}/contingency-options`, `/contingency-options/{id}`, frontend types + clients | `docs/plans/partner-capability-skeleton/` |
 | PaymentProof + LandedCostActual skeleton | DONE 2026-05-11 | Model spec (line 3056-3122), Phase 6 (line 3732-3849) | `backend/app/operations.py:record_payment_proof..record_landed_cost_actual`, endpoints `POST/GET /bookings/{id}/payment-proofs`, `PATCH /payment-proofs/{id}`, `POST/GET /bookings/{id}/landed-cost-actual`, frontend types + clients | `docs/plans/payment-proof-landed-cost/` |
+| MarketplaceOrder model + ingest | DONE 2026-05-11 | Model spec (line 2535-2553), Step 2 Order (line 110-115), Account Integrations (line 102-106) | `backend/app/operations.py:record_marketplace_order..list_marketplace_orders`, endpoints `POST/GET /marketplace-orders`, frontend types + clients | `docs/plans/marketplace-order/` |
 | Cron-job.org wiring (was operator-blocked, unblocked) | DONE 2026-05-11 | Phase 5 Automation (line 174-181) | cron-job.org Job 7583175 hits `POST /automation/cron/run` every 15 minutes; `SHIP_HOPPA_CRON_TOKEN` rotated and matched between Railway and cron-job.org | (ops change, no code; verified HTTP 200 in cron-job.org history) |
 
 ### No-blocker, autonomous — NOT STARTED (the new chat picks from here)
@@ -290,7 +291,6 @@ existing code; sizing is a rough guess.
 | **Frontend admin tab for growth attribution + supplier verification + import projects CRUD** — three small admin views surfacing endpoints already shipped | Adoption loop (line 261-310), Supplier acquisition (line 408-863) | Backend ships; admin UI is missing | Medium |
 | **Approval decision cards UI** — proper visual cards in the approvals tab showing what's being approved, amount, due date, source docs, risk level, approve/reject buttons (currently a thin list) | Phase 3 Approval queue (line 3567-3603) | Approvals tab stub exists in `frontend/src/App.tsx` | Small |
 | **Snapshot / version restore endpoint** — let an importer roll back an `ImportProject` to an earlier version | Phase -2 Saved import projects (line 1939-1987) | `ImportProjectVersion` and `ImportProjectSnapshot` models exist; soft-delete shipped | Medium |
-| **Marketplace order import UI (Alibaba auto-fill stub)** — frontend stub that looks like an Alibaba paste-or-import flow, even with a no-op adapter for now | Step 2 Order Supplier (line 110-115), Account Integrations (line 102-106) | Alibaba integration model exists | Medium |
 
 ### Operator-blocked — BLOCKED on external setup
 
