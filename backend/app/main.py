@@ -120,6 +120,7 @@ from .operations import (
     list_quality_inspections_for_booking,
     list_space_opportunities_for_booking,
     record_quality_inspection_result,
+    record_warehouse_measurement,
     update_container_eta,
     create_supplier_pay_request,
     decide_document,
@@ -935,6 +936,33 @@ def booking_release_status(booking_id: str, _principal: Principal = Depends(requ
     if booking_id not in store.bookings:
         raise HTTPException(status_code=404, detail="Booking not found")
     return release_status_for_booking(store, booking_id)
+
+
+class WarehouseMeasurementRequest(BaseModel):
+    actual_cbm: float
+    actual_weight_kg: float
+    rate_per_cbm_usd: float = 95.0
+
+
+@app.post("/bookings/{booking_id}/warehouse-measurement")
+def post_warehouse_measurement(
+    booking_id: str,
+    payload: WarehouseMeasurementRequest,
+    principal: Principal = Depends(require_admin),
+) -> dict:
+    try:
+        result = record_warehouse_measurement(
+            store,
+            booking_id,
+            payload.actual_cbm,
+            payload.actual_weight_kg,
+            principal.actor_id,
+            rate_per_cbm_usd=payload.rate_per_cbm_usd,
+        )
+        persist_store()
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 @app.get("/bookings/{booking_id}/landed-cost")

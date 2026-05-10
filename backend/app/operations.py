@@ -1062,6 +1062,109 @@ def list_quality_inspections_for_booking(store: Store, booking_id: str) -> List[
     return [qc for qc in store.quality_inspections.values() if qc.purchase_order_id in pos]
 
 
+# --- Warehouse cargo measurement variance ---
+
+CBM_VARIANCE_THRESHOLD = 0.10  # 10%
+WEIGHT_VARIANCE_THRESHOLD = 0.10
+MIN_VARIANCE_USD = 25.0  # below this, don't bother creating an approval
+
+
+def record_warehouse_measurement(
+    store: Store,
+    booking_id: str,
+    actual_cbm: float,
+    actual_weight_kg: float,
+    actor_id: str,
+    rate_per_cbm_usd: float = 95.0,
+) -> Dict[str, Any]:
+    """
+    Record actual cargo dimensions at the warehouse and detect billing
+    variance. If the variance exceeds the threshold and the cost delta is
+    material, create an approve_invoice_variance approval and notify the
+    importer.
+    """
+    booking = store.bookings.get(booking_id)
+    if not booking:
+        raise ValueError(f"Booking {booking_id} not found")
+
+    booked_cbm = booking.cbm_estimate or 0.0
+    booked_weight = booking.weight_kg_estimate or 0.0
+
+    booking.cbm_actual = actual_cbm
+    booking.weight_kg_actual = actual_weight_kg
+    booking.received_at_warehouse = booking.received_at_warehouse or now_utc()
+
+    cbm_variance = (actual_cbm - booked_cbm) / booked_cbm if booked_cbm > 0 else 0.0
+    weight_variance = (actual_weight_kg - booked_weight) / booked_weight if booked_weight > 0 else 0.0
+
+    cbm_cost_delta = round_money((actual_cbm - booked_cbm) * rate_per_cbm_usd)
+    needs_variance_approval = (
+        abs(cbm_variance) >= CBM_VARIANCE_THRESHOLD
+        or abs(weight_variance) >= WEIGHT_VARIANCE_THRESHOLD
+    )
+
+    approval_id: Optional[str] = None
+    if needs_variance_approval and abs(cbm_cost_delta) >= MIN_VARIANCE_USD:
+        approval = create_approval_request(
+            store,
+            ApprovalRequestType.approve_invoice_variance,
+            f"Cargo measurement variance for {booking_id}",
+            (
+                f"Warehouse measured {actual_cbm:.2f} CBM and {actual_weight_kg:.0f} kg "
+                f"versus booked {booked_cbm:.2f} CBM and {booked_weight:.0f} kg. "
+                f"Estimated freight delta: USD {cbm_cost_delta:+,.2f}. "
+                "Approve to bill the new amount, or reject to dispute."
+            ),
+            amount_usd=abs(cbm_cost_delta),
+            related_booking_id=booking_id,
+        )
+        approval_id = approval.id
+
+    create_audit_event(
+        store,
+        ActorRole.system,
+        actor_id,
+        "warehouse_measurement_recorded",
+        "booking",
+        booking_id,
+        f"Warehouse measured cargo: {actual_cbm:.2f} CBM / {actual_weight_kg:.0f} kg.",
+        {
+            "actual_cbm": actual_cbm,
+            "actual_weight_kg": actual_weight_kg,
+            "booked_cbm": booked_cbm,
+            "booked_weight_kg": booked_weight,
+            "cbm_variance_pct": round(cbm_variance * 100, 2),
+            "weight_variance_pct": round(weight_variance * 100, 2),
+            "cbm_cost_delta_usd": cbm_cost_delta,
+        },
+    )
+
+    if needs_variance_approval:
+        create_notification(
+            store,
+            recipient_type="importer",
+            recipient_id="dev-importer",
+            trigger="warehouse_variance",
+            message=(
+                f"Cargo for {booking_id} measured "
+                f"{cbm_variance * 100:+.0f}% on volume. Review the variance approval."
+            ),
+        )
+
+    return {
+        "booking_id": booking_id,
+        "actual_cbm": actual_cbm,
+        "actual_weight_kg": actual_weight_kg,
+        "booked_cbm": booked_cbm,
+        "booked_weight_kg": booked_weight,
+        "cbm_variance_pct": round(cbm_variance * 100, 2),
+        "weight_variance_pct": round(weight_variance * 100, 2),
+        "cbm_cost_delta_usd": cbm_cost_delta,
+        "needs_variance_approval": needs_variance_approval,
+        "approval_request_id": approval_id,
+    }
+
+
 # --- Carrier ETA monitoring ---
 
 ETA_NOTIFY_THRESHOLD_DAYS = 1

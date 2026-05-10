@@ -1514,3 +1514,74 @@ class TestHsCodeSuggestion:
         assert body["hs_code"].startswith("6907")
         # Booking itself should have the code too
         assert store.bookings[booking_id].hs_code == body["hs_code"]
+
+
+class TestWarehouseMeasurement:
+    def test_records_actuals_within_threshold_no_approval(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        booking_id = create_booking()
+        before_approvals = len(store.approval_requests)
+        # Booked is 15 CBM 6000kg, send 15.5 CBM 6100kg (within 10%)
+        response = client.post(
+            f"/bookings/{booking_id}/warehouse-measurement",
+            headers=ADMIN_HEADERS,
+            json={"actual_cbm": 15.5, "actual_weight_kg": 6100},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["needs_variance_approval"] is False
+        assert body["approval_request_id"] is None
+        assert len(store.approval_requests) == before_approvals
+        # Booking should have actuals recorded
+        booking = store.bookings[booking_id]
+        assert booking.cbm_actual == 15.5
+        assert booking.weight_kg_actual == 6100
+
+    def test_significant_overage_creates_variance_approval(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        booking_id = create_booking()
+        # 20% over volume, big enough to trigger
+        before_approvals = len(store.approval_requests)
+        before_notifs = len(store.notifications)
+        response = client.post(
+            f"/bookings/{booking_id}/warehouse-measurement",
+            headers=ADMIN_HEADERS,
+            json={"actual_cbm": 18.0, "actual_weight_kg": 7200},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["needs_variance_approval"] is True
+        assert body["approval_request_id"] is not None
+        assert body["cbm_cost_delta_usd"] > 0
+        assert len(store.approval_requests) > before_approvals
+        # Importer should be notified
+        variance_notifs = [n for n in store.notifications.values() if n.trigger == "warehouse_variance"]
+        assert len(variance_notifs) >= 1
+        assert booking_id in variance_notifs[0].message
+
+    def test_undersize_creates_variance_approval(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        booking_id = create_booking()
+        # 20% under volume — also creates variance (importer might be due refund)
+        response = client.post(
+            f"/bookings/{booking_id}/warehouse-measurement",
+            headers=ADMIN_HEADERS,
+            json={"actual_cbm": 12.0, "actual_weight_kg": 4800},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["needs_variance_approval"] is True
+        assert body["cbm_cost_delta_usd"] < 0
+
+    def test_unknown_booking_404s(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        response = client.post(
+            "/bookings/BK-9999/warehouse-measurement",
+            headers=ADMIN_HEADERS,
+            json={"actual_cbm": 10, "actual_weight_kg": 4000},
+        )
+        assert response.status_code == 404
