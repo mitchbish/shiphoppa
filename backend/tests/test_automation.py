@@ -1031,3 +1031,100 @@ class TestSupplierInvoiceExtraction:
             out += f"{off:010d} 00000 n \n".encode()
         out += b"trailer\n<< /Size " + str(len(objects) + 1).encode() + b" /Root 1 0 R >>\nstartxref\n" + str(xref_offset).encode() + b"\n%%EOF"
         return out
+
+
+class TestQualityInspection:
+    def _make_po(self, client: TestClient, booking_id: str, inspection_required: bool = True):
+        return client.post(
+            "/purchase-orders",
+            headers=IMPORTER_HEADERS,
+            json={
+                "booking_id": booking_id,
+                "order_reference": "SH-2026-0099",
+                "buyer_company_name": "Test Imports Pty Ltd",
+                "supplier_name": "Foshan Tiles Co Ltd",
+                "product_summary": "ceramic tiles",
+                "goods_value": 4250,
+                "deposit_amount": 1275,
+                "balance_amount": 2975,
+                "inspection_required": inspection_required,
+            },
+        )
+
+    def test_inspections_listed_for_booking(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        booking_id = create_booking()
+        self._make_po(client, booking_id)
+        response = client.get(f"/bookings/{booking_id}/quality-inspections", headers=IMPORTER_HEADERS)
+        assert response.status_code == 200
+        items = response.json()
+        assert len(items) == 1
+        assert items[0]["inspection_required"] is True
+
+    def test_book_inspection_endpoint(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        booking_id = create_booking()
+        self._make_po(client, booking_id)
+        inspection_id = list(store.quality_inspections.values())[0].id
+        before_notifs = len(store.notifications)
+        response = client.post(
+            f"/quality-inspections/{inspection_id}/book",
+            headers=IMPORTER_HEADERS,
+            json={
+                "provider": "SGS",
+                "inspection_date": "2026-06-01",
+                "location": "Foshan factory",
+            },
+        )
+        assert response.status_code == 200
+        assert response.json()["result"] == "booked"
+        assert response.json()["inspection_provider"] == "SGS"
+        assert len(store.notifications) > before_notifs
+
+    def test_failed_inspection_creates_approval(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        booking_id = create_booking()
+        self._make_po(client, booking_id)
+        inspection_id = list(store.quality_inspections.values())[0].id
+        before_approvals = len(store.approval_requests)
+        response = client.post(
+            f"/quality-inspections/{inspection_id}/result",
+            headers=ADMIN_HEADERS,
+            json={
+                "result": "failed",
+                "defects_summary": "Glaze issues on 12% of cartons.",
+            },
+        )
+        assert response.status_code == 200
+        assert response.json()["result"] == "failed"
+        assert len(store.approval_requests) > before_approvals
+
+    def test_passed_inspection_notifies_importer(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        booking_id = create_booking()
+        self._make_po(client, booking_id)
+        inspection_id = list(store.quality_inspections.values())[0].id
+        before = len(store.notifications)
+        response = client.post(
+            f"/quality-inspections/{inspection_id}/result",
+            headers=ADMIN_HEADERS,
+            json={"result": "passed"},
+        )
+        assert response.status_code == 200
+        passed_notifs = [n for n in store.notifications.values() if n.trigger == "qc_inspection_passed"]
+        assert len(passed_notifs) == 1
+        assert len(store.notifications) > before
+
+    def test_unknown_inspection_404s(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        response = client.post(
+            "/quality-inspections/QC-9999/book",
+            headers=IMPORTER_HEADERS,
+            json={"provider": "SGS", "inspection_date": "2026-06-01", "location": "x"},
+        )
+        assert response.status_code == 404

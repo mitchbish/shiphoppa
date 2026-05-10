@@ -73,6 +73,8 @@ import {
   listSpaceOpportunity,
   parseInvoiceText,
   parseInvoicePdf,
+  getBookingInspections,
+  bookInspection,
   supplierReady,
   updateAccountIntegration,
   updateAccountProfile,
@@ -88,6 +90,7 @@ import type {
   AutomationRunAllResult,
   LandedCostSummary,
   ParsedInvoice,
+  QualityInspectionRecord,
   SpaceOpportunity,
   MissingDataItem as APIMissingDataItem,
   ShipmentStateResponse,
@@ -2363,6 +2366,8 @@ function App() {
   const [invoiceText, setInvoiceText] = useState('')
   const [parsedInvoice, setParsedInvoice] = useState<ParsedInvoice | null>(null)
   const [parsingInvoice, setParsingInvoice] = useState(false)
+  const [activeInspections, setActiveInspections] = useState<QualityInspectionRecord[]>([])
+  const [inspectionDraft, setInspectionDraft] = useState({ provider: '', inspection_date: '', location: '' })
   const [adminEmail, setAdminEmail] = useState('ops@shiphoppa.example')
   const [adminPassword, setAdminPassword] = useState('')
   const [adminLoginError, setAdminLoginError] = useState<string | null>(null)
@@ -2539,12 +2544,32 @@ function App() {
       setActiveShipmentState(null)
       setActiveMissingData([])
       setSpaceOpportunities([])
+      setActiveInspections([])
       return
     }
     getShipmentState(activeBooking.id).then(setActiveShipmentState).catch(() => setActiveShipmentState(null))
     getMissingData(activeBooking.id).then(setActiveMissingData).catch(() => setActiveMissingData([]))
     getSpaceOpportunities(activeBooking.id).then(setSpaceOpportunities).catch(() => setSpaceOpportunities([]))
+    getBookingInspections(activeBooking.id).then(setActiveInspections).catch(() => setActiveInspections([]))
   }, [activeBooking?.id])
+
+  async function handleBookInspector(inspectionId: string) {
+    if (!inspectionDraft.provider || !inspectionDraft.inspection_date || !inspectionDraft.location) {
+      setError('Please fill provider, date and location to book an inspector.')
+      return
+    }
+    try {
+      await bookInspection(inspectionId, inspectionDraft)
+      if (activeBooking) {
+        const refreshed = await getBookingInspections(activeBooking.id)
+        setActiveInspections(refreshed)
+      }
+      setInspectionDraft({ provider: '', inspection_date: '', location: '' })
+      setReleaseMessage('Inspector booked. You will be notified when the result is in.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not book inspector')
+    }
+  }
 
   async function handleDetectSpareSpace() {
     if (!activeBooking) return
@@ -6012,6 +6037,51 @@ function App() {
                       <DetailTile icon={<CalendarClock size={18} />} label="Inspection date" value={formatDateShort(activeQualityInspection?.inspection_date)} />
                       <DetailTile icon={<MapPin size={18} />} label="Inspection location" value={activeQualityInspection?.inspection_location ?? form.supplier_city} />
                     </div>
+                    {activeInspections.length > 0 && (
+                      <div className="inspection-booking-grid">
+                        {activeInspections.map((inspection) => (
+                          <div key={inspection.id} className="inspection-row">
+                            <div>
+                              <span className={`status-chip ${inspection.result === 'passed' ? 'green' : inspection.result === 'failed' || inspection.result === 'rework_required' ? 'orange' : 'blue'}`}>
+                                {sourceLabel(inspection.result)}
+                              </span>
+                              <strong>{inspection.inspection_provider ?? 'No inspector booked'}</strong>
+                              <small>{inspection.inspection_date ?? 'No date'} . {inspection.inspection_location ?? 'No location'}</small>
+                              {inspection.defects_summary && <em>{inspection.defects_summary}</em>}
+                            </div>
+                            {(!inspection.inspection_provider || inspection.result === 'pending') && (
+                              <div className="inspection-book-form">
+                                <input
+                                  type="text"
+                                  placeholder="Provider (e.g. SGS)"
+                                  value={inspectionDraft.provider}
+                                  onChange={(event) => setInspectionDraft({ ...inspectionDraft, provider: event.target.value })}
+                                />
+                                <input
+                                  type="date"
+                                  value={inspectionDraft.inspection_date}
+                                  onChange={(event) => setInspectionDraft({ ...inspectionDraft, inspection_date: event.target.value })}
+                                />
+                                <input
+                                  type="text"
+                                  placeholder="Location"
+                                  value={inspectionDraft.location}
+                                  onChange={(event) => setInspectionDraft({ ...inspectionDraft, location: event.target.value })}
+                                />
+                                <button
+                                  className="primary-action small"
+                                  type="button"
+                                  onClick={() => handleBookInspector(inspection.id)}
+                                >
+                                  <CalendarClock size={14} />
+                                  Book inspector
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     <div className="action-panel-buttons">
                       {activeQcMilestone && activeQcMilestone.status !== 'complete' && (
                         <button

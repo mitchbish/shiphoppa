@@ -443,6 +443,37 @@ export type ParsePdfResponse = ParseInvoiceResponse & {
   warning?: string
 }
 
+// --- Quality inspection ---
+
+export type QualityInspectionRecord = {
+  id: string
+  purchase_order_id: string
+  inspection_required: boolean
+  inspection_provider: string | null
+  inspection_date: string | null
+  inspection_location: string | null
+  report_document_id: string | null
+  result: 'not_required' | 'pending' | 'booked' | 'passed' | 'failed' | 'rework_required' | 'waived'
+  defects_summary: string | null
+  buyer_approval_required: boolean
+  created_at: string
+  updated_at: string
+}
+
+export function getBookingInspections(bookingId: string) {
+  return request<QualityInspectionRecord[]>(`/bookings/${bookingId}/quality-inspections`)
+}
+
+export function bookInspection(
+  inspectionId: string,
+  payload: { provider: string; inspection_date: string; location: string },
+) {
+  return request<QualityInspectionRecord>(`/quality-inspections/${inspectionId}/book`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
 export async function parseInvoicePdf(
   file: File,
   options?: { booking_id?: string; apply?: boolean },

@@ -75,6 +75,8 @@ from .models import (
     ProductionMilestoneCompleteRequest,
     PurchaseOrder,
     PurchaseOrderCreate,
+    QualityInspection,
+    QualityInspectionResult,
     ReleaseHold,
     ReleaseCheckResult,
     ReleaseStatusResponse,
@@ -104,6 +106,7 @@ from .invoices import ParsedInvoice, extract_invoice_from_pdf, extract_invoice_f
 from .operations import (
     apply_parsed_invoice,
     approve_space_opportunity_listing,
+    book_quality_inspection,
     checklist_for_booking,
     complete_production_milestone,
     create_shipment_event,
@@ -111,7 +114,9 @@ from .operations import (
     create_purchase_order,
     detect_fcl_spare_space,
     landed_cost_summary,
+    list_quality_inspections_for_booking,
     list_space_opportunities_for_booking,
+    record_quality_inspection_result,
     create_supplier_pay_request,
     decide_document,
     decide_approval_request,
@@ -482,6 +487,70 @@ def get_purchase_order(purchase_order_id: str, _principal: Principal = Depends(r
     if purchase_order_id not in store.purchase_orders:
         raise HTTPException(status_code=404, detail="Purchase order not found")
     return store.purchase_orders[purchase_order_id]
+
+
+# --- Quality inspection ---
+
+
+class BookInspectionRequest(BaseModel):
+    provider: str
+    inspection_date: date
+    location: str
+
+
+class InspectionResultRequest(BaseModel):
+    result: QualityInspectionResult
+    defects_summary: Optional[str] = None
+
+
+@app.get("/bookings/{booking_id}/quality-inspections", response_model=List[QualityInspection])
+def booking_quality_inspections(
+    booking_id: str, _principal: Principal = Depends(require_importer)
+) -> List[QualityInspection]:
+    if booking_id not in store.bookings:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return list_quality_inspections_for_booking(store, booking_id)
+
+
+@app.post("/quality-inspections/{inspection_id}/book", response_model=QualityInspection)
+def post_book_inspection(
+    inspection_id: str,
+    payload: BookInspectionRequest,
+    principal: Principal = Depends(require_importer),
+) -> QualityInspection:
+    try:
+        return persist_result(
+            book_quality_inspection(
+                store,
+                inspection_id,
+                payload.provider,
+                payload.inspection_date,
+                payload.location,
+                principal.actor_id,
+            )
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post("/quality-inspections/{inspection_id}/result", response_model=QualityInspection)
+def post_inspection_result(
+    inspection_id: str,
+    payload: InspectionResultRequest,
+    principal: Principal = Depends(require_admin),
+) -> QualityInspection:
+    try:
+        inspection, _approval = record_quality_inspection_result(
+            store,
+            inspection_id,
+            payload.result,
+            payload.defects_summary,
+            principal.actor_id,
+        )
+        persist_store()
+        return inspection
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 @app.get("/purchase-orders/{purchase_order_id}/milestones", response_model=List[ProductionMilestone])

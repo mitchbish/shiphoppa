@@ -2,7 +2,7 @@ import base64
 import secrets
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from .models import (
     AccountIntegration,
@@ -897,6 +897,101 @@ def create_quality_inspection(
     )
     store.quality_inspections[inspection.id] = inspection
     return inspection
+
+
+def book_quality_inspection(
+    store: Store,
+    inspection_id: str,
+    provider: str,
+    inspection_date: date,
+    location: str,
+    actor_id: str,
+) -> QualityInspection:
+    inspection = store.quality_inspections.get(inspection_id)
+    if not inspection:
+        raise ValueError(f"QualityInspection {inspection_id} not found")
+    inspection.inspection_provider = provider
+    inspection.inspection_date = inspection_date
+    inspection.inspection_location = location
+    inspection.result = QualityInspectionResult.booked
+    inspection.updated_at = now_utc()
+    create_audit_event(
+        store,
+        ActorRole.importer,
+        actor_id,
+        "qc_inspection_booked",
+        "quality_inspection",
+        inspection.id,
+        f"Inspection booked with {provider} on {inspection_date}.",
+        {"provider": provider, "date": inspection_date.isoformat(), "location": location},
+    )
+    create_notification(
+        store,
+        recipient_type="importer",
+        recipient_id="dev-importer",
+        trigger="qc_inspection_booked",
+        message=f"Inspector {provider} booked for {inspection_date}.",
+    )
+    return inspection
+
+
+def record_quality_inspection_result(
+    store: Store,
+    inspection_id: str,
+    result: QualityInspectionResult,
+    defects_summary: Optional[str],
+    actor_id: str,
+) -> Tuple[QualityInspection, Optional[ApprovalRequest]]:
+    inspection = store.quality_inspections.get(inspection_id)
+    if not inspection:
+        raise ValueError(f"QualityInspection {inspection_id} not found")
+    inspection.result = result
+    if defects_summary is not None:
+        inspection.defects_summary = defects_summary
+    inspection.updated_at = now_utc()
+
+    create_audit_event(
+        store,
+        ActorRole.admin,
+        actor_id,
+        "qc_inspection_result_recorded",
+        "quality_inspection",
+        inspection.id,
+        f"Inspection result: {result.value}.",
+        {"result": result.value, "defects": defects_summary},
+    )
+
+    approval: Optional[ApprovalRequest] = None
+    order = store.purchase_orders.get(inspection.purchase_order_id)
+    if result in (QualityInspectionResult.failed, QualityInspectionResult.rework_required) and order:
+        approval = create_approval_request(
+            store,
+            ApprovalRequestType.approve_invoice_variance,  # reuses existing money/legal type for now
+            f"Inspection {result.value.replace('_', ' ')} for {order.supplier_name}",
+            (
+                f"The third-party inspection for {order.supplier_name} cargo returned "
+                f"{result.value.replace('_', ' ')}. {defects_summary or 'No detailed defect summary provided.'} "
+                "Approve to accept and ship anyway, or reject to hold the cargo."
+            ),
+            related_import_project_id=order.import_project_id,
+            related_booking_id=order.booking_id,
+            source_reference=inspection.id,
+        )
+    elif result == QualityInspectionResult.passed:
+        create_notification(
+            store,
+            recipient_type="importer",
+            recipient_id="dev-importer",
+            trigger="qc_inspection_passed",
+            message=f"Inspection passed for {order.supplier_name if order else 'shipment'}. Cargo can ship.",
+        )
+
+    return inspection, approval
+
+
+def list_quality_inspections_for_booking(store: Store, booking_id: str) -> List[QualityInspection]:
+    pos = [po.id for po in store.purchase_orders.values() if po.booking_id == booking_id]
+    return [qc for qc in store.quality_inspections.values() if qc.purchase_order_id in pos]
 
 
 def create_notification(
