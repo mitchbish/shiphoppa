@@ -8,15 +8,23 @@ end to end before making any changes.
 Ship Hoppa turns scattered import paperwork (supplier emails, PDF invoices,
 forwarder updates, broker notes) into one live shipment record per import.
 The goal is zero manual data entry: the importer forwards an email, Ship
-Hoppa parses, matches, and acts. Customer portal is organised in four
-phases:
+Hoppa parses, matches, and acts.
 
-- **Account** — profile, contacts, integrations
+The customer portal has **three workflow phases** plus a separate Account
+area in the header (Account is not a phase, it's the settings shelf).
+
+Workflow phases:
+
 - **Order** — supplier discovery, purchase orders, production, inspection,
-  supplier payment, order-side documents
+  supplier payment, order-side documents. Covers everything until cargo is
+  ready to ship.
 - **Ship** — FCL, MCL (the primary revenue mode), or LCL transport from
-  origin port to destination port, with live tracking
-- **Deliver** — customs, release, destination delivery
+  origin port to destination port, with live tracking.
+- **Deliver** — from the moment the ship docks: customs, release,
+  destination delivery to the importer's warehouse.
+
+Account (top-right of the header, separate from the phase nav): profile,
+integrations, help, inbox, notifications.
 
 Phase 3 was previously called "Clear". The user prefers "Deliver". Don't
 revert that.
