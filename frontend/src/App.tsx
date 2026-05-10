@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import {
   ArrowRight,
@@ -2273,6 +2273,7 @@ function setBrowserPath(path: string) {
 
 function App() {
   const [view, setView] = useState<View>('book')
+  const hasAutoRoutedRef = useRef(false)
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(() => initialWorkspaceMode())
   const [adminView, setAdminView] = useState<AdminView>('overview')
   const [automationResult, setAutomationResult] = useState<AutomationRunAllResult | null>(null)
@@ -2422,6 +2423,15 @@ function App() {
       getSourceMessages().then(setInboxMessages).catch(() => {})
     }
   }, [view])
+
+  useEffect(() => {
+    if (hasAutoRoutedRef.current) return
+    if (workspaceMode !== 'customer') return
+    if (bookings.length === 0) return
+    if (view !== 'book') return
+    hasAutoRoutedRef.current = true
+    setView('tracking')
+  }, [bookings.length, workspaceMode, view])
 
   const selectedContainer = useMemo(() => {
     if (match?.container) {
