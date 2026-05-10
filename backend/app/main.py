@@ -353,6 +353,27 @@ def notifications(_principal: Principal = Depends(require_importer)) -> List[Not
     return sorted(store.notifications.values(), key=lambda item: item.created_at, reverse=True)
 
 
+@app.post("/notifications/mark-all-read")
+def mark_all_notifications_read(_principal: Principal = Depends(require_importer)) -> dict:
+    marked = 0
+    for notification in store.notifications.values():
+        if not notification.read:
+            notification.read = True
+            marked += 1
+    return {"marked_read": marked}
+
+
+@app.post("/notifications/{notification_id}/read", response_model=Notification)
+def mark_notification_read(
+    notification_id: str, _principal: Principal = Depends(require_importer)
+) -> Notification:
+    notification = store.notifications.get(notification_id)
+    if not notification:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    notification.read = True
+    return notification
+
+
 @app.get("/audit-events", response_model=List[AuditEvent])
 def audit_events(_principal: Principal = Depends(require_admin)) -> List[AuditEvent]:
     return sorted(store.audit_events.values(), key=lambda item: item.created_at, reverse=True)

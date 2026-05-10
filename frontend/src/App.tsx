@@ -67,6 +67,7 @@ import {
   getSourceMessages,
   getLandedCostSummary,
   getNotifications,
+  markAllNotificationsRead,
   supplierReady,
   updateAccountIntegration,
   updateAccountProfile,
@@ -4781,7 +4782,26 @@ function App() {
                     <p className="eyebrow">Notifications</p>
                     <h2>{notifications.length ? `${notifications.length} recent` : 'No notifications yet'}</h2>
                   </div>
-                  <Bell size={24} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    {unreadNotificationCount > 0 && (
+                      <button
+                        className="secondary-action small"
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await markAllNotificationsRead()
+                            const refreshed = await getNotifications()
+                            setNotifications(refreshed)
+                          } catch (err) {
+                            setError(err instanceof Error ? err.message : 'Could not mark notifications read')
+                          }
+                        }}
+                      >
+                        Mark all read
+                      </button>
+                    )}
+                    <Bell size={24} />
+                  </div>
                 </div>
                 {notifications.length === 0 ? (
                   <div className="empty-state">

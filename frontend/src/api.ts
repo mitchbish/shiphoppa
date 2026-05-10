@@ -353,6 +353,14 @@ export function getNotifications() {
   return request<Notification[]>('/notifications')
 }
 
+export function markAllNotificationsRead() {
+  return request<{ marked_read: number }>('/notifications/mark-all-read', { method: 'POST' })
+}
+
+export function markNotificationRead(notificationId: string) {
+  return request<Notification>(`/notifications/${notificationId}/read`, { method: 'POST' })
+}
+
 export function createPurchaseOrder(payload: {
   booking_id: string
   order_reference: string

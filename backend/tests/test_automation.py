@@ -627,3 +627,41 @@ class TestLandedCost:
         client = TestClient(app)
         response = client.get("/bookings/BK-9999/landed-cost", headers=IMPORTER_HEADERS)
         assert response.status_code == 404
+
+
+class TestNotificationsAPI:
+    def test_importer_can_list_notifications(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        response = client.get("/notifications", headers=IMPORTER_HEADERS)
+        assert response.status_code == 200
+        assert isinstance(response.json(), list)
+
+    def test_mark_all_read(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        # Create a notification directly in the store
+        from app.models import Notification, ActorRole
+        from datetime import datetime
+        notif = Notification(
+            id="NOTIF-TEST",
+            recipient_type="importer",
+            recipient_id="dev-importer",
+            trigger="approval_needed",
+            message="Test notification",
+            created_at=datetime.utcnow(),
+            scheduled_for=None,
+            read=False,
+        )
+        store.notifications[notif.id] = notif
+
+        response = client.post("/notifications/mark-all-read", headers=IMPORTER_HEADERS)
+        assert response.status_code == 200
+        assert response.json()["marked_read"] >= 1
+        assert store.notifications["NOTIF-TEST"].read is True
+
+    def test_mark_single_unknown_404s(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        response = client.post("/notifications/NOTIF-9999/read", headers=IMPORTER_HEADERS)
+        assert response.status_code == 404
