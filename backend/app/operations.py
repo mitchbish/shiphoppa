@@ -2036,6 +2036,8 @@ def create_growth_event(
     region: Optional[str] = None,
     campaign_id: Optional[str] = None,
     shipment_id: Optional[str] = None,
+    importer_organization_id: Optional[str] = None,
+    template_key: Optional[str] = None,
     value_usd: Optional[float] = None,
 ) -> GrowthAttributionEvent:
     event = GrowthAttributionEvent(
@@ -2043,9 +2045,11 @@ def create_growth_event(
         event_type=event_type,
         supplier_lead_id=supplier_lead_id,
         shipment_id=shipment_id,
+        importer_organization_id=importer_organization_id,
         campaign_id=campaign_id,
         source=source,
         channel=channel,
+        template_key=template_key,
         category=category,
         region=region,
         value_usd=value_usd,
@@ -2053,6 +2057,95 @@ def create_growth_event(
     )
     store.growth_attribution_events[event.id] = event
     return event
+
+
+def filter_growth_attribution_events(
+    store: Store,
+    event_type: Optional[GrowthAttributionEventType] = None,
+    source: Optional[str] = None,
+    channel: Optional[str] = None,
+    template_key: Optional[str] = None,
+    category: Optional[str] = None,
+    region: Optional[str] = None,
+    supplier_lead_id: Optional[str] = None,
+    shipment_id: Optional[str] = None,
+    since: Optional[date] = None,
+    until: Optional[date] = None,
+) -> List[GrowthAttributionEvent]:
+    events = list(store.growth_attribution_events.values())
+    if event_type is not None:
+        events = [event for event in events if event.event_type == event_type]
+    if source:
+        events = [event for event in events if event.source == source]
+    if channel:
+        events = [event for event in events if event.channel == channel]
+    if template_key:
+        events = [event for event in events if event.template_key == template_key]
+    if category:
+        events = [event for event in events if event.category == category]
+    if region:
+        events = [event for event in events if event.region == region]
+    if supplier_lead_id:
+        events = [event for event in events if event.supplier_lead_id == supplier_lead_id]
+    if shipment_id:
+        events = [event for event in events if event.shipment_id == shipment_id]
+    if since:
+        events = [event for event in events if event.occurred_at.date() >= since]
+    if until:
+        events = [event for event in events if event.occurred_at.date() <= until]
+    events.sort(key=lambda item: item.occurred_at, reverse=True)
+    return events
+
+
+def summarise_growth_attribution(
+    store: Store,
+    group_by: str,
+    event_type: Optional[GrowthAttributionEventType] = None,
+    since: Optional[date] = None,
+    until: Optional[date] = None,
+) -> dict:
+    if group_by not in {"source", "channel", "template_key", "category", "region", "event_type"}:
+        raise ValueError("group_by must be one of source, channel, template_key, category, region, event_type")
+    events = filter_growth_attribution_events(
+        store,
+        event_type=event_type,
+        since=since,
+        until=until,
+    )
+    buckets: Dict[str, Dict[str, Any]] = {}
+    for event in events:
+        raw_key = getattr(event, group_by)
+        key = raw_key.value if hasattr(raw_key, "value") else (raw_key or "(none)")
+        bucket = buckets.setdefault(key, {
+            "group_key": key,
+            "event_count": 0,
+            "total_value_usd": 0.0,
+            "supplier_leads": set(),
+            "shipments": set(),
+        })
+        bucket["event_count"] += 1
+        bucket["total_value_usd"] += event.value_usd or 0
+        if event.supplier_lead_id:
+            bucket["supplier_leads"].add(event.supplier_lead_id)
+        if event.shipment_id:
+            bucket["shipments"].add(event.shipment_id)
+    rows = [
+        {
+            "group_key": bucket["group_key"],
+            "event_count": bucket["event_count"],
+            "total_value_usd": round(bucket["total_value_usd"], 2),
+            "unique_supplier_leads": len(bucket["supplier_leads"]),
+            "unique_shipments": len(bucket["shipments"]),
+        }
+        for bucket in buckets.values()
+    ]
+    rows.sort(key=lambda row: row["total_value_usd"], reverse=True)
+    return {
+        "group_by": group_by,
+        "rows": rows,
+        "total_events": sum(row["event_count"] for row in rows),
+        "total_value_usd": round(sum(row["total_value_usd"] for row in rows), 2),
+    }
 
 
 def update_supplier_lead_verification(

@@ -125,6 +125,10 @@ from .models import (
     ImportProjectStatus,
     ImportProjectUpdate,
     SupplierVerificationUpdate,
+    GrowthAttributionCreate,
+    GrowthAttributionEvent,
+    GrowthAttributionEventType,
+    GrowthAttributionSummary,
 )
 from .customs import HSCodeSuggestion, best_suggestion, suggest_hs_code
 from .invoices import ParsedInvoice, extract_invoice_from_pdf, extract_invoice_from_text
@@ -190,6 +194,9 @@ from .operations import (
     clone_import_project,
     soft_delete_import_project,
     update_supplier_lead_verification,
+    create_growth_event,
+    filter_growth_attribution_events,
+    summarise_growth_attribution,
     update_account_integration,
     update_account_profile,
     update_customs_profile,
@@ -1105,6 +1112,78 @@ def patch_supplier_lead_verification(
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/growth/attribution-events", response_model=List[GrowthAttributionEvent])
+def growth_attribution_events(
+    event_type: Optional[GrowthAttributionEventType] = None,
+    source: Optional[str] = None,
+    channel: Optional[str] = None,
+    template_key: Optional[str] = None,
+    category: Optional[str] = None,
+    region: Optional[str] = None,
+    supplier_lead_id: Optional[str] = None,
+    shipment_id: Optional[str] = None,
+    since: Optional[date] = None,
+    until: Optional[date] = None,
+    limit: int = 200,
+    _principal: Principal = Depends(require_admin),
+) -> List[GrowthAttributionEvent]:
+    events = filter_growth_attribution_events(
+        store,
+        event_type=event_type,
+        source=source,
+        channel=channel,
+        template_key=template_key,
+        category=category,
+        region=region,
+        supplier_lead_id=supplier_lead_id,
+        shipment_id=shipment_id,
+        since=since,
+        until=until,
+    )
+    if limit and limit > 0:
+        events = events[:limit]
+    return events
+
+
+@app.post("/growth/attribution-events", response_model=GrowthAttributionEvent, status_code=201)
+def post_growth_attribution_event(
+    payload: GrowthAttributionCreate,
+    _principal: Principal = Depends(require_admin),
+) -> GrowthAttributionEvent:
+    return persist_result(
+        create_growth_event(
+            store,
+            event_type=payload.event_type,
+            source=payload.source,
+            supplier_lead_id=payload.supplier_lead_id,
+            shipment_id=payload.shipment_id,
+            importer_organization_id=payload.importer_organization_id,
+            campaign_id=payload.campaign_id,
+            channel=payload.channel,
+            template_key=payload.template_key,
+            category=payload.category,
+            region=payload.region,
+            value_usd=payload.value_usd,
+        )
+    )
+
+
+@app.get("/growth/attribution-summary", response_model=GrowthAttributionSummary)
+def growth_attribution_summary(
+    group_by: str = "source",
+    event_type: Optional[GrowthAttributionEventType] = None,
+    since: Optional[date] = None,
+    until: Optional[date] = None,
+    _principal: Principal = Depends(require_admin),
+) -> GrowthAttributionSummary:
+    try:
+        return GrowthAttributionSummary(**summarise_growth_attribution(
+            store, group_by, event_type=event_type, since=since, until=until,
+        ))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @app.post("/supplier-links", response_model=SupplierAccessLink, status_code=201)

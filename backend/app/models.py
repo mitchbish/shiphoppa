@@ -1564,6 +1564,35 @@ class SupplierVerificationUpdate(BaseModel):
     verification_notes: Optional[str] = None
 
 
+class GrowthAttributionCreate(BaseModel):
+    event_type: GrowthAttributionEventType
+    source: str = Field(..., min_length=1)
+    supplier_lead_id: Optional[str] = None
+    shipment_id: Optional[str] = None
+    importer_organization_id: Optional[str] = None
+    campaign_id: Optional[str] = None
+    channel: Optional[str] = None
+    template_key: Optional[str] = None
+    category: Optional[str] = None
+    region: Optional[str] = None
+    value_usd: Optional[float] = Field(default=None, ge=0)
+
+
+class GrowthAttributionSummaryRow(BaseModel):
+    group_key: str
+    event_count: int
+    total_value_usd: float
+    unique_supplier_leads: int
+    unique_shipments: int
+
+
+class GrowthAttributionSummary(BaseModel):
+    group_by: str
+    rows: List[GrowthAttributionSummaryRow]
+    total_events: int
+    total_value_usd: float
+
+
 class GrowthAttributionEvent(BaseModel):
     id: str
     event_type: GrowthAttributionEventType
