@@ -4758,3 +4758,38 @@ textarea:focus {
   background: #f0f0ed;
   color: #666;
 }
+
+/* --- Landed cost panel --- */
+.landed-cost-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.landed-cost-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.landed-cost-table th,
+.landed-cost-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-soft, #e5e2dd);
+  text-align: left;
+}
+
+.landed-cost-table th {
+  background: var(--light-orange);
+  color: var(--deep-orange);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.landed-cost-table tfoot td {
+  border-bottom: none;
+  border-top: 2px solid var(--deep-orange);
+  padding-top: 12px;
+  font-size: 15px;
+}

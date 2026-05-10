@@ -104,6 +104,7 @@ from .operations import (
     create_shipment_event,
     create_supplier_link,
     create_purchase_order,
+    landed_cost_summary,
     create_supplier_pay_request,
     decide_document,
     decide_approval_request,
@@ -744,6 +745,13 @@ def booking_release_status(booking_id: str, _principal: Principal = Depends(requ
     if booking_id not in store.bookings:
         raise HTTPException(status_code=404, detail="Booking not found")
     return release_status_for_booking(store, booking_id)
+
+
+@app.get("/bookings/{booking_id}/landed-cost")
+def booking_landed_cost(booking_id: str, _principal: Principal = Depends(require_importer)) -> dict:
+    if booking_id not in store.bookings:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return landed_cost_summary(store, booking_id)
 
 
 @app.post("/release-holds/{hold_id}/waive", response_model=ReleaseHold)

@@ -321,6 +321,28 @@ export function getSourceMessages() {
   return request<SourceMessage[]>('/source-messages')
 }
 
+// --- Landed cost ---
+
+export type LandedCostLine = {
+  category: string
+  label: string
+  amount_usd: number
+  status: 'estimate' | 'actual'
+}
+
+export type LandedCostSummary = {
+  booking_id: string
+  lines: LandedCostLine[]
+  total_landed_cost_usd: number
+  paid_to_date_usd: number
+  remaining_estimate_usd: number
+  currency: string
+}
+
+export function getLandedCostSummary(bookingId: string) {
+  return request<LandedCostSummary>(`/bookings/${bookingId}/landed-cost`)
+}
+
 export function createPurchaseOrder(payload: {
   booking_id: string
   order_reference: string

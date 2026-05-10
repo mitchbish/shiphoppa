@@ -64,6 +64,7 @@ import {
   approveApprovalRequest,
   rejectApprovalRequest,
   getSourceMessages,
+  getLandedCostSummary,
   supplierReady,
   updateAccountIntegration,
   updateAccountProfile,
@@ -77,6 +78,7 @@ import type {
   AdminTaskSummary,
   ApprovalRequestRecord,
   AutomationRunAllResult,
+  LandedCostSummary,
   ShipmentStateResponse,
   StaleCheckAlert,
 } from './api'
@@ -2256,6 +2258,7 @@ function App() {
   const [adminTaskSummary, setAdminTaskSummary] = useState<AdminTaskSummary | null>(null)
   const [allApprovals, setAllApprovals] = useState<ApprovalRequestRecord[]>([])
   const [inboxMessages, setInboxMessages] = useState<SourceMessage[]>([])
+  const [landedCost, setLandedCost] = useState<LandedCostSummary | null>(null)
   const [adminEmail, setAdminEmail] = useState('ops@shiphoppa.example')
   const [adminPassword, setAdminPassword] = useState('')
   const [adminLoginError, setAdminLoginError] = useState<string | null>(null)
@@ -2387,6 +2390,12 @@ function App() {
       getSourceMessages().then(setInboxMessages).catch(() => {})
     }
   }, [view])
+
+  useEffect(() => {
+    if (view === 'money' && activeBooking) {
+      getLandedCostSummary(activeBooking.id).then(setLandedCost).catch(() => setLandedCost(null))
+    }
+  }, [view, activeBooking?.id])
 
   const selectedContainer = useMemo(() => {
     if (match?.container) {
@@ -6204,6 +6213,51 @@ function App() {
                   </div>
 
                   <InvoiceSheet invoice={invoice} booking={activeBooking} actionLabel="Pay invoice" loading={loading} onPay={handleMarkPaid} />
+
+                  {landedCost && landedCost.lines.length > 0 && (
+                    <section className="action-panel landed-cost-panel">
+                      <div>
+                        <span className="status-chip blue">Landed cost</span>
+                        <h3>{formatMoney(landedCost.total_landed_cost_usd)} estimated total</h3>
+                        <p>
+                          Paid so far: {formatMoney(landedCost.paid_to_date_usd)} · Remaining estimate:{' '}
+                          {formatMoney(landedCost.remaining_estimate_usd)}
+                        </p>
+                      </div>
+                      <table className="landed-cost-table">
+                        <thead>
+                          <tr>
+                            <th>Cost line</th>
+                            <th>Status</th>
+                            <th style={{ textAlign: 'right' }}>Amount (USD)</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {landedCost.lines.map((line) => (
+                            <tr key={line.category}>
+                              <td>{line.label}</td>
+                              <td>
+                                <span className={`status-chip ${line.status === 'actual' ? 'green' : 'orange'}`}>
+                                  {line.status === 'actual' ? 'Actual' : 'Estimate'}
+                                </span>
+                              </td>
+                              <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                                {formatMoney(line.amount_usd)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr>
+                            <td colSpan={2}><strong>Total landed cost</strong></td>
+                            <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                              <strong>{formatMoney(landedCost.total_landed_cost_usd)}</strong>
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </section>
+                  )}
 
                   <div className="action-panel release-panel">
                     <div>

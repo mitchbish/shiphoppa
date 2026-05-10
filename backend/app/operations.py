@@ -2,7 +2,7 @@ import base64
 import secrets
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from .models import (
     AccountIntegration,
@@ -2044,6 +2044,122 @@ def checklist_for_booking_without_holds(store: Store, booking: Booking) -> Booki
         documents=docs,
         missing_document_types=missing,
     )
+
+
+def landed_cost_summary(store: Store, booking_id: str) -> Dict[str, Any]:
+    """
+    Aggregate every known cost line for a booking into one landed-cost summary.
+    Costs from supplier (purchase orders / supplier pay), Ship Hoppa freight
+    (Invoice), customs (CustomsProfile), and delivery (DeliveryPlan).
+    Returns lines + totals plus paid-vs-estimate split.
+    """
+    booking = store.bookings.get(booking_id)
+    if not booking:
+        raise KeyError(f"Booking {booking_id} not found")
+
+    lines: List[Dict[str, Any]] = []
+
+    # Supplier goods value (purchase orders)
+    purchase_orders = [
+        po for po in store.purchase_orders.values() if po.booking_id == booking_id
+    ]
+    goods_value = sum(po.goods_value for po in purchase_orders)
+    if goods_value:
+        lines.append({
+            "category": "supplier_goods",
+            "label": "Supplier goods value",
+            "amount_usd": round_money(goods_value),
+            "status": "estimate",
+        })
+
+    # Supplier pay (FX cost on top of goods value)
+    sp_requests = [
+        sp for sp in store.supplier_pay_requests.values() if sp.booking_id == booking_id
+    ]
+    fx_fees = 0.0
+    for sp in sp_requests:
+        if sp.selected_quote_id:
+            quote = store.supplier_pay_quotes.get(sp.selected_quote_id)
+            if quote:
+                fx_fees += quote.provider_fee
+    if fx_fees:
+        lines.append({
+            "category": "supplier_pay_fx",
+            "label": "Supplier payment FX/fees",
+            "amount_usd": round_money(fx_fees),
+            "status": "estimate" if any(sp.marked_paid_at is None for sp in sp_requests) else "actual",
+        })
+
+    # Ship Hoppa freight invoice
+    invoice = next(
+        (inv for inv in store.invoices.values() if inv.booking_id == booking_id),
+        None,
+    )
+    if invoice and invoice.total_usd:
+        lines.append({
+            "category": "freight",
+            "label": "Ship Hoppa freight",
+            "amount_usd": round_money(invoice.total_usd),
+            "status": "actual" if invoice.status == PaymentStatus.paid else "estimate",
+        })
+
+    # Customs charges
+    customs = next(
+        (cp for cp in store.customs_profiles.values() if cp.booking_id == booking_id),
+        None,
+    )
+    if customs:
+        if customs.duty_estimate_usd:
+            lines.append({
+                "category": "duty",
+                "label": "Import duty",
+                "amount_usd": round_money(customs.duty_estimate_usd),
+                "status": "actual" if customs.customs_status == CustomsStatus.cleared else "estimate",
+            })
+        if customs.gst_estimate_usd:
+            lines.append({
+                "category": "gst",
+                "label": "GST",
+                "amount_usd": round_money(customs.gst_estimate_usd),
+                "status": "actual" if customs.customs_status == CustomsStatus.cleared else "estimate",
+            })
+        if customs.brokerage_fee_usd:
+            lines.append({
+                "category": "brokerage",
+                "label": "Customs brokerage",
+                "amount_usd": round_money(customs.brokerage_fee_usd),
+                "status": "estimate",
+            })
+
+    # Final delivery
+    delivery_plan = next(
+        (dp for dp in store.delivery_plans.values() if dp.booking_id == booking_id),
+        None,
+    )
+    if delivery_plan and delivery_plan.trucking_quote_usd:
+        lines.append({
+            "category": "destination_delivery",
+            "label": "Destination delivery",
+            "amount_usd": round_money(delivery_plan.trucking_quote_usd),
+            "status": "actual" if delivery_plan.delivered_at else "estimate",
+        })
+
+    total_estimate = round_money(sum(line["amount_usd"] for line in lines))
+    actual_total = round_money(
+        sum(line["amount_usd"] for line in lines if line["status"] == "actual")
+    )
+    estimated_remaining = round_money(
+        sum(line["amount_usd"] for line in lines if line["status"] == "estimate")
+    )
+
+    return {
+        "booking_id": booking_id,
+        "lines": lines,
+        "total_landed_cost_usd": total_estimate,
+        "paid_to_date_usd": actual_total,
+        "remaining_estimate_usd": estimated_remaining,
+        "currency": "USD",
+    }
 
 
 def release_status_for_booking(store: Store, booking_id: str) -> ReleaseStatusResponse:

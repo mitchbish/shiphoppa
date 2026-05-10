@@ -590,3 +590,40 @@ class TestCronAutomation:
         data = response.json()
         assert data["ok"] is True
         assert "active_bookings" in data
+
+
+class TestLandedCost:
+    def test_landed_cost_returns_lines(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        booking_id = create_booking()
+        response = client.get(f"/bookings/{booking_id}/landed-cost", headers=IMPORTER_HEADERS)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["booking_id"] == booking_id
+        assert "lines" in data
+        assert "total_landed_cost_usd" in data
+        assert "paid_to_date_usd" in data
+        assert "remaining_estimate_usd" in data
+
+    def test_landed_cost_includes_customs_estimates(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        booking_id = create_booking()
+        booking = store.bookings[booking_id]
+        from app.operations import ensure_customs_profile
+        profile = ensure_customs_profile(store, booking)
+        profile.duty_estimate_usd = 1240.00
+        profile.gst_estimate_usd = 820.00
+        response = client.get(f"/bookings/{booking_id}/landed-cost", headers=IMPORTER_HEADERS)
+        data = response.json()
+        categories = [line["category"] for line in data["lines"]]
+        assert "duty" in categories
+        assert "gst" in categories
+        assert data["total_landed_cost_usd"] >= 1240.00 + 820.00
+
+    def test_landed_cost_unknown_booking_404s(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        response = client.get("/bookings/BK-9999/landed-cost", headers=IMPORTER_HEADERS)
+        assert response.status_code == 404
