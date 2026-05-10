@@ -159,7 +159,67 @@ railway logs
 curl https://ship-hoppa-api-production.up.railway.app/health
 ```
 
-## What's been built (state on 2026-05-10)
+## What's been built (state on 2026-05-11)
+
+216 backend tests passing. Frontend builds clean. The work since the
+2026-05-10 baseline is on branch `claude/reverent-maxwell-263429`,
+ready for review and merge to main:
+
+- **Broker portal** end to end. `/broker/{token}` self-serve URL,
+  customs status updates, document uploads, importer-side "Invite
+  broker" on the customs tab.
+- **Warehouse portal** end to end. `/warehouse/{token}` self-serve
+  URL, receipt confirmation with actual CBM and weight, photo
+  uploads, pickup-mode short-circuit, importer-side "Invite
+  warehouse" on the pickup tab.
+- **Carrier portal** end to end. `/carrier/{token}` self-serve URL,
+  ETA updates that feed the existing notify-and-approve automation,
+  loaded / departed / arrived milestone events, bill of lading
+  upload, importer-side "Invite carrier" on the sailings tab.
+- **Trucker portal** end to end. `/trucker/{token}` self-serve URL,
+  pickup_scheduled / picked_up / delivered status updates with the
+  delivered marker gated on release status, proof of delivery
+  upload, importer-side "Invite trucker" on the delivery tab.
+- **Inbound email webhook** at `POST /inbound/email`. Accepts Resend
+  Inbound or Mailgun JSON, creates a SourceMessage, and the existing
+  match + extraction automation runs. Auth via
+  `SHIP_HOPPA_INBOUND_EMAIL_TOKEN` env var (set on Railway before
+  pointing your provider at the URL).
+- **Saved import projects CRUD** at `/import-projects`. POST, PATCH,
+  POST clone, DELETE, plus `?include_deleted=true` filter on GET.
+  Each operation writes an audit event and a project version.
+- **Audit log filtering** at `GET /audit-events?actor_id=...&
+  actor_role=...&event_type=...&entity_type=...&entity_id=...&
+  since=...&until=...&limit=...`. Default limit 200, set 0 for all.
+- **Supplier verification state machine** at `PATCH
+  /growth/supplier-leads/{id}/verification`. New
+  SupplierVerificationStatus enum: unverified, pending_review,
+  verified, restricted, rejected. Verifying records who and when;
+  rejecting also flips do_not_contact.
+
+What still needs you (when you wake up):
+
+1. Merge `claude/reverent-maxwell-263429` to main when you've had a
+   look. The push permission was denied for direct-to-main, so the
+   feature branch is what's pushed.
+2. Set `SHIP_HOPPA_INBOUND_EMAIL_TOKEN` on Railway and configure
+   Resend Inbound (or Mailgun) to POST to `/inbound/email` with a
+   bearer header.
+3. Set up the cron job at cron-job.org to hit
+   `/automation/cron/run` with the `SHIP_HOPPA_CRON_TOKEN` bearer
+   on a 15-minute interval. The token from the chat is the one to
+   use.
+4. Browser spot-check the four partner portals once the merge lands
+   on Railway: open each `/broker/<token>`, `/warehouse/<token>`,
+   `/carrier/<token>`, `/trucker/<token>` URL, walk through the
+   form, confirm the importer side reflects the change. The build
+   and types pass; live browser walkthrough was deferred per the
+   autonomous overnight scope.
+
+Plans, AP1/AP2 audits, and progress notes for each feature above
+live in `docs/plans/<feature-name>/`.
+
+### Earlier baseline (state on 2026-05-10)
 
 153 backend tests passing. Frontend builds clean. All shipped to Railway.
 
