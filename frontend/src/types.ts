@@ -717,6 +717,50 @@ export interface CarrierPortalResponse {
   events: ShipmentEvent[]
 }
 
+export interface TruckerAccessLink {
+  id: string
+  booking_id: string
+  token: string
+  active: boolean
+  expires_at: string | null
+  last_used_at: string | null
+  created_at: string
+}
+
+export type TruckerStage = 'pickup_scheduled' | 'picked_up' | 'delivered'
+
+export interface TruckerBookingSummary {
+  id: string
+  importer_company_name: string | null
+  delivery_method: DeliveryPlanMethod
+  destination_address: string
+  destination_contact_name: string
+  destination_contact_phone: string | null
+  delivery_window_start: string | null
+  delivery_window_end: string | null
+  equipment_required: string[]
+  cargo_description: string | null
+  cargo_category: CargoCategory
+  cbm_estimate: number
+  weight_kg_estimate: number
+  delivery_status: string
+  booking_status: string
+}
+
+export interface TruckerStatusUpdate {
+  stage: TruckerStage
+  notes?: string | null
+}
+
+export interface TruckerPortalResponse {
+  booking: TruckerBookingSummary
+  release_status: ReleaseStatus
+  can_deliver: boolean
+  holds: ReleaseHold[]
+  documents: ShipmentDocument[]
+  events: ShipmentEvent[]
+}
+
 export interface ImportProject {
   id: string
   title: string

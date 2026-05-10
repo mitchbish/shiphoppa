@@ -16,6 +16,9 @@ import type {
   CarrierEtaUpdate,
   CarrierEventUpdate,
   CarrierPortalResponse,
+  TruckerAccessLink,
+  TruckerPortalResponse,
+  TruckerStatusUpdate,
   CarrierOption,
   Container,
   ConfirmBookingResponse,
@@ -62,6 +65,7 @@ function tokenFor(path: string, method: string) {
     path.startsWith('/broker-links') ||
     path.startsWith('/warehouse-links') ||
     path.startsWith('/carrier-links') ||
+    path.startsWith('/trucker-links') ||
     path.startsWith('/invoices') ||
     path.startsWith('/release-holds') ||
     path.startsWith('/automation') ||
@@ -366,6 +370,36 @@ export function uploadCarrierDocument(
     method: 'POST',
     body: JSON.stringify({
       document_type: documentType,
+      file_name: fileName,
+      mime_type: 'application/pdf',
+      notes: notes ?? null,
+    }),
+  })
+}
+
+export function createTruckerLink(bookingId: string) {
+  return request<TruckerAccessLink>('/trucker-links', {
+    method: 'POST',
+    body: JSON.stringify({ booking_id: bookingId }),
+  })
+}
+
+export function getTruckerPortal(token: string) {
+  return request<TruckerPortalResponse>(`/trucker/${token}`)
+}
+
+export function submitTruckerStatus(token: string, payload: TruckerStatusUpdate) {
+  return request<TruckerPortalResponse>(`/trucker/${token}/status`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function uploadTruckerPod(token: string, fileName: string, notes?: string) {
+  return request<ShipmentDocument>(`/trucker/${token}/pod`, {
+    method: 'POST',
+    body: JSON.stringify({
+      document_type: 'delivery_order',
       file_name: fileName,
       mime_type: 'application/pdf',
       notes: notes ?? null,

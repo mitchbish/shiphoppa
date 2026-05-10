@@ -31,17 +31,21 @@ import {
   createBrokerLink,
   createCarrierLink,
   createSupplierLink,
+  createTruckerLink,
   createWarehouseLink,
   commitContainer,
   getBrokerPortal,
   getCarrierPortal,
+  getTruckerPortal,
   getWarehousePortal,
   submitBrokerClearance,
   submitCarrierEta,
   submitCarrierEvent,
+  submitTruckerStatus,
   submitWarehouseReceipt,
   uploadBrokerDocument,
   uploadCarrierDocument,
+  uploadTruckerPod,
   uploadWarehouseDocument,
   confirmBooking,
   createBooking,
@@ -128,6 +132,9 @@ import type {
   CarrierAccessLink,
   CarrierEventStage,
   CarrierPortalResponse,
+  TruckerAccessLink,
+  TruckerPortalResponse,
+  TruckerStage,
   CargoCategory,
   CarrierOption,
   Container,
@@ -170,7 +177,7 @@ type View =
   | 'customs'
   | 'delivery'
   | 'admin'
-type WorkspaceMode = 'customer' | 'admin-login' | 'admin' | 'broker-portal' | 'warehouse-portal' | 'carrier-portal'
+type WorkspaceMode = 'customer' | 'admin-login' | 'admin' | 'broker-portal' | 'warehouse-portal' | 'carrier-portal' | 'trucker-portal'
 type AdminView = 'overview' | 'containers' | 'exceptions' | 'documents' | 'tracking' | 'payments' | 'customs' | 'automation' | 'audit'
 type TrackingStage = ShipmentEvent['stage']
 type MapPoint = { lat: number; lng: number }
@@ -2379,10 +2386,17 @@ function carrierTokenFromPath(): string | null {
   return match ? match[1] : null
 }
 
+function truckerTokenFromPath(): string | null {
+  const pathname = globalThis.location?.pathname ?? ''
+  const match = pathname.match(/^\/trucker\/([^/]+)\/?$/)
+  return match ? match[1] : null
+}
+
 function initialWorkspaceMode(): WorkspaceMode {
   if (brokerTokenFromPath()) return 'broker-portal'
   if (warehouseTokenFromPath()) return 'warehouse-portal'
   if (carrierTokenFromPath()) return 'carrier-portal'
+  if (truckerTokenFromPath()) return 'trucker-portal'
   return globalThis.location?.pathname === '/admin' ? 'admin-login' : 'customer'
 }
 
@@ -3306,6 +3320,259 @@ function CarrierPortalView({ token }: { token: string }) {
 }
 
 
+function TruckerPortalView({ token }: { token: string }) {
+  const [portal, setPortal] = useState<TruckerPortalResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [stageSubmitting, setStageSubmitting] = useState<TruckerStage | null>(null)
+  const [stageMessage, setStageMessage] = useState<string | null>(null)
+  const [statusNotes, setStatusNotes] = useState('')
+  const [podFile, setPodFile] = useState('')
+  const [podNotes, setPodNotes] = useState('')
+  const [podSubmitting, setPodSubmitting] = useState(false)
+  const [podMessage, setPodMessage] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    getTruckerPortal(token)
+      .then((data) => {
+        if (!cancelled) setPortal(data)
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setLoadError(err instanceof Error ? err.message : 'Could not load trucker portal')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [token])
+
+  async function handleStage(stage: TruckerStage) {
+    setStageSubmitting(stage)
+    setStageMessage(null)
+    try {
+      const updated = await submitTruckerStatus(token, { stage, notes: statusNotes.trim() || null })
+      setPortal(updated)
+      setStageMessage(`Recorded ${stage.replace('_', ' ')}.`)
+      setStatusNotes('')
+    } catch (err) {
+      setStageMessage(err instanceof Error ? err.message : 'Could not record the status update.')
+    } finally {
+      setStageSubmitting(null)
+    }
+  }
+
+  async function handlePodUpload(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!podFile.trim()) {
+      setPodMessage('A file name is required before uploading.')
+      return
+    }
+    setPodSubmitting(true)
+    setPodMessage(null)
+    try {
+      await uploadTruckerPod(token, podFile.trim(), podNotes.trim() || undefined)
+      const refreshed = await getTruckerPortal(token)
+      setPortal(refreshed)
+      setPodMessage(`${podFile} attached as proof of delivery.`)
+      setPodFile('')
+      setPodNotes('')
+    } catch (err) {
+      setPodMessage(err instanceof Error ? err.message : 'Could not upload the proof of delivery.')
+    } finally {
+      setPodSubmitting(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="app-shell broker-portal-shell">
+        <header className="topbar">
+          <Logo />
+          <span className="eyebrow">Trucker workspace</span>
+        </header>
+        <main className="broker-portal-main">
+          <p>Loading shipment.</p>
+        </main>
+      </div>
+    )
+  }
+
+  if (loadError || !portal) {
+    return (
+      <div className="app-shell broker-portal-shell">
+        <header className="topbar">
+          <Logo />
+          <span className="eyebrow">Trucker workspace</span>
+        </header>
+        <main className="broker-portal-main">
+          <div className="notice error">{loadError ?? 'Trucker link not found.'}</div>
+        </main>
+      </div>
+    )
+  }
+
+  const { booking, holds, can_deliver: canDeliver, documents, events } = portal
+
+  return (
+    <div className="app-shell broker-portal-shell">
+      <header className="topbar broker-portal-topbar">
+        <Logo />
+        <span className="eyebrow">Trucker workspace</span>
+      </header>
+      <main className="broker-portal-main">
+        <section className="broker-portal-card">
+          <p className="eyebrow">Shipment</p>
+          <h1>{booking.id}</h1>
+          <p className="broker-portal-subtitle">
+            Deliver to {booking.importer_company_name ?? 'importer'} at {booking.destination_address}.
+          </p>
+          <div className="broker-portal-grid">
+            <div>
+              <p className="broker-portal-label">Contact</p>
+              <p>{booking.destination_contact_name}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Phone</p>
+              <p>{booking.destination_contact_phone ?? 'Not provided'}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Delivery window</p>
+              <p>
+                {booking.delivery_window_start ?? 'TBC'}
+                {booking.delivery_window_end && ` to ${booking.delivery_window_end}`}
+              </p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Equipment</p>
+              <p>{booking.equipment_required.length ? booking.equipment_required.join(', ') : 'None specified'}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Cargo</p>
+              <p>{booking.cargo_description ?? booking.cargo_category}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Volume / weight</p>
+              <p>{booking.cbm_estimate} CBM / {booking.weight_kg_estimate} kg</p>
+            </div>
+          </div>
+        </section>
+
+        {!canDeliver && holds.length > 0 && (
+          <section className="broker-portal-card">
+            <h2>Release blocked</h2>
+            <p>This shipment cannot be marked delivered until the importer clears these holds.</p>
+            <ul className="broker-portal-list">
+              {holds.map((hold) => (
+                <li key={hold.id}>
+                  <strong>{hold.hold_type.replace('_', ' ')}</strong>: {hold.reason}
+                </li>
+              ))}
+            </ul>
+            <p className="muted">You can still mark pickup_scheduled and picked_up while we wait.</p>
+          </section>
+        )}
+
+        <section className="broker-portal-card">
+          <h2>Update delivery status</h2>
+          <label className="broker-portal-textarea">
+            <span>Optional note for this update</span>
+            <textarea value={statusNotes} onChange={(event) => setStatusNotes(event.target.value)} rows={2} />
+          </label>
+          <div className="action-panel-buttons">
+            <button
+              className="secondary-action small"
+              type="button"
+              disabled={stageSubmitting !== null}
+              onClick={() => handleStage('pickup_scheduled')}
+            >
+              {stageSubmitting === 'pickup_scheduled' ? <Loader2 size={14} className="spin" /> : <CalendarClock size={14} />}
+              Pickup scheduled
+            </button>
+            <button
+              className="secondary-action small"
+              type="button"
+              disabled={stageSubmitting !== null}
+              onClick={() => handleStage('picked_up')}
+            >
+              {stageSubmitting === 'picked_up' ? <Loader2 size={14} className="spin" /> : <Truck size={14} />}
+              Picked up from port
+            </button>
+            <button
+              className="primary-action small"
+              type="button"
+              disabled={stageSubmitting !== null || !canDeliver}
+              onClick={() => handleStage('delivered')}
+              title={canDeliver ? '' : 'Release is blocked. Importer must clear holds first.'}
+            >
+              {stageSubmitting === 'delivered' ? <Loader2 size={14} className="spin" /> : <PackageCheck size={14} />}
+              Mark delivered
+            </button>
+          </div>
+          {stageMessage && <div className="notice">{stageMessage}</div>}
+        </section>
+
+        <section className="broker-portal-card">
+          <h2>Upload proof of delivery</h2>
+          <form onSubmit={handlePodUpload} className="broker-portal-form">
+            <label>
+              <span>POD file name</span>
+              <input
+                value={podFile}
+                onChange={(event) => setPodFile(event.target.value)}
+                placeholder="e.g. pod-signed.pdf"
+              />
+            </label>
+            <label className="broker-portal-textarea">
+              <span>Notes</span>
+              <textarea value={podNotes} onChange={(event) => setPodNotes(event.target.value)} rows={2} />
+            </label>
+            <button className="secondary-action" type="submit" disabled={podSubmitting}>
+              {podSubmitting ? <Loader2 size={16} className="spin" /> : <FileText size={16} />}
+              {podSubmitting ? 'Attaching' : 'Attach POD'}
+            </button>
+          </form>
+          {podMessage && <div className="notice">{podMessage}</div>}
+        </section>
+
+        <section className="broker-portal-card">
+          <h2>Recent events</h2>
+          {events.length === 0 ? (
+            <p>No events recorded yet.</p>
+          ) : (
+            <ul className="broker-portal-list">
+              {events.slice(0, 8).map((event) => (
+                <li key={event.id}>
+                  <strong>{event.label}</strong> <span className="muted">({event.stage.replace('_', ' ')})</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="broker-portal-card">
+          <h2>Recent documents</h2>
+          {documents.length === 0 ? (
+            <p>No documents attached yet.</p>
+          ) : (
+            <ul className="broker-portal-list">
+              {documents.slice(0, 8).map((doc) => (
+                <li key={doc.id}>
+                  {doc.file_name} <span className="muted">({doc.document_type.replace('_', ' ')})</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </main>
+    </div>
+  )
+}
+
+
 function App() {
   const [view, setView] = useState<View>('book')
   const hasAutoRoutedRef = useRef(false)
@@ -3365,6 +3632,8 @@ function App() {
   const [warehouseInviteMessage, setWarehouseInviteMessage] = useState<string | null>(null)
   const [carrierLink, setCarrierLink] = useState<CarrierAccessLink | null>(null)
   const [carrierInviteMessage, setCarrierInviteMessage] = useState<string | null>(null)
+  const [truckerLink, setTruckerLink] = useState<TruckerAccessLink | null>(null)
+  const [truckerInviteMessage, setTruckerInviteMessage] = useState<string | null>(null)
   const [sourceMessageDraft, setSourceMessageDraft] = useState({
     from_address: 'sales@supplier.example',
     subject: 'Supplier pro forma and production update',
@@ -3450,6 +3719,10 @@ function App() {
       }
       if (carrierTokenFromPath()) {
         setWorkspaceMode('carrier-portal')
+        return
+      }
+      if (truckerTokenFromPath()) {
+        setWorkspaceMode('trucker-portal')
         return
       }
       if (globalThis.location?.pathname === '/admin') {
@@ -4208,6 +4481,34 @@ function App() {
     }
   }
 
+  async function handleInviteTrucker() {
+    if (!activeBooking) return
+    setLoading(true)
+    setError(null)
+    setTruckerInviteMessage(null)
+    try {
+      const link = await createTruckerLink(activeBooking.id)
+      setTruckerLink(link)
+      const url = `${globalThis.location?.origin ?? ''}/trucker/${link.token}`
+      let copied = false
+      try {
+        await globalThis.navigator?.clipboard?.writeText(url)
+        copied = true
+      } catch {
+        copied = false
+      }
+      setTruckerInviteMessage(
+        copied
+          ? 'Trucker link copied to clipboard. Send it to the destination trucker.'
+          : 'Trucker link ready. Copy the URL below and send it to the destination trucker.',
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create trucker link')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   async function handleSupplierUpload() {
     if (!supplierLink || !activeBooking) return
     setLoading(true)
@@ -4871,6 +5172,13 @@ function App() {
     const carrierToken = carrierTokenFromPath()
     if (carrierToken) {
       return <CarrierPortalView token={carrierToken} />
+    }
+  }
+
+  if (workspaceMode === 'trucker-portal') {
+    const truckerToken = truckerTokenFromPath()
+    if (truckerToken) {
+      return <TruckerPortalView token={truckerToken} />
     }
   }
 
@@ -8295,6 +8603,36 @@ function App() {
                         <DetailTile icon={<Receipt size={18} />} label="Courier invoice" value={deliveryPlan.courier_invoice_storage_key ? 'Stored' : 'Waiting'} />
                         <DetailTile icon={<FileText size={18} />} label="Proof of delivery" value={deliveryPlan.proof_of_delivery_storage_key ? 'Stored' : 'Waiting'} />
                         <DetailTile icon={<Check size={18} />} label="Delivered" value={deliveryPlan.delivered_at ? formatDateShort(deliveryPlan.delivered_at) : 'Not yet'} />
+                      </div>
+                      <div className="broker-invite-block">
+                        <div>
+                          <strong>Bring your destination trucker into the workspace</strong>
+                          <p>
+                            Send a self-serve link your trucker can open without an account. They mark pickup scheduled,
+                            picked up from port, and delivered, then upload the proof of delivery. The release status gates
+                            the delivered marker so the trucker cannot close out a shipment with outstanding holds.
+                          </p>
+                        </div>
+                        <button
+                          className="primary-action small"
+                          type="button"
+                          onClick={handleInviteTrucker}
+                          disabled={loading || !activeBooking}
+                        >
+                          <Truck size={16} />
+                          Invite trucker
+                        </button>
+                        {truckerInviteMessage && <p className="muted">{truckerInviteMessage}</p>}
+                        {truckerLink && (
+                          <label className="broker-invite-url">
+                            <span>Trucker link</span>
+                            <input
+                              readOnly
+                              value={`${globalThis.location?.origin ?? ''}/trucker/${truckerLink.token}`}
+                              onFocus={(event) => event.target.select()}
+                            />
+                          </label>
+                        )}
                       </div>
                     </section>
                   </div>
