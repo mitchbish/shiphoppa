@@ -120,6 +120,7 @@ from .models import (
     ImportProjectCreate,
     ImportProjectStatus,
     ImportProjectUpdate,
+    SupplierVerificationUpdate,
 )
 from .customs import HSCodeSuggestion, best_suggestion, suggest_hs_code
 from .invoices import ParsedInvoice, extract_invoice_from_pdf, extract_invoice_from_text
@@ -180,6 +181,7 @@ from .operations import (
     update_import_project,
     clone_import_project,
     soft_delete_import_project,
+    update_supplier_lead_verification,
     update_account_integration,
     update_account_profile,
     update_customs_profile,
@@ -1080,6 +1082,20 @@ def supplier_discovery_runs(_principal: Principal = Depends(require_admin)) -> L
 @app.get("/growth/supplier-leads", response_model=List[SupplierLead])
 def supplier_leads(_principal: Principal = Depends(require_admin)) -> List[SupplierLead]:
     return sorted(store.supplier_leads.values(), key=lambda item: item.created_at, reverse=True)
+
+
+@app.patch("/growth/supplier-leads/{lead_id}/verification", response_model=SupplierLead)
+def patch_supplier_lead_verification(
+    lead_id: str,
+    payload: SupplierVerificationUpdate,
+    principal: Principal = Depends(require_admin),
+) -> SupplierLead:
+    try:
+        return persist_result(
+            update_supplier_lead_verification(store, lead_id, payload, principal.role, principal.actor_id)
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 @app.post("/supplier-links", response_model=SupplierAccessLink, status_code=201)

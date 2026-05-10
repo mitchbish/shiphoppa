@@ -525,6 +525,14 @@ class SupplierOutreachStatus(str, Enum):
     rejected = "rejected"
 
 
+class SupplierVerificationStatus(str, Enum):
+    unverified = "unverified"
+    pending_review = "pending_review"
+    verified = "verified"
+    restricted = "restricted"
+    rejected = "rejected"
+
+
 class GrowthAttributionEventType(str, Enum):
     lead_discovered = "lead_discovered"
     lead_enriched = "lead_enriched"
@@ -1543,8 +1551,17 @@ class SupplierLead(BaseModel):
     do_not_contact: bool = False
     assigned_owner: Optional[str] = None
     notes: Optional[str] = None
+    verification_status: SupplierVerificationStatus = SupplierVerificationStatus.unverified
+    verification_notes: Optional[str] = None
+    verified_at: Optional[datetime] = None
+    verified_by: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+
+
+class SupplierVerificationUpdate(BaseModel):
+    verification_status: SupplierVerificationStatus
+    verification_notes: Optional[str] = None
 
 
 class GrowthAttributionEvent(BaseModel):

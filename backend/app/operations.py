@@ -99,6 +99,8 @@ from .models import (
     SupplierLead,
     SupplierLeadSource,
     SupplierOutreachStatus,
+    SupplierVerificationStatus,
+    SupplierVerificationUpdate,
     SupplierAccessLink,
     SupplierBookingSummary,
     SupplierPayProvider,
@@ -2047,6 +2049,43 @@ def create_growth_event(
     )
     store.growth_attribution_events[event.id] = event
     return event
+
+
+def update_supplier_lead_verification(
+    store: Store,
+    lead_id: str,
+    request: SupplierVerificationUpdate,
+    actor_role: ActorRole,
+    actor_id: str,
+) -> SupplierLead:
+    lead = store.supplier_leads.get(lead_id)
+    if not lead:
+        raise ValueError("Supplier lead not found")
+    previous_status = lead.verification_status
+    lead.verification_status = request.verification_status
+    if request.verification_notes is not None:
+        lead.verification_notes = request.verification_notes
+    if request.verification_status == SupplierVerificationStatus.verified:
+        lead.verified_at = now_utc()
+        lead.verified_by = actor_id
+    elif request.verification_status == SupplierVerificationStatus.rejected:
+        lead.do_not_contact = True
+    lead.updated_at = now_utc()
+    store.supplier_leads[lead.id] = lead
+    create_audit_event(
+        store,
+        actor_role,
+        actor_id,
+        "supplier_lead_verification_updated",
+        "supplier_lead",
+        lead.id,
+        f"Verification status moved from {previous_status.value} to {lead.verification_status.value}.",
+        {
+            "previous_status": previous_status.value,
+            "new_status": lead.verification_status.value,
+        },
+    )
+    return lead
 
 
 def create_supplier_lead_from_discovery(
