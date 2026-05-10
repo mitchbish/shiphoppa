@@ -110,6 +110,11 @@ from .models import (
     WarehouseLinkCreate,
     WarehousePortalResponse,
     WarehouseReceiptUpdate,
+    CarrierAccessLink,
+    CarrierLinkCreate,
+    CarrierEtaUpdate,
+    CarrierEventUpdate,
+    CarrierPortalResponse,
 )
 from .customs import HSCodeSuggestion, best_suggestion, suggest_hs_code
 from .invoices import ParsedInvoice, extract_invoice_from_pdf, extract_invoice_from_text
@@ -161,6 +166,11 @@ from .operations import (
     warehouse_link_by_token,
     warehouse_portal,
     warehouse_receipt_update,
+    create_carrier_link,
+    carrier_link_by_token,
+    carrier_portal,
+    carrier_eta_update,
+    carrier_event_update,
     update_account_integration,
     update_account_profile,
     update_customs_profile,
@@ -238,6 +248,7 @@ def reset_store_for_tests() -> None:
     store.supplier_links.clear()
     store.broker_links.clear()
     store.warehouse_links.clear()
+    store.carrier_links.clear()
     store.invoices.clear()
     store.payment_records.clear()
     store.release_holds.clear()
@@ -1003,6 +1014,51 @@ def warehouse_document(token: str, payload: DocumentUploadRequest) -> ShipmentDo
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     return persist_result(upload_document(store, link.booking_id, payload, ActorRole.system, "warehouse-portal"))
+
+
+@app.post("/carrier-links", response_model=CarrierAccessLink, status_code=201)
+def carrier_link(payload: CarrierLinkCreate, _principal: Principal = Depends(require_admin)) -> CarrierAccessLink:
+    try:
+        return persist_result(create_carrier_link(store, payload.booking_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/carrier/{token}", response_model=CarrierPortalResponse)
+def get_carrier_portal(token: str) -> CarrierPortalResponse:
+    try:
+        return carrier_portal(store, token)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post("/carrier/{token}/eta", response_model=CarrierPortalResponse)
+def carrier_eta(token: str, payload: CarrierEtaUpdate) -> CarrierPortalResponse:
+    try:
+        return persist_result(carrier_eta_update(store, token, payload))
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 400 if ("delivered" in message or "not yet on a container" in message) else 404
+        raise HTTPException(status_code=status_code, detail=message)
+
+
+@app.post("/carrier/{token}/event", response_model=CarrierPortalResponse)
+def carrier_event(token: str, payload: CarrierEventUpdate) -> CarrierPortalResponse:
+    try:
+        return persist_result(carrier_event_update(store, token, payload))
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 400 if "may only" in message else 404
+        raise HTTPException(status_code=status_code, detail=message)
+
+
+@app.post("/carrier/{token}/documents", response_model=ShipmentDocument, status_code=201)
+def carrier_document(token: str, payload: DocumentUploadRequest) -> ShipmentDocument:
+    try:
+        link = carrier_link_by_token(store, token)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return persist_result(upload_document(store, link.booking_id, payload, ActorRole.system, "carrier-portal"))
 
 
 @app.get("/bookings/{booking_id}/invoice", response_model=Invoice)

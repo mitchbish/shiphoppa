@@ -29,14 +29,19 @@ import {
   approveDocument,
   bookDeliveryPlan,
   createBrokerLink,
+  createCarrierLink,
   createSupplierLink,
   createWarehouseLink,
   commitContainer,
   getBrokerPortal,
+  getCarrierPortal,
   getWarehousePortal,
   submitBrokerClearance,
+  submitCarrierEta,
+  submitCarrierEvent,
   submitWarehouseReceipt,
   uploadBrokerDocument,
+  uploadCarrierDocument,
   uploadWarehouseDocument,
   confirmBooking,
   createBooking,
@@ -120,6 +125,9 @@ import type {
   BrokerSubmittableStatus,
   WarehouseAccessLink,
   WarehousePortalResponse,
+  CarrierAccessLink,
+  CarrierEventStage,
+  CarrierPortalResponse,
   CargoCategory,
   CarrierOption,
   Container,
@@ -162,7 +170,7 @@ type View =
   | 'customs'
   | 'delivery'
   | 'admin'
-type WorkspaceMode = 'customer' | 'admin-login' | 'admin' | 'broker-portal' | 'warehouse-portal'
+type WorkspaceMode = 'customer' | 'admin-login' | 'admin' | 'broker-portal' | 'warehouse-portal' | 'carrier-portal'
 type AdminView = 'overview' | 'containers' | 'exceptions' | 'documents' | 'tracking' | 'payments' | 'customs' | 'automation' | 'audit'
 type TrackingStage = ShipmentEvent['stage']
 type MapPoint = { lat: number; lng: number }
@@ -2365,9 +2373,16 @@ function warehouseTokenFromPath(): string | null {
   return match ? match[1] : null
 }
 
+function carrierTokenFromPath(): string | null {
+  const pathname = globalThis.location?.pathname ?? ''
+  const match = pathname.match(/^\/carrier\/([^/]+)\/?$/)
+  return match ? match[1] : null
+}
+
 function initialWorkspaceMode(): WorkspaceMode {
   if (brokerTokenFromPath()) return 'broker-portal'
   if (warehouseTokenFromPath()) return 'warehouse-portal'
+  if (carrierTokenFromPath()) return 'carrier-portal'
   return globalThis.location?.pathname === '/admin' ? 'admin-login' : 'customer'
 }
 
@@ -2991,6 +3006,306 @@ function WarehousePortalView({ token }: { token: string }) {
 }
 
 
+function CarrierPortalView({ token }: { token: string }) {
+  const [portal, setPortal] = useState<CarrierPortalResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [eta, setEta] = useState('')
+  const [etaNote, setEtaNote] = useState('')
+  const [etaSubmitting, setEtaSubmitting] = useState(false)
+  const [etaMessage, setEtaMessage] = useState<string | null>(null)
+  const [eventSubmitting, setEventSubmitting] = useState<CarrierEventStage | null>(null)
+  const [eventMessage, setEventMessage] = useState<string | null>(null)
+  const [docFile, setDocFile] = useState('')
+  const [docNotes, setDocNotes] = useState('')
+  const [docSubmitting, setDocSubmitting] = useState(false)
+  const [docMessage, setDocMessage] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    getCarrierPortal(token)
+      .then((data) => {
+        if (cancelled) return
+        setPortal(data)
+        if (data.booking.estimated_arrival) setEta(data.booking.estimated_arrival)
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setLoadError(err instanceof Error ? err.message : 'Could not load carrier portal')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [token])
+
+  async function handleEtaSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!eta) {
+      setEtaMessage('Pick a new estimated arrival date.')
+      return
+    }
+    setEtaSubmitting(true)
+    setEtaMessage(null)
+    try {
+      const updated = await submitCarrierEta(token, {
+        estimated_arrival: eta,
+        note: etaNote.trim() || null,
+      })
+      setPortal(updated)
+      setEtaMessage('ETA saved. The importer will see the updated arrival.')
+      setEtaNote('')
+    } catch (err) {
+      setEtaMessage(err instanceof Error ? err.message : 'Could not update ETA.')
+    } finally {
+      setEtaSubmitting(false)
+    }
+  }
+
+  async function handleEvent(stage: CarrierEventStage) {
+    setEventSubmitting(stage)
+    setEventMessage(null)
+    try {
+      const updated = await submitCarrierEvent(token, { stage })
+      setPortal(updated)
+      setEventMessage(`Recorded ${stage.replace('_', ' ')}.`)
+    } catch (err) {
+      setEventMessage(err instanceof Error ? err.message : 'Could not record the event.')
+    } finally {
+      setEventSubmitting(null)
+    }
+  }
+
+  async function handleDocUpload(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!docFile.trim()) {
+      setDocMessage('A file name is required before uploading.')
+      return
+    }
+    setDocSubmitting(true)
+    setDocMessage(null)
+    try {
+      await uploadCarrierDocument(token, 'house_bill', docFile.trim(), docNotes.trim() || undefined)
+      const refreshed = await getCarrierPortal(token)
+      setPortal(refreshed)
+      setDocMessage(`${docFile} attached to the shipment.`)
+      setDocFile('')
+      setDocNotes('')
+    } catch (err) {
+      setDocMessage(err instanceof Error ? err.message : 'Could not upload the document.')
+    } finally {
+      setDocSubmitting(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="app-shell broker-portal-shell">
+        <header className="topbar">
+          <Logo />
+          <span className="eyebrow">Carrier workspace</span>
+        </header>
+        <main className="broker-portal-main">
+          <p>Loading shipment.</p>
+        </main>
+      </div>
+    )
+  }
+
+  if (loadError || !portal) {
+    return (
+      <div className="app-shell broker-portal-shell">
+        <header className="topbar">
+          <Logo />
+          <span className="eyebrow">Carrier workspace</span>
+        </header>
+        <main className="broker-portal-main">
+          <div className="notice error">{loadError ?? 'Carrier link not found.'}</div>
+        </main>
+      </div>
+    )
+  }
+
+  const { booking, documents, events } = portal
+  const noContainer = !booking.container_id
+
+  return (
+    <div className="app-shell broker-portal-shell">
+      <header className="topbar broker-portal-topbar">
+        <Logo />
+        <span className="eyebrow">Carrier workspace</span>
+      </header>
+      <main className="broker-portal-main">
+        <section className="broker-portal-card">
+          <p className="eyebrow">Shipment</p>
+          <h1>{booking.id}</h1>
+          <p className="broker-portal-subtitle">
+            {booking.importer_company_name ?? 'Importer'}. {booking.cargo_description ?? booking.cargo_category}.
+          </p>
+          <div className="broker-portal-grid">
+            <div>
+              <p className="broker-portal-label">Container</p>
+              <p>{booking.container_number ?? booking.container_id ?? 'Not yet assigned'}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Vessel / voyage</p>
+              <p>
+                {booking.vessel_name ?? 'TBC'}
+                {booking.voyage_number && ` / ${booking.voyage_number}`}
+              </p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Carrier</p>
+              <p>{booking.carrier_name ?? 'TBC'}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Sailing date</p>
+              <p>{booking.target_sailing_date ?? booking.estimated_departure ?? 'TBC'}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Current ETA</p>
+              <p>{booking.estimated_arrival ?? 'Not set'}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Cutoff</p>
+              <p>{booking.carrier_cutoff_date ?? 'TBC'}</p>
+            </div>
+          </div>
+        </section>
+
+        {noContainer ? (
+          <section className="broker-portal-card">
+            <h2>Container not yet assigned</h2>
+            <p>
+              This booking has not been placed on a container. ETA updates and milestone events are accepted only after the
+              importer has selected a sailing.
+            </p>
+          </section>
+        ) : (
+          <>
+            <section className="broker-portal-card">
+              <h2>Update ETA</h2>
+              <form onSubmit={handleEtaSubmit} className="broker-portal-form">
+                <label>
+                  <span>New estimated arrival</span>
+                  <input
+                    type="date"
+                    value={eta}
+                    onChange={(event) => setEta(event.target.value)}
+                    required
+                  />
+                </label>
+                <label className="broker-portal-textarea">
+                  <span>Reason / note (optional)</span>
+                  <textarea value={etaNote} onChange={(event) => setEtaNote(event.target.value)} rows={2} />
+                </label>
+                <button className="primary-action" type="submit" disabled={etaSubmitting}>
+                  {etaSubmitting ? <Loader2 size={16} className="spin" /> : <CalendarClock size={16} />}
+                  {etaSubmitting ? 'Saving' : 'Save new ETA'}
+                </button>
+              </form>
+              {etaMessage && <div className="notice">{etaMessage}</div>}
+            </section>
+
+            <section className="broker-portal-card">
+              <h2>Mark milestone</h2>
+              <p className="muted">
+                Record the moment the cargo is loaded, the vessel departs, or the vessel arrives at the destination port.
+              </p>
+              <div className="action-panel-buttons">
+                <button
+                  className="secondary-action small"
+                  type="button"
+                  disabled={eventSubmitting !== null}
+                  onClick={() => handleEvent('loaded')}
+                >
+                  {eventSubmitting === 'loaded' ? <Loader2 size={14} className="spin" /> : <Check size={14} />}
+                  Mark loaded
+                </button>
+                <button
+                  className="secondary-action small"
+                  type="button"
+                  disabled={eventSubmitting !== null}
+                  onClick={() => handleEvent('departed')}
+                >
+                  {eventSubmitting === 'departed' ? <Loader2 size={14} className="spin" /> : <Ship size={14} />}
+                  Mark departed
+                </button>
+                <button
+                  className="secondary-action small"
+                  type="button"
+                  disabled={eventSubmitting !== null}
+                  onClick={() => handleEvent('arrived')}
+                >
+                  {eventSubmitting === 'arrived' ? <Loader2 size={14} className="spin" /> : <MapPin size={14} />}
+                  Mark arrived
+                </button>
+              </div>
+              {eventMessage && <div className="notice">{eventMessage}</div>}
+            </section>
+
+            <section className="broker-portal-card">
+              <h2>Attach bill of lading</h2>
+              <form onSubmit={handleDocUpload} className="broker-portal-form">
+                <label>
+                  <span>File name</span>
+                  <input
+                    value={docFile}
+                    onChange={(event) => setDocFile(event.target.value)}
+                    placeholder="e.g. house-bl-12345.pdf"
+                  />
+                </label>
+                <label className="broker-portal-textarea">
+                  <span>Notes</span>
+                  <textarea value={docNotes} onChange={(event) => setDocNotes(event.target.value)} rows={2} />
+                </label>
+                <button className="secondary-action" type="submit" disabled={docSubmitting}>
+                  {docSubmitting ? <Loader2 size={16} className="spin" /> : <FileText size={16} />}
+                  {docSubmitting ? 'Attaching' : 'Attach BL'}
+                </button>
+              </form>
+              {docMessage && <div className="notice">{docMessage}</div>}
+            </section>
+          </>
+        )}
+
+        <section className="broker-portal-card">
+          <h2>Recent events</h2>
+          {events.length === 0 ? (
+            <p>No events recorded yet.</p>
+          ) : (
+            <ul className="broker-portal-list">
+              {events.slice(0, 8).map((event) => (
+                <li key={event.id}>
+                  <strong>{event.label}</strong> <span className="muted">({event.stage.replace('_', ' ')})</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="broker-portal-card">
+          <h2>Recent documents</h2>
+          {documents.length === 0 ? (
+            <p>No documents attached yet.</p>
+          ) : (
+            <ul className="broker-portal-list">
+              {documents.slice(0, 8).map((doc) => (
+                <li key={doc.id}>
+                  {doc.file_name} <span className="muted">({doc.document_type.replace('_', ' ')})</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </main>
+    </div>
+  )
+}
+
+
 function App() {
   const [view, setView] = useState<View>('book')
   const hasAutoRoutedRef = useRef(false)
@@ -3048,6 +3363,8 @@ function App() {
   const [brokerInviteMessage, setBrokerInviteMessage] = useState<string | null>(null)
   const [warehouseLink, setWarehouseLink] = useState<WarehouseAccessLink | null>(null)
   const [warehouseInviteMessage, setWarehouseInviteMessage] = useState<string | null>(null)
+  const [carrierLink, setCarrierLink] = useState<CarrierAccessLink | null>(null)
+  const [carrierInviteMessage, setCarrierInviteMessage] = useState<string | null>(null)
   const [sourceMessageDraft, setSourceMessageDraft] = useState({
     from_address: 'sales@supplier.example',
     subject: 'Supplier pro forma and production update',
@@ -3129,6 +3446,10 @@ function App() {
       }
       if (warehouseTokenFromPath()) {
         setWorkspaceMode('warehouse-portal')
+        return
+      }
+      if (carrierTokenFromPath()) {
+        setWorkspaceMode('carrier-portal')
         return
       }
       if (globalThis.location?.pathname === '/admin') {
@@ -3859,6 +4180,34 @@ function App() {
     }
   }
 
+  async function handleInviteCarrier() {
+    if (!activeBooking) return
+    setLoading(true)
+    setError(null)
+    setCarrierInviteMessage(null)
+    try {
+      const link = await createCarrierLink(activeBooking.id)
+      setCarrierLink(link)
+      const url = `${globalThis.location?.origin ?? ''}/carrier/${link.token}`
+      let copied = false
+      try {
+        await globalThis.navigator?.clipboard?.writeText(url)
+        copied = true
+      } catch {
+        copied = false
+      }
+      setCarrierInviteMessage(
+        copied
+          ? 'Carrier link copied to clipboard. Send it to the carrier contact.'
+          : 'Carrier link ready. Copy the URL below and send it to the carrier contact.',
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create carrier link')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   async function handleSupplierUpload() {
     if (!supplierLink || !activeBooking) return
     setLoading(true)
@@ -4515,6 +4864,13 @@ function App() {
     const whToken = warehouseTokenFromPath()
     if (whToken) {
       return <WarehousePortalView token={whToken} />
+    }
+  }
+
+  if (workspaceMode === 'carrier-portal') {
+    const carrierToken = carrierTokenFromPath()
+    if (carrierToken) {
+      return <CarrierPortalView token={carrierToken} />
     }
   }
 
@@ -7265,6 +7621,38 @@ function App() {
 	                  </div>
 	                )}
 	              </div>
+              {activeBooking?.container_id && (
+                <div className="broker-invite-block">
+                  <div>
+                    <strong>Bring your carrier into the workspace</strong>
+                    <p>
+                      Send a self-serve link your carrier can open without an account. They confirm ETA, mark loaded /
+                      departed / arrived, and upload the bill of lading. The existing ETA monitoring automation fires
+                      when arrival shifts, so you do not need to chase by email.
+                    </p>
+                  </div>
+                  <button
+                    className="primary-action small"
+                    type="button"
+                    onClick={handleInviteCarrier}
+                    disabled={loading || !activeBooking}
+                  >
+                    <Ship size={16} />
+                    Invite carrier
+                  </button>
+                  {carrierInviteMessage && <p className="muted">{carrierInviteMessage}</p>}
+                  {carrierLink && (
+                    <label className="broker-invite-url">
+                      <span>Carrier link</span>
+                      <input
+                        readOnly
+                        value={`${globalThis.location?.origin ?? ''}/carrier/${carrierLink.token}`}
+                        onFocus={(event) => event.target.select()}
+                      />
+                    </label>
+                  )}
+                </div>
+              )}
             </section>
             )}
 

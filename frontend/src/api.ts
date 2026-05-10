@@ -12,6 +12,10 @@ import type {
   WarehouseAccessLink,
   WarehousePortalResponse,
   WarehouseReceiptUpdate,
+  CarrierAccessLink,
+  CarrierEtaUpdate,
+  CarrierEventUpdate,
+  CarrierPortalResponse,
   CarrierOption,
   Container,
   ConfirmBookingResponse,
@@ -57,6 +61,7 @@ function tokenFor(path: string, method: string) {
     path.startsWith('/supplier-links') ||
     path.startsWith('/broker-links') ||
     path.startsWith('/warehouse-links') ||
+    path.startsWith('/carrier-links') ||
     path.startsWith('/invoices') ||
     path.startsWith('/release-holds') ||
     path.startsWith('/automation') ||
@@ -316,6 +321,48 @@ export function uploadWarehouseDocument(
   notes?: string,
 ) {
   return request<ShipmentDocument>(`/warehouse/${token}/documents`, {
+    method: 'POST',
+    body: JSON.stringify({
+      document_type: documentType,
+      file_name: fileName,
+      mime_type: 'application/pdf',
+      notes: notes ?? null,
+    }),
+  })
+}
+
+export function createCarrierLink(bookingId: string) {
+  return request<CarrierAccessLink>('/carrier-links', {
+    method: 'POST',
+    body: JSON.stringify({ booking_id: bookingId }),
+  })
+}
+
+export function getCarrierPortal(token: string) {
+  return request<CarrierPortalResponse>(`/carrier/${token}`)
+}
+
+export function submitCarrierEta(token: string, payload: CarrierEtaUpdate) {
+  return request<CarrierPortalResponse>(`/carrier/${token}/eta`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function submitCarrierEvent(token: string, payload: CarrierEventUpdate) {
+  return request<CarrierPortalResponse>(`/carrier/${token}/event`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function uploadCarrierDocument(
+  token: string,
+  documentType: DocumentType,
+  fileName: string,
+  notes?: string,
+) {
+  return request<ShipmentDocument>(`/carrier/${token}/documents`, {
     method: 'POST',
     body: JSON.stringify({
       document_type: documentType,

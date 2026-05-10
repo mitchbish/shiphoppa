@@ -118,6 +118,11 @@ from .models import (
     WarehouseBookingSummary,
     WarehousePortalResponse,
     WarehouseReceiptUpdate,
+    CarrierAccessLink,
+    CarrierBookingSummary,
+    CarrierEtaUpdate,
+    CarrierEventUpdate,
+    CarrierPortalResponse,
 )
 from .store import Store
 
@@ -3334,6 +3339,138 @@ def warehouse_receipt_update(store: Store, token: str, request: WarehouseReceipt
     store.warehouse_links[link.id] = link
     booking = store.bookings[booking.id]
     return _warehouse_portal_response(store, booking)
+
+
+CARRIER_ALLOWED_EVENT_STAGES = frozenset({
+    ShipmentEventStage.loaded,
+    ShipmentEventStage.departed,
+    ShipmentEventStage.arrived,
+})
+
+
+def create_carrier_link(store: Store, booking_id: str) -> CarrierAccessLink:
+    if booking_id not in store.bookings:
+        raise ValueError("Booking not found")
+    for link in store.carrier_links.values():
+        if link.booking_id == booking_id and link.active:
+            return link
+    link = CarrierAccessLink(
+        id=store.next_id("CRL"),
+        booking_id=booking_id,
+        token=secrets.token_urlsafe(24),
+        expires_at=now_utc() + timedelta(days=45),
+        created_at=now_utc(),
+    )
+    store.carrier_links[link.id] = link
+    create_audit_event(store, ActorRole.admin, "ops", "carrier_link_created", "booking", booking_id, f"Carrier link created for {booking_id}.")
+    return link
+
+
+def carrier_link_by_token(store: Store, token: str) -> CarrierAccessLink:
+    for link in store.carrier_links.values():
+        if link.token == token and link.active:
+            if link.expires_at and link.expires_at < now_utc():
+                raise ValueError("Carrier link has expired")
+            return link
+    raise ValueError("Carrier link not found")
+
+
+def _carrier_portal_response(store: Store, booking: Booking) -> CarrierPortalResponse:
+    importer = store.importers.get(booking.importer_id)
+    container = store.containers.get(booking.container_id) if booking.container_id else None
+    summary = CarrierBookingSummary(
+        id=booking.id,
+        importer_company_name=importer.company_name if importer else None,
+        container_id=booking.container_id,
+        container_number=container.container_number if container else None,
+        vessel_name=container.vessel_name if container else None,
+        voyage_number=container.voyage_number if container else None,
+        carrier_name=container.carrier_name if container else None,
+        estimated_departure=container.estimated_departure if container else None,
+        estimated_arrival=container.estimated_arrival if container else None,
+        baseline_estimated_arrival=container.baseline_estimated_arrival if container else None,
+        target_sailing_date=container.target_sailing_date if container else None,
+        carrier_cutoff_date=container.carrier_cutoff_date if container else None,
+        cargo_description=booking.cargo_description,
+        cargo_category=booking.cargo_category,
+        cbm_estimate=booking.cbm_estimate,
+        weight_kg_estimate=booking.weight_kg_estimate,
+        status=booking.status,
+    )
+    return CarrierPortalResponse(
+        booking=summary,
+        documents=documents_for_booking(store, booking.id),
+        events=events_for_booking(store, booking.id),
+    )
+
+
+def carrier_portal(store: Store, token: str) -> CarrierPortalResponse:
+    link = carrier_link_by_token(store, token)
+    link.last_used_at = now_utc()
+    store.carrier_links[link.id] = link
+    booking = store.bookings[link.booking_id]
+    return _carrier_portal_response(store, booking)
+
+
+def carrier_eta_update(store: Store, token: str, request: CarrierEtaUpdate) -> CarrierPortalResponse:
+    link = carrier_link_by_token(store, token)
+    booking = store.bookings[link.booking_id]
+    if booking.status == BookingStatus.delivered:
+        raise ValueError("This booking has already been delivered. ETA updates are no longer accepted.")
+    if not booking.container_id:
+        raise ValueError("This booking is not yet on a container. ETA cannot be updated until a sailing is selected.")
+    update_container_eta(
+        store,
+        booking.container_id,
+        request.estimated_arrival,
+        actor_id="carrier-portal",
+        source="carrier_portal",
+    )
+    note = request.note.strip() if request.note else ""
+    create_audit_event(
+        store,
+        ActorRole.system,
+        "carrier-portal",
+        "carrier_eta_update",
+        "booking",
+        booking.id,
+        f"Carrier set ETA to {request.estimated_arrival}." + (f" Note: {note}" if note else ""),
+    )
+    link.last_used_at = now_utc()
+    store.carrier_links[link.id] = link
+    return _carrier_portal_response(store, booking)
+
+
+def carrier_event_update(store: Store, token: str, request: CarrierEventUpdate) -> CarrierPortalResponse:
+    if request.stage not in CARRIER_ALLOWED_EVENT_STAGES:
+        raise ValueError("Carrier may only submit loaded, departed, or arrived events.")
+    link = carrier_link_by_token(store, token)
+    booking = store.bookings[link.booking_id]
+    create_shipment_event(
+        store,
+        booking.id,
+        ShipmentEventCreate(
+            stage=request.stage,
+            label=request.label or request.stage.value.replace("_", " ").title(),
+            occurred_at=now_utc(),
+            source_type=SourceType.forwarder_confirmation,
+            source_name="Carrier portal",
+            confidence=SourceConfidence.confirmed,
+            notes=request.notes,
+        ),
+    )
+    create_audit_event(
+        store,
+        ActorRole.system,
+        "carrier-portal",
+        "carrier_event_update",
+        "booking",
+        booking.id,
+        f"Carrier reported {request.stage.value}.",
+    )
+    link.last_used_at = now_utc()
+    store.carrier_links[link.id] = link
+    return _carrier_portal_response(store, booking)
 
 
 def sailing_search(store: Store) -> List[SailingSearchResult]:

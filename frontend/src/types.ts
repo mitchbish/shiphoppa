@@ -668,6 +668,55 @@ export interface WarehousePortalResponse {
   events: ShipmentEvent[]
 }
 
+export interface CarrierAccessLink {
+  id: string
+  booking_id: string
+  token: string
+  active: boolean
+  expires_at: string | null
+  last_used_at: string | null
+  created_at: string
+}
+
+export type CarrierEventStage = 'loaded' | 'departed' | 'arrived'
+
+export interface CarrierBookingSummary {
+  id: string
+  importer_company_name: string | null
+  container_id: string | null
+  container_number: string | null
+  vessel_name: string | null
+  voyage_number: string | null
+  carrier_name: string | null
+  estimated_departure: string | null
+  estimated_arrival: string | null
+  baseline_estimated_arrival: string | null
+  target_sailing_date: string | null
+  carrier_cutoff_date: string | null
+  cargo_description: string | null
+  cargo_category: CargoCategory
+  cbm_estimate: number
+  weight_kg_estimate: number
+  status: string
+}
+
+export interface CarrierEtaUpdate {
+  estimated_arrival: string
+  note?: string | null
+}
+
+export interface CarrierEventUpdate {
+  stage: CarrierEventStage
+  label?: string | null
+  notes?: string | null
+}
+
+export interface CarrierPortalResponse {
+  booking: CarrierBookingSummary
+  documents: ShipmentDocument[]
+  events: ShipmentEvent[]
+}
+
 export interface ImportProject {
   id: string
   title: string

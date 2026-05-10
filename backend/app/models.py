@@ -1773,6 +1773,57 @@ class WarehouseAccessLink(BaseModel):
     created_at: datetime
 
 
+class CarrierLinkCreate(BaseModel):
+    booking_id: str
+
+
+class CarrierEtaUpdate(BaseModel):
+    estimated_arrival: date
+    note: Optional[str] = None
+
+
+class CarrierEventUpdate(BaseModel):
+    stage: ShipmentEventStage
+    label: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class CarrierBookingSummary(BaseModel):
+    id: str
+    importer_company_name: Optional[str] = None
+    container_id: Optional[str] = None
+    container_number: Optional[str] = None
+    vessel_name: Optional[str] = None
+    voyage_number: Optional[str] = None
+    carrier_name: Optional[str] = None
+    estimated_departure: Optional[date] = None
+    estimated_arrival: Optional[date] = None
+    baseline_estimated_arrival: Optional[date] = None
+    target_sailing_date: Optional[date] = None
+    carrier_cutoff_date: Optional[date] = None
+    cargo_description: Optional[str] = None
+    cargo_category: CargoCategory
+    cbm_estimate: float
+    weight_kg_estimate: float
+    status: BookingStatus
+
+
+class CarrierPortalResponse(BaseModel):
+    booking: CarrierBookingSummary
+    documents: List[ShipmentDocument]
+    events: List[ShipmentEvent]
+
+
+class CarrierAccessLink(BaseModel):
+    id: str
+    booking_id: str
+    token: str
+    active: bool = True
+    expires_at: Optional[datetime] = None
+    last_used_at: Optional[datetime] = None
+    created_at: datetime
+
+
 class ReleaseStatusResponse(BaseModel):
     booking_id: str
     release_status: ReleaseStatus
