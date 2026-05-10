@@ -1632,6 +1632,80 @@ class SupplierProfileClaimResponse(BaseModel):
     lead: SupplierLead
 
 
+class DeliveryJobMode(str, Enum):
+    courier = "courier"
+    pallet_freight = "pallet_freight"
+    local_truck = "local_truck"
+    port_drayage = "port_drayage"
+    live_unload = "live_unload"
+    warehouse_delivery = "warehouse_delivery"
+
+
+class DeliveryJobStatus(str, Enum):
+    booked = "booked"
+    scheduled = "scheduled"
+    picked_up = "picked_up"
+    in_transit = "in_transit"
+    delivered = "delivered"
+    cancelled = "cancelled"
+
+
+class DeliveryJob(BaseModel):
+    id: str
+    booking_id: str
+    mode: DeliveryJobMode
+    pickup_address: Optional[str] = None
+    pickup_contact_name: Optional[str] = None
+    pickup_window_start: Optional[datetime] = None
+    pickup_window_end: Optional[datetime] = None
+    delivery_address: Optional[str] = None
+    delivery_contact_name: Optional[str] = None
+    delivery_window_start: Optional[datetime] = None
+    delivery_window_end: Optional[datetime] = None
+    equipment_required: List[str] = Field(default_factory=list)
+    quote_amount_usd: Optional[float] = None
+    currency: str = "USD"
+    status: DeliveryJobStatus = DeliveryJobStatus.booked
+    pod_document_id: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class DeliveryJobCreate(BaseModel):
+    mode: DeliveryJobMode
+    pickup_address: Optional[str] = None
+    pickup_contact_name: Optional[str] = None
+    pickup_window_start: Optional[datetime] = None
+    pickup_window_end: Optional[datetime] = None
+    delivery_address: Optional[str] = None
+    delivery_contact_name: Optional[str] = None
+    delivery_window_start: Optional[datetime] = None
+    delivery_window_end: Optional[datetime] = None
+    equipment_required: List[str] = Field(default_factory=list)
+    quote_amount_usd: Optional[float] = None
+    currency: str = "USD"
+    notes: Optional[str] = None
+
+
+class DeliveryJobUpdate(BaseModel):
+    mode: Optional[DeliveryJobMode] = None
+    pickup_address: Optional[str] = None
+    pickup_contact_name: Optional[str] = None
+    pickup_window_start: Optional[datetime] = None
+    pickup_window_end: Optional[datetime] = None
+    delivery_address: Optional[str] = None
+    delivery_contact_name: Optional[str] = None
+    delivery_window_start: Optional[datetime] = None
+    delivery_window_end: Optional[datetime] = None
+    equipment_required: Optional[List[str]] = None
+    quote_amount_usd: Optional[float] = None
+    currency: Optional[str] = None
+    status: Optional[DeliveryJobStatus] = None
+    pod_document_id: Optional[str] = None
+    notes: Optional[str] = None
+
+
 class GrowthAttributionCreate(BaseModel):
     event_type: GrowthAttributionEventType
     source: str = Field(..., min_length=1)

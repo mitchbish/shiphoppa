@@ -17,6 +17,7 @@ from .models import (
     ConsolidationWarehouse,
     Container,
     CustomsProfile,
+    DeliveryJob,
     DeliveryPlan,
     DocumentRequirement,
     GrowthAttributionEvent,
@@ -78,6 +79,7 @@ class Store:
         self.release_holds: Dict[str, ReleaseHold] = {}
         self.customs_profiles: Dict[str, CustomsProfile] = {}
         self.delivery_plans: Dict[str, DeliveryPlan] = {}
+        self.delivery_jobs: Dict[str, DeliveryJob] = {}
         self.admin_tasks: Dict[str, AdminTask] = {}
         self.purchase_orders: Dict[str, PurchaseOrder] = {}
         self.production_milestones: Dict[str, ProductionMilestone] = {}

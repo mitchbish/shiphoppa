@@ -26,6 +26,9 @@ import type {
   CustomsProfile,
   DocumentType,
   DashboardSummary,
+  DeliveryJob,
+  DeliveryJobCreatePayload,
+  DeliveryJobUpdatePayload,
   DeliveryPlan,
   Invoice,
   ImportProjectWorkspaceResponse,
@@ -952,6 +955,26 @@ export function extractFactsPreview(text: string, subject?: string) {
   return request<ExtractionPreviewResponse>('/automation/extract-preview', {
     method: 'POST',
     body: JSON.stringify({ text, subject }),
+  })
+}
+
+// --- Delivery jobs ---
+
+export function listDeliveryJobsForBooking(bookingId: string) {
+  return request<DeliveryJob[]>(`/bookings/${bookingId}/delivery-jobs`)
+}
+
+export function createDeliveryJob(bookingId: string, payload: DeliveryJobCreatePayload) {
+  return request<DeliveryJob>(`/bookings/${bookingId}/delivery-jobs`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function updateDeliveryJob(jobId: string, payload: DeliveryJobUpdatePayload) {
+  return request<DeliveryJob>(`/delivery-jobs/${jobId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
   })
 }
 

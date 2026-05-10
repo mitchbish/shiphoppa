@@ -37,6 +37,11 @@ from .models import (
     DocumentRequirement,
     DocumentStatus,
     DocumentType,
+    DeliveryJob,
+    DeliveryJobCreate,
+    DeliveryJobMode,
+    DeliveryJobStatus,
+    DeliveryJobUpdate,
     DeliveryMode,
     DeliveryPlan,
     DeliveryPlanStatus,
@@ -4433,3 +4438,93 @@ def shipment_workspace(store: Store, booking_id: str) -> ShipmentWorkspace:
         delivery_plan=delivery_plan,
         import_project=project,
     )
+
+
+def create_delivery_job(
+    store: Store,
+    booking_id: str,
+    payload: DeliveryJobCreate,
+    actor_id: str,
+) -> DeliveryJob:
+    if booking_id not in store.bookings:
+        raise ValueError("Booking not found")
+    timestamp = now_utc()
+    job = DeliveryJob(
+        id=store.next_id("DJOB"),
+        booking_id=booking_id,
+        mode=payload.mode,
+        pickup_address=payload.pickup_address,
+        pickup_contact_name=payload.pickup_contact_name,
+        pickup_window_start=payload.pickup_window_start,
+        pickup_window_end=payload.pickup_window_end,
+        delivery_address=payload.delivery_address,
+        delivery_contact_name=payload.delivery_contact_name,
+        delivery_window_start=payload.delivery_window_start,
+        delivery_window_end=payload.delivery_window_end,
+        equipment_required=list(payload.equipment_required),
+        quote_amount_usd=payload.quote_amount_usd,
+        currency=payload.currency,
+        notes=payload.notes,
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+    store.delivery_jobs[job.id] = job
+    create_audit_event(
+        store,
+        ActorRole.importer,
+        actor_id,
+        "delivery_job_created",
+        "delivery_job",
+        job.id,
+        f"Delivery job created for booking {booking_id} (mode {payload.mode.value}).",
+        {"booking_id": booking_id, "mode": payload.mode.value},
+    )
+    return job
+
+
+def list_delivery_jobs_for_booking(store: Store, booking_id: str) -> List[DeliveryJob]:
+    return sorted(
+        [job for job in store.delivery_jobs.values() if job.booking_id == booking_id],
+        key=lambda job: job.created_at,
+        reverse=True,
+    )
+
+
+def update_delivery_job(
+    store: Store,
+    job_id: str,
+    payload: DeliveryJobUpdate,
+    actor_id: str,
+) -> DeliveryJob:
+    if job_id not in store.delivery_jobs:
+        raise ValueError("Delivery job not found")
+    job = store.delivery_jobs[job_id]
+    previous_status = job.status
+    update_fields = payload.model_dump(exclude_unset=True)
+    for key, value in update_fields.items():
+        setattr(job, key, value)
+    job.updated_at = now_utc()
+    store.delivery_jobs[job.id] = job
+    if "status" in update_fields and update_fields["status"] != previous_status:
+        create_audit_event(
+            store,
+            ActorRole.importer,
+            actor_id,
+            "delivery_job_status_changed",
+            "delivery_job",
+            job.id,
+            f"Delivery job status moved from {previous_status.value} to {job.status.value}.",
+            {"previous_status": previous_status.value, "new_status": job.status.value},
+        )
+    else:
+        create_audit_event(
+            store,
+            ActorRole.importer,
+            actor_id,
+            "delivery_job_updated",
+            "delivery_job",
+            job.id,
+            f"Delivery job {job.id} updated.",
+            {"fields": list(update_fields.keys())},
+        )
+    return job

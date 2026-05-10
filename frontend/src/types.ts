@@ -927,6 +927,65 @@ export interface ImportProjectWorkspaceResponse {
   approvals: ApprovalRequest[]
 }
 
+export type DeliveryJobMode =
+  | 'courier'
+  | 'pallet_freight'
+  | 'local_truck'
+  | 'port_drayage'
+  | 'live_unload'
+  | 'warehouse_delivery'
+
+export type DeliveryJobStatus =
+  | 'booked'
+  | 'scheduled'
+  | 'picked_up'
+  | 'in_transit'
+  | 'delivered'
+  | 'cancelled'
+
+export interface DeliveryJob {
+  id: string
+  booking_id: string
+  mode: DeliveryJobMode
+  pickup_address: string | null
+  pickup_contact_name: string | null
+  pickup_window_start: string | null
+  pickup_window_end: string | null
+  delivery_address: string | null
+  delivery_contact_name: string | null
+  delivery_window_start: string | null
+  delivery_window_end: string | null
+  equipment_required: string[]
+  quote_amount_usd: number | null
+  currency: string
+  status: DeliveryJobStatus
+  pod_document_id: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DeliveryJobCreatePayload {
+  mode: DeliveryJobMode
+  pickup_address?: string
+  pickup_contact_name?: string
+  pickup_window_start?: string
+  pickup_window_end?: string
+  delivery_address?: string
+  delivery_contact_name?: string
+  delivery_window_start?: string
+  delivery_window_end?: string
+  equipment_required?: string[]
+  quote_amount_usd?: number
+  currency?: string
+  notes?: string
+}
+
+export interface DeliveryJobUpdatePayload extends Partial<DeliveryJobCreatePayload> {
+  status?: DeliveryJobStatus
+  pod_document_id?: string
+}
+
 export interface SupplierProfileClaim {
   id: string
   lead_id: string

@@ -52,6 +52,9 @@ from .models import (
     SupplierProfileClaim,
     SupplierProfileClaimAccept,
     SupplierProfileClaimResponse,
+    DeliveryJob,
+    DeliveryJobCreate,
+    DeliveryJobUpdate,
     ApprovalRequest,
     ApprovalStatus,
     AuditEvent,
@@ -177,11 +180,14 @@ from .operations import (
     release_status_for_booking,
     accept_supplier_claim,
     confirm_sentinel_subscriber,
+    create_delivery_job,
     create_sentinel_subscriber,
     create_supplier_claim_link,
     get_supplier_claim_by_token,
+    list_delivery_jobs_for_booking,
     opt_out_sentinel_subscriber,
     request_approval_review,
+    update_delivery_job,
     sailing_search,
     shipment_workspace,
     create_seo_opportunity,
@@ -1709,6 +1715,44 @@ def booking_delivery_plan(booking_id: str, _principal: Principal = Depends(requi
     if booking_id not in store.bookings:
         raise HTTPException(status_code=404, detail="Booking not found")
     return persist_result(ensure_delivery_plan(store, store.bookings[booking_id]))
+
+
+@app.post(
+    "/bookings/{booking_id}/delivery-jobs",
+    response_model=DeliveryJob,
+    status_code=201,
+)
+def post_delivery_job(
+    booking_id: str,
+    payload: DeliveryJobCreate,
+    principal: Principal = Depends(require_importer),
+) -> DeliveryJob:
+    try:
+        return persist_result(create_delivery_job(store, booking_id, payload, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/bookings/{booking_id}/delivery-jobs", response_model=List[DeliveryJob])
+def get_delivery_jobs(
+    booking_id: str,
+    _principal: Principal = Depends(require_importer),
+) -> List[DeliveryJob]:
+    if booking_id not in store.bookings:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return list_delivery_jobs_for_booking(store, booking_id)
+
+
+@app.patch("/delivery-jobs/{job_id}", response_model=DeliveryJob)
+def patch_delivery_job(
+    job_id: str,
+    payload: DeliveryJobUpdate,
+    principal: Principal = Depends(require_importer),
+) -> DeliveryJob:
+    try:
+        return persist_result(update_delivery_job(store, job_id, payload, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 @app.put("/bookings/{booking_id}/delivery-plan", response_model=DeliveryPlan)
