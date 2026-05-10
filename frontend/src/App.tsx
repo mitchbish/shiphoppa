@@ -1517,12 +1517,14 @@ function TrackingOrderCard({
   container,
   sailing,
   selected,
+  pendingApprovalCount,
   onOpen,
 }: {
   booking: Booking
   container: Container | null
   sailing: SailingSearchResult | null
   selected: boolean
+  pendingApprovalCount?: number
   onOpen: (bookingId: string) => void
 }) {
   const routeOrigin = sailing ? sailingOriginPort(sailing) : [booking.supplier_city, booking.supplier_country].filter(Boolean).join(', ')
@@ -1548,6 +1550,13 @@ function TrackingOrderCard({
         <b>{formatMeasure(booking.cbm_estimate, 'CBM')}</b>
         <b>{booking.container_id ?? 'Awaiting container'}</b>
       </div>
+      {pendingApprovalCount !== undefined && pendingApprovalCount > 0 && (
+        <div className="tracking-order-attention">
+          <span className="status-chip orange">
+            {pendingApprovalCount} approval{pendingApprovalCount === 1 ? '' : 's'} waiting
+          </span>
+        </div>
+      )}
     </button>
   )
 }
@@ -6167,6 +6176,9 @@ function App() {
                     {bookings.map((booking) => {
                       const orderContainer = containers.find((container) => container.id === booking.container_id) ?? null
                       const orderSailing = sailingForContainer(orderContainer, sailings)
+                      const cardApprovalCount = allPendingApprovals.filter(
+                        (approval) => approval.related_booking_id === booking.id,
+                      ).length
                       return (
                         <TrackingOrderCard
                           key={booking.id}
@@ -6174,6 +6186,7 @@ function App() {
                           container={orderContainer}
                           sailing={orderSailing}
                           selected={booking.id === activeBooking?.id}
+                          pendingApprovalCount={cardApprovalCount}
                           onOpen={openOpsBooking}
                         />
                       )
