@@ -383,6 +383,61 @@ export function listSpaceOpportunity(opportunityId: string) {
   })
 }
 
+// --- Supplier invoice extractor ---
+
+export type ParsedInvoice = {
+  invoice_number: string | null
+  proforma_number: string | null
+  purchase_order_reference: string | null
+  supplier_name: string | null
+  issue_date: string | null
+  due_date: string | null
+  currency: string | null
+  total_amount: number | null
+  bank_name: string | null
+  account_number_last4: string | null
+  swift_code: string | null
+  iban_last4: string | null
+  beneficiary_name: string | null
+  line_items: Array<{
+    description: string
+    quantity: number | null
+    unit_price: number | null
+    amount: number | null
+  }>
+  confidence: 'estimated' | 'verified' | 'confirmed'
+  source_snippet: string | null
+}
+
+export type AppliedInvoiceResult = {
+  matched_purchase_order_id: string | null
+  supplier_pay_request_id: string | null
+  approval_request_id: string | null
+}
+
+export type ParseInvoiceResponse = {
+  parsed: ParsedInvoice
+  applied?: AppliedInvoiceResult
+}
+
+export function parseInvoiceText(text: string, options?: { booking_id?: string; apply?: boolean }) {
+  return request<ParseInvoiceResponse>('/invoices/parse-text', {
+    method: 'POST',
+    body: JSON.stringify({ text, booking_id: options?.booking_id, apply: options?.apply ?? false }),
+  })
+}
+
+export function extractInvoiceFromMessage(messageId: string, options?: { booking_id?: string; apply?: boolean }) {
+  const params = new URLSearchParams()
+  if (options?.apply) params.set('apply', 'true')
+  if (options?.booking_id) params.set('booking_id', options.booking_id)
+  const qs = params.toString()
+  return request<ParseInvoiceResponse>(
+    `/source-messages/${messageId}/extract-invoice${qs ? '?' + qs : ''}`,
+    { method: 'POST' },
+  )
+}
+
 // --- Notifications ---
 
 export function getNotifications() {

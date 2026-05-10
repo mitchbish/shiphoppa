@@ -71,6 +71,7 @@ import {
   getSpaceOpportunities,
   detectSpaceOpportunity,
   listSpaceOpportunity,
+  parseInvoiceText,
   supplierReady,
   updateAccountIntegration,
   updateAccountProfile,
@@ -85,6 +86,7 @@ import type {
   ApprovalRequestRecord,
   AutomationRunAllResult,
   LandedCostSummary,
+  ParsedInvoice,
   SpaceOpportunity,
   MissingDataItem as APIMissingDataItem,
   ShipmentStateResponse,
@@ -2357,6 +2359,9 @@ function App() {
   const [activeShipmentState, setActiveShipmentState] = useState<ShipmentStateResponse | null>(null)
   const [activeMissingData, setActiveMissingData] = useState<APIMissingDataItem[]>([])
   const [spaceOpportunities, setSpaceOpportunities] = useState<SpaceOpportunity[]>([])
+  const [invoiceText, setInvoiceText] = useState('')
+  const [parsedInvoice, setParsedInvoice] = useState<ParsedInvoice | null>(null)
+  const [parsingInvoice, setParsingInvoice] = useState(false)
   const [adminEmail, setAdminEmail] = useState('ops@shiphoppa.example')
   const [adminPassword, setAdminPassword] = useState('')
   const [adminLoginError, setAdminLoginError] = useState<string | null>(null)
@@ -2563,6 +2568,46 @@ function App() {
       setSpaceOpportunities(refreshed)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not list spare space')
+    }
+  }
+
+  async function handleInvoicePreview() {
+    if (!invoiceText.trim()) {
+      setError('Paste invoice text first.')
+      return
+    }
+    setParsingInvoice(true)
+    try {
+      const response = await parseInvoiceText(invoiceText, { booking_id: activeBooking?.id })
+      setParsedInvoice(response.parsed)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not parse invoice')
+    } finally {
+      setParsingInvoice(false)
+    }
+  }
+
+  async function handleInvoiceApply() {
+    if (!invoiceText.trim()) {
+      setError('Paste invoice text first.')
+      return
+    }
+    setParsingInvoice(true)
+    try {
+      const response = await parseInvoiceText(invoiceText, { booking_id: activeBooking?.id, apply: true })
+      setParsedInvoice(response.parsed)
+      if (response.applied?.supplier_pay_request_id) {
+        setReleaseMessage('Invoice captured and supplier payment created. Approve in your queue.')
+        const refreshed = await getApprovals()
+        setAllApprovals(refreshed)
+      } else {
+        setError('Could not match invoice to a purchase order. Check the PO reference and supplier name.')
+      }
+      setInvoiceText('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not apply invoice')
+    } finally {
+      setParsingInvoice(false)
     }
   }
 
@@ -6071,6 +6116,64 @@ function App() {
                       Mark paid outside app
                     </button>
                   </div>
+                </section>
+
+                <section className="invoice-extractor">
+                  <div className="panel-heading">
+                    <div>
+                      <p className="eyebrow">Read invoice</p>
+                      <h2>Paste a supplier invoice and let Ship Hoppa do the rest.</h2>
+                    </div>
+                    <Receipt size={22} />
+                  </div>
+                  <p className="tab-intro-copy">
+                    Forward or paste the supplier's invoice text. Ship Hoppa pulls out the invoice
+                    number, amount, currency, due date, and bank details, matches it to the right
+                    purchase order, and creates a payment request for you to approve.
+                  </p>
+                  <textarea
+                    className="invoice-paste-area"
+                    rows={8}
+                    placeholder={`Example:\nINVOICE No: INV-2026-0042\nIssued: 2026-05-01\nDue Date: 2026-05-15\nPO Number: SH-2026-0044\nTotal: USD 4,250.00\nBeneficiary: Foshan Tiles Co Ltd\nBank: HSBC Hong Kong\nAccount No: 1234-5678-9012`}
+                    value={invoiceText}
+                    onChange={(event) => setInvoiceText(event.target.value)}
+                  />
+                  <div className="invoice-extractor-actions">
+                    <button
+                      className="secondary-action"
+                      type="button"
+                      onClick={handleInvoicePreview}
+                      disabled={parsingInvoice || !invoiceText.trim()}
+                    >
+                      {parsingInvoice ? <Loader2 size={16} className="spin" /> : <FileText size={16} />}
+                      Preview parse
+                    </button>
+                    <button
+                      className="primary-action"
+                      type="button"
+                      onClick={handleInvoiceApply}
+                      disabled={parsingInvoice || !invoiceText.trim()}
+                    >
+                      {parsingInvoice ? <Loader2 size={16} className="spin" /> : <Check size={16} />}
+                      Apply to shipment
+                    </button>
+                  </div>
+                  {parsedInvoice && (
+                    <div className="parsed-invoice-card">
+                      <strong>Parsed fields</strong>
+                      <div className="parsed-invoice-grid">
+                        <DetailTile icon={<FileText size={16} />} label="Invoice number" value={parsedInvoice.invoice_number ?? 'Not found'} />
+                        <DetailTile icon={<Receipt size={16} />} label="Amount" value={parsedInvoice.total_amount != null && parsedInvoice.currency ? `${parsedInvoice.currency} ${parsedInvoice.total_amount.toLocaleString()}` : 'Not found'} />
+                        <DetailTile icon={<CalendarClock size={16} />} label="Due date" value={parsedInvoice.due_date ?? 'Not found'} />
+                        <DetailTile icon={<UserRound size={16} />} label="Beneficiary" value={parsedInvoice.beneficiary_name ?? 'Not found'} />
+                        <DetailTile icon={<CircleDollarSign size={16} />} label="Bank" value={parsedInvoice.bank_name ?? 'Not found'} />
+                        <DetailTile icon={<ShieldCheck size={16} />} label="SWIFT" value={parsedInvoice.swift_code ?? 'Not found'} />
+                        <DetailTile icon={<ShieldCheck size={16} />} label="Account (last 4)" value={parsedInvoice.account_number_last4 ?? 'Not found'} />
+                        <DetailTile icon={<ClipboardCheck size={16} />} label="PO reference" value={parsedInvoice.purchase_order_reference ?? 'Not found'} />
+                      </div>
+                      <small>Confidence: {parsedInvoice.confidence}</small>
+                    </div>
+                  )}
                 </section>
               </section>
             )}

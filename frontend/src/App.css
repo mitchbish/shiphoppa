@@ -4928,3 +4928,55 @@ textarea:focus {
   border-radius: 8px;
   padding: 16px;
 }
+
+/* --- Invoice extractor --- */
+.invoice-extractor {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid var(--border-soft, #e5e2dd);
+  background: #fffaf6;
+  border-radius: 12px;
+}
+
+.invoice-paste-area {
+  width: 100%;
+  margin-top: 10px;
+  padding: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  border: 1px solid #d8d4ce;
+  border-radius: 8px;
+  resize: vertical;
+}
+
+.invoice-extractor-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.parsed-invoice-card {
+  margin-top: 14px;
+  padding: 14px;
+  background: #fff;
+  border: 1px solid #d6cfc6;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+}
+
+.parsed-invoice-card strong {
+  font-size: 14px;
+}
+
+.parsed-invoice-card small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.parsed-invoice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 8px;
+}
