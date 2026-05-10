@@ -87,6 +87,7 @@ import {
   rejectApprovalRequest,
   requestApprovalReview,
   extractFactsPreview,
+  getSupplierPortalPreview,
   getSentinelSubscribers,
   createSentinelSubscriber,
   confirmSentinelSubscriber,
@@ -3716,6 +3717,10 @@ function App() {
   const [extractionPreviewResult, setExtractionPreviewResult] = useState<ExtractionPreviewResponse | null>(null)
   const [extractionPreviewLoading, setExtractionPreviewLoading] = useState(false)
   const [extractionPreviewError, setExtractionPreviewError] = useState<string | null>(null)
+  const [supplierPreviewOpen, setSupplierPreviewOpen] = useState(false)
+  const [supplierPreviewResult, setSupplierPreviewResult] = useState<SupplierPortalResponse | null>(null)
+  const [supplierPreviewLoading, setSupplierPreviewLoading] = useState(false)
+  const [supplierPreviewError, setSupplierPreviewError] = useState<string | null>(null)
   const [inboxMessages, setInboxMessages] = useState<SourceMessage[]>([])
   const [landedCost, setLandedCost] = useState<LandedCostSummary | null>(null)
   const [notifications, setNotifications] = useState<Notification[]>([])
@@ -7824,6 +7829,29 @@ function App() {
                         <FileText size={15} />
                         Demo supplier upload
                       </button>
+                      <button
+                        className="secondary-action small"
+                        type="button"
+                        disabled={!activeBooking || supplierPreviewLoading}
+                        onClick={async () => {
+                          if (!activeBooking) return
+                          setSupplierPreviewOpen(true)
+                          setSupplierPreviewLoading(true)
+                          setSupplierPreviewError(null)
+                          setSupplierPreviewResult(null)
+                          try {
+                            const result = await getSupplierPortalPreview(activeBooking.id)
+                            setSupplierPreviewResult(result)
+                          } catch (err) {
+                            setSupplierPreviewError(err instanceof Error ? err.message : 'Could not load preview')
+                          } finally {
+                            setSupplierPreviewLoading(false)
+                          }
+                        }}
+                      >
+                        <UserRound size={15} />
+                        See what your supplier sees
+                      </button>
                       <button className="secondary-action small" type="button" onClick={() => setView('integrations')}>
                         <ArrowRight size={15} />
                         Account integrations
@@ -7831,6 +7859,103 @@ function App() {
                     </div>
                   </section>
                 </div>
+
+                {supplierPreviewOpen && (
+                  <div
+                    className="modal-backdrop"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="Supplier portal preview"
+                    onClick={() => setSupplierPreviewOpen(false)}
+                  >
+                    <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+                      <header className="modal-head">
+                        <div>
+                          <span className="status-chip orange">Preview only</span>
+                          <h2>This is what the supplier sees on their portal.</h2>
+                        </div>
+                        <button
+                          type="button"
+                          className="ghost-action small"
+                          onClick={() => setSupplierPreviewOpen(false)}
+                        >
+                          Close
+                        </button>
+                      </header>
+                      {supplierPreviewLoading && <p>Loading preview…</p>}
+                      {supplierPreviewError && <p style={{ color: '#dc2626' }}>{supplierPreviewError}</p>}
+                      {supplierPreviewResult && (
+                        <div style={{ display: 'grid', gap: 16 }}>
+                          <section>
+                            <h3 style={{ fontSize: 15, marginBottom: 8 }}>Booking summary</h3>
+                            <dl className="decision-card-grid">
+                              <div>
+                                <dt>Order ID</dt>
+                                <dd>{supplierPreviewResult.booking.id}</dd>
+                              </div>
+                              <div>
+                                <dt>Goods</dt>
+                                <dd>{supplierPreviewResult.booking.cargo_description ?? '—'}</dd>
+                              </div>
+                              <div>
+                                <dt>Goods ready by</dt>
+                                <dd>{formatDateFriendly(supplierPreviewResult.booking.cargo_ready_date_latest)}</dd>
+                              </div>
+                              <div>
+                                <dt>Pickup city</dt>
+                                <dd>{supplierPreviewResult.booking.supplier_city}</dd>
+                              </div>
+                              <div>
+                                <dt>Volume</dt>
+                                <dd>{supplierPreviewResult.booking.cbm_estimate} CBM</dd>
+                              </div>
+                              <div>
+                                <dt>Weight</dt>
+                                <dd>{supplierPreviewResult.booking.weight_kg_estimate} kg</dd>
+                              </div>
+                              <div>
+                                <dt>Status</dt>
+                                <dd>{supplierPreviewResult.booking.status}</dd>
+                              </div>
+                            </dl>
+                          </section>
+                          <section>
+                            <h3 style={{ fontSize: 15, marginBottom: 8 }}>What the supplier is asked for</h3>
+                            <p style={{ color: '#64748b' }}>{supplierPreviewResult.supplier_instructions}</p>
+                          </section>
+                          <section>
+                            <h3 style={{ fontSize: 15, marginBottom: 8 }}>Documents on file</h3>
+                            {supplierPreviewResult.checklist.documents.length === 0 ? (
+                              <p>No documents yet.</p>
+                            ) : (
+                              <ul>
+                                {supplierPreviewResult.checklist.documents.map((doc) => (
+                                  <li key={doc.id}>
+                                    {doc.document_type} {' . '} {doc.status}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </section>
+                          <section>
+                            <h3 style={{ fontSize: 15, marginBottom: 8 }}>Recent events visible to supplier</h3>
+                            {supplierPreviewResult.events.length === 0 ? (
+                              <p>No events yet.</p>
+                            ) : (
+                              <ul>
+                                {supplierPreviewResult.events.slice(0, 8).map((event) => (
+                                  <li key={event.id}>
+                                    {event.label} {' . '} {formatDateFriendly(event.occurred_at ?? event.created_at)}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </section>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </section>
             )}
 
