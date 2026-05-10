@@ -86,6 +86,7 @@ import {
   approveApprovalRequest,
   rejectApprovalRequest,
   requestApprovalReview,
+  extractFactsPreview,
   getSentinelSubscribers,
   createSentinelSubscriber,
   confirmSentinelSubscriber,
@@ -127,6 +128,7 @@ import type {
   AdminTaskSummary,
   ApprovalRequestRecord,
   AutomationRunAllResult,
+  ExtractionPreviewResponse,
   HsSuggestionsResponse,
   LandedCostSummary,
   ParsedInvoice,
@@ -3708,6 +3710,12 @@ function App() {
   const [importProjectMessage, setImportProjectMessage] = useState<string | null>(null)
   const [importProjectError, setImportProjectError] = useState<string | null>(null)
   const [includeDeletedProjects, setIncludeDeletedProjects] = useState(false)
+  const [extractionPreviewOpen, setExtractionPreviewOpen] = useState(false)
+  const [extractionPreviewSubject, setExtractionPreviewSubject] = useState('')
+  const [extractionPreviewBody, setExtractionPreviewBody] = useState('')
+  const [extractionPreviewResult, setExtractionPreviewResult] = useState<ExtractionPreviewResponse | null>(null)
+  const [extractionPreviewLoading, setExtractionPreviewLoading] = useState(false)
+  const [extractionPreviewError, setExtractionPreviewError] = useState<string | null>(null)
   const [inboxMessages, setInboxMessages] = useState<SourceMessage[]>([])
   const [landedCost, setLandedCost] = useState<LandedCostSummary | null>(null)
   const [notifications, setNotifications] = useState<Notification[]>([])
@@ -7351,7 +7359,20 @@ function App() {
                     <p className="eyebrow">Inbox</p>
                     <h2>Forwarded supplier and partner messages.</h2>
                   </div>
-                  <Bell size={24} />
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      className="ghost-action small"
+                      onClick={() => {
+                        setExtractionPreviewOpen(true)
+                        setExtractionPreviewResult(null)
+                        setExtractionPreviewError(null)
+                      }}
+                    >
+                      Try the parser
+                    </button>
+                    <Bell size={24} />
+                  </div>
                 </div>
                 <p className="tab-intro-copy">
                   Forward emails from suppliers, forwarders, brokers, or warehouses to your Ship Hoppa
@@ -7394,6 +7415,136 @@ function App() {
                       </li>
                     ))}
                   </ul>
+                )}
+
+                {extractionPreviewOpen && (
+                  <div
+                    className="modal-backdrop"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="Try the parser"
+                    onClick={() => setExtractionPreviewOpen(false)}
+                  >
+                    <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+                      <header className="modal-head">
+                        <div>
+                          <p className="eyebrow">Try the parser</p>
+                          <h2>Paste an email or note and see what we extract.</h2>
+                        </div>
+                        <button
+                          type="button"
+                          className="ghost-action small"
+                          onClick={() => setExtractionPreviewOpen(false)}
+                        >
+                          Close
+                        </button>
+                      </header>
+                      <p className="tab-intro-copy">
+                        This is a dry run. Nothing is saved and no shipment is updated. We show the
+                        facts we would have extracted, the confidence on each, and which order we
+                        would have matched.
+                      </p>
+                      <form
+                        onSubmit={async (event) => {
+                          event.preventDefault()
+                          setExtractionPreviewError(null)
+                          if (!extractionPreviewBody.trim()) return
+                          setExtractionPreviewLoading(true)
+                          try {
+                            const result = await extractFactsPreview(
+                              extractionPreviewBody,
+                              extractionPreviewSubject || undefined,
+                            )
+                            setExtractionPreviewResult(result)
+                          } catch (err) {
+                            setExtractionPreviewError(err instanceof Error ? err.message : 'Parse failed')
+                          } finally {
+                            setExtractionPreviewLoading(false)
+                          }
+                        }}
+                      >
+                        <label style={{ display: 'block', marginBottom: 12 }}>
+                          <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Subject (optional)</span>
+                          <input
+                            type="text"
+                            value={extractionPreviewSubject}
+                            onChange={(e) => setExtractionPreviewSubject(e.target.value)}
+                            placeholder="e.g. Booking confirmation BKG-0123"
+                          />
+                        </label>
+                        <label style={{ display: 'block', marginBottom: 12 }}>
+                          <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Email or message body</span>
+                          <textarea
+                            rows={10}
+                            value={extractionPreviewBody}
+                            onChange={(e) => setExtractionPreviewBody(e.target.value)}
+                            placeholder="Paste the email or partner message text here…"
+                            required
+                            style={{ width: '100%', resize: 'vertical', fontFamily: 'inherit' }}
+                          />
+                        </label>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button type="submit" className="primary" disabled={extractionPreviewLoading}>
+                            {extractionPreviewLoading ? 'Parsing…' : 'Parse'}
+                          </button>
+                          <button
+                            type="button"
+                            className="ghost-action small"
+                            onClick={() => {
+                              setExtractionPreviewSubject('')
+                              setExtractionPreviewBody('')
+                              setExtractionPreviewResult(null)
+                              setExtractionPreviewError(null)
+                            }}
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      </form>
+                      {extractionPreviewError && (
+                        <p style={{ color: '#dc2626', marginTop: 12 }}>{extractionPreviewError}</p>
+                      )}
+                      {extractionPreviewResult && (
+                        <div style={{ marginTop: 16 }}>
+                          <p style={{ fontSize: 13, color: '#64748b' }}>
+                            {extractionPreviewResult.extracted_count} fact{extractionPreviewResult.extracted_count === 1 ? '' : 's'} found.
+                            {' '}
+                            {extractionPreviewResult.would_match_booking_id
+                              ? `Would attach to ${extractionPreviewResult.would_match_booking_id}.`
+                              : 'No matching order detected.'}
+                          </p>
+                          {extractionPreviewResult.facts.length === 0 ? (
+                            <p>No facts were extracted from this text.</p>
+                          ) : (
+                            <table className="data-table">
+                              <thead>
+                                <tr>
+                                  <th>Field</th>
+                                  <th>Value</th>
+                                  <th>Confidence</th>
+                                  <th>Source</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {extractionPreviewResult.facts.map((fact, idx) => (
+                                  <tr key={`${fact.field}-${idx}`}>
+                                    <td>{fact.field}</td>
+                                    <td>{fact.value}</td>
+                                    <td>
+                                      <span className={`status-chip ${fact.confidence === 'verified' ? 'green' : fact.confidence === 'estimated' ? 'orange' : 'gray'}`}>
+                                        {fact.confidence}
+                                      </span>
+                                    </td>
+                                    <td style={{ maxWidth: 320, fontSize: 12, color: '#64748b' }}>{fact.source_snippet}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 )}
               </section>
             )}
