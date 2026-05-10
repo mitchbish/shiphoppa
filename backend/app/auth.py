@@ -63,3 +63,14 @@ def require_roles(roles: Iterable[ActorRole]):
 
 require_importer = require_roles([ActorRole.importer, ActorRole.admin])
 require_admin = require_roles([ActorRole.admin])
+
+
+def require_cron(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Principal:
+    """Authorize a request from a scheduled cron caller (e.g. Railway cron)."""
+    expected = os.getenv("SHIP_HOPPA_CRON_TOKEN") or "shiphoppa-cron-dev"
+    if not credentials or credentials.credentials != expected:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid cron token",
+        )
+    return Principal(role=ActorRole.system, actor_id="cron")

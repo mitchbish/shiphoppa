@@ -1,12 +1,14 @@
 {
-  "framework": "vite",
-  "installCommand": "npm --prefix frontend ci",
-  "buildCommand": "npm --prefix frontend run build",
-  "outputDirectory": "frontend/dist",
+  "outputDirectory": "marketing",
+  "buildCommand": "exit 0",
+  "installCommand": "exit 0",
+  "cleanUrls": true,
+  "trailingSlash": false,
   "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
+    { "source": "/fcl", "destination": "/fcl/index.html" },
+    { "source": "/fcl/", "destination": "/fcl/index.html" },
+    { "source": "/lcl", "destination": "/lcl/index.html" },
+    { "source": "/lcl/", "destination": "/lcl/index.html" },
+    { "source": "/((?!.*\\.).*)", "destination": "/index.html" }
   ]
 }

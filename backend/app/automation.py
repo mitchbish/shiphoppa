@@ -19,6 +19,7 @@ from .models import (
     ActorRole,
     AdminTaskStatus,
     ApprovalRequestType,
+    ApprovalStatus,
     AutomationDecision,
     AutomationType,
     Booking,
@@ -501,20 +502,57 @@ CHASE_TEMPLATES: Dict[str, Dict[str, str]] = {
 def generate_chase_subject_body(
     field: str, booking: Booking
 ) -> Tuple[str, str]:
-    template = CHASE_TEMPLATES.get(field)
-    if not template:
-        return (
-            f"Information needed for shipment {booking.id}",
-            f"We need additional information for shipment {booking.id}. Please respond with the required details.",
-        )
-    context = {
+    from . import templates as templates_module
+
+    container = None
+    if booking.container_id:
+        # Best-effort lookup; the Store reference is needed and isn't passed
+        # here. Callers that have access to the store can pre-render with the
+        # full context using `render_for_booking`.
+        container = None
+
+    context: Dict[str, Any] = {
         "booking_id": booking.id,
         "cargo_description": booking.cargo_description or booking.cargo_category.value,
+        "supplier_name": booking.supplier_name or "team",
+        "origin_city": booking.supplier_city or "origin",
+        "destination_port": booking.delivery_city or "destination",
+        "container_number": booking.container_id or "TBA",
     }
-    return (
-        template["subject"].format(**context),
-        template["body"].format(**context),
-    )
+
+    template_key = f"chase_{field}"
+    if templates_module.template_for(template_key):
+        return templates_module.render(template_key, context)
+
+    legacy = CHASE_TEMPLATES.get(field)
+    if legacy:
+        return (
+            legacy["subject"].format(**context),
+            legacy["body"].format(**context),
+        )
+
+    return templates_module.render("chase_generic", context)
+
+
+def render_for_booking(
+    template_key: str,
+    booking: Booking,
+    extra: Optional[Dict[str, Any]] = None,
+) -> Tuple[str, str]:
+    from . import templates as templates_module
+
+    context: Dict[str, Any] = {
+        "booking_id": booking.id,
+        "cargo_description": booking.cargo_description or booking.cargo_category.value,
+        "supplier_name": booking.supplier_name or "team",
+        "origin_city": booking.supplier_city or "origin",
+        "destination_port": booking.delivery_city or "destination",
+        "container_number": booking.container_id or "TBA",
+        "importer_name": "there",
+    }
+    if extra:
+        context.update(extra)
+    return templates_module.render(template_key, context)
 
 
 # --- Automation decision ladder ---
@@ -760,6 +798,107 @@ def try_advance_booking_status(store: Store, booking: Booking) -> bool:
     return advanced
 
 
+def detect_pending_approvals(store: Store, booking: Booking) -> List[ApprovalRequestType]:
+    """
+    Detect decision points where a customer approval is needed but no
+    approval request exists yet. Returns the list of types to create.
+    """
+    needs: List[ApprovalRequestType] = []
+
+    existing_types = {
+        a.request_type
+        for a in store.approval_requests.values()
+        if a.related_booking_id == booking.id and a.status == ApprovalStatus.pending
+    }
+
+    customs_profile = next(
+        (cp for cp in store.customs_profiles.values() if cp.booking_id == booking.id),
+        None,
+    )
+    if (
+        customs_profile
+        and customs_profile.hs_code
+        and customs_profile.customs_status == CustomsStatus.documents_required
+        and ApprovalRequestType.approve_customs_submission not in existing_types
+    ):
+        needs.append(ApprovalRequestType.approve_customs_submission)
+
+    delivery_plan = next(
+        (dp for dp in store.delivery_plans.values() if dp.booking_id == booking.id),
+        None,
+    )
+    if (
+        delivery_plan
+        and delivery_plan.status == DeliveryPlanStatus.ready_to_book
+        and ApprovalRequestType.approve_trucking not in existing_types
+    ):
+        needs.append(ApprovalRequestType.approve_trucking)
+
+    if (
+        booking.release_status == ReleaseStatus.ready
+        and ApprovalRequestType.approve_release not in existing_types
+    ):
+        needs.append(ApprovalRequestType.approve_release)
+
+    return needs
+
+
+APPROVAL_TITLES: Dict[ApprovalRequestType, str] = {
+    ApprovalRequestType.approve_customs_submission: "Approve customs submission",
+    ApprovalRequestType.approve_trucking: "Approve final delivery booking",
+    ApprovalRequestType.approve_release: "Confirm release of cargo",
+    ApprovalRequestType.accept_sailing_change: "Confirm sailing change",
+    ApprovalRequestType.approve_payment: "Approve payment",
+    ApprovalRequestType.approve_supplier_payment: "Approve supplier payment",
+    ApprovalRequestType.approve_invoice_variance: "Confirm invoice variance",
+    ApprovalRequestType.approve_spare_space_listing: "Approve spare space listing",
+}
+
+
+def approval_summary_for_type(request_type: ApprovalRequestType, booking: Booking, store: Store) -> str:
+    if request_type == ApprovalRequestType.approve_customs_submission:
+        cp = next((cp for cp in store.customs_profiles.values() if cp.booking_id == booking.id), None)
+        if cp:
+            return f"HS code {cp.hs_code} is set. Confirm we can lodge the customs entry."
+        return "Customs entry is ready to lodge."
+    if request_type == ApprovalRequestType.approve_trucking:
+        dp = next((dp for dp in store.delivery_plans.values() if dp.booking_id == booking.id), None)
+        if dp:
+            return f"Delivery plan ready: {dp.method.value if dp.method else 'method TBD'} to {booking.delivery_city or 'destination'}."
+        return "Final delivery is ready to book."
+    if request_type == ApprovalRequestType.approve_release:
+        return "All checks have passed and cargo is eligible for release. Confirm to release."
+    if request_type == ApprovalRequestType.accept_sailing_change:
+        container = store.containers.get(booking.container_id) if booking.container_id else None
+        if container:
+            return f"Sailing ETA changed to {container.estimated_arrival}. Confirm new arrival."
+        return "Sailing schedule has changed. Confirm the new dates."
+    return "Review and approve."
+
+
+def create_pending_approvals(store: Store, booking: Booking) -> int:
+    """
+    Create any pending approval requests detected for this booking.
+    Returns number created.
+    """
+    from .operations import create_approval_request
+
+    needs = detect_pending_approvals(store, booking)
+    created = 0
+    for request_type in needs:
+        title = APPROVAL_TITLES.get(request_type, request_type.value.replace("_", " ").title())
+        summary = approval_summary_for_type(request_type, booking, store)
+        create_approval_request(
+            store,
+            request_type=request_type,
+            title=f"{title} for {booking.id}",
+            summary=summary,
+            related_booking_id=booking.id,
+        )
+        created += 1
+    return created
+
+
 def run_full_automation_cycle(store: Store) -> Dict[str, AutomationResult]:
     from .operations import create_admin_task
 
@@ -770,6 +909,7 @@ def run_full_automation_cycle(store: Store) -> Dict[str, AutomationResult]:
     ]
     for booking in active_bookings:
         try_advance_booking_status(store, booking)
+        create_pending_approvals(store, booking)
         results[booking.id] = run_automation_for_booking(store, booking)
 
     alerts = check_stale_shipments(store)

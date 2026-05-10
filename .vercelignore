@@ -2,13 +2,10 @@
 .DS_Store
 
 backend/
-marketing/
+frontend/
 uploads/
 assets/
 
 /index.html
 /index v1.html
 /tweaks-panel.jsx
-
-frontend/node_modules/
-frontend/dist/

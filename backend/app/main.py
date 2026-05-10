@@ -1,9 +1,12 @@
 import os
+from pathlib import Path
 from datetime import date
 from typing import Callable, List, Optional, TypeVar
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from .algorithms import (
     CATEGORY_DENSITY_DEFAULTS,
@@ -14,7 +17,7 @@ from .algorithms import (
     run_release_checks,
     submit_booking,
 )
-from .auth import Principal, require_admin, require_importer
+from .auth import Principal, require_admin, require_cron, require_importer
 from .automation import (
     AutomationResult,
     ExtractedFact,
@@ -46,6 +49,7 @@ from .models import (
     Booking,
     BookingChecklistResponse,
     BookingCreate,
+    BookingStatus,
     CarrierOption,
     CommitContainerRequest,
     ConfirmBookingResponse,
@@ -899,6 +903,42 @@ def stale_shipment_checks(_principal: Principal = Depends(require_admin)) -> Lis
     return check_stale_shipments(store)
 
 
+# --- Scheduled cron-driven automation ---
+# Use a separate token from admin/importer; Railway can hit this on a schedule
+# without exposing the admin token. Set SHIP_HOPPA_CRON_TOKEN in production.
+
+@app.post("/automation/cron/run")
+def cron_run_automation(_principal: Principal = Depends(require_cron)) -> dict:
+    results = run_full_automation_cycle(store)
+    persist_store()
+    chases = sum(r.chase_messages_queued for r in results.values())
+    missing = sum(len(r.missing_data) for r in results.values())
+    open_admin = sum(1 for t in store.admin_tasks.values() if t.status == AdminTaskStatus.open)
+    pending_approvals = sum(1 for a in store.approval_requests.values() if a.status == ApprovalStatus.pending)
+    return {
+        "shipments_processed": len(results),
+        "total_chase_messages_queued": chases,
+        "total_missing_items": missing,
+        "open_admin_tasks": open_admin,
+        "pending_approvals": pending_approvals,
+        "states": {bid: r.lifecycle_state.value for bid, r in results.items()},
+    }
+
+
+@app.post("/automation/cron/health")
+def cron_health(_principal: Principal = Depends(require_cron)) -> dict:
+    """Lightweight ping for cron platform monitoring."""
+    return {
+        "ok": True,
+        "active_bookings": sum(
+            1 for b in store.bookings.values() if b.status != BookingStatus.delivered
+        ),
+        "pending_approvals": sum(
+            1 for a in store.approval_requests.values() if a.status == ApprovalStatus.pending
+        ),
+    }
+
+
 # --- Admin Task Queue ---
 
 
@@ -955,3 +995,18 @@ def admin_task_summary(_principal: Principal = Depends(require_admin)) -> dict:
         "total_waived": sum(1 for t in tasks if t.status == AdminTaskStatus.waived),
         "by_type": by_type,
     }
+
+
+# --- Frontend SPA static serving ---
+
+_FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend_dist"
+
+if _FRONTEND_DIR.is_dir():
+    app.mount("/assets", StaticFiles(directory=_FRONTEND_DIR / "assets"), name="frontend-assets")
+
+    @app.get("/{path:path}")
+    def serve_frontend(path: str) -> FileResponse:
+        file = _FRONTEND_DIR / path
+        if file.is_file():
+            return FileResponse(file)
+        return FileResponse(_FRONTEND_DIR / "index.html")

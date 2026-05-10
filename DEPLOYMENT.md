@@ -2,24 +2,20 @@
 
 Ship Hoppa is split into two hosted services:
 
-- Railway runs the FastAPI backend from `backend/`.
-- Vercel runs the customer/admin app from `frontend/`.
-- Vercel runs the public marketing website from `marketing/`.
-
-This keeps the operating API and the customer/admin website separate while still living in one project folder.
+- **Railway** runs the full app — both the FastAPI backend and the React frontend (built at Docker build time and served as static files by the API).
+- **Vercel** runs the public marketing website from `marketing/`.
 
 Current production URLs:
 
 - Marketing website: `https://shiphoppa.com`
 - Marketing website AU: `https://shiphoppa.com.au`
-- App: `https://app.shiphoppa.com`
-- App AU: `https://app.shiphoppa.com.au`
-- App fallback: `https://ship-hoppa.vercel.app`
-- API: `https://ship-hoppa-api-production.up.railway.app`
+- App + API: `https://app.shiphoppa.com`
+- App + API AU: `https://app.shiphoppa.com.au`
+- App + API fallback: `https://ship-hoppa-api-production.up.railway.app`
 
-## Railway API
+## Railway (App + API)
 
-The repo includes `railway.toml` and a backend `Dockerfile`, so Railway can build the backend from the project root.
+The Dockerfile is a multi-stage build: stage 1 builds the Vite frontend, stage 2 runs the Python API and serves the frontend as static files. All API routes (`/health`, `/bookings`, etc.) are handled by FastAPI; all other routes fall through to the SPA `index.html`.
 
 Required Railway variables:
 
@@ -27,8 +23,6 @@ Required Railway variables:
 SHIP_HOPPA_ENV=production
 SHIP_HOPPA_IMPORTER_TOKEN=<strong random token>
 SHIP_HOPPA_ADMIN_TOKEN=<strong random token>
-SHIP_HOPPA_ALLOWED_ORIGINS=https://<your-vercel-domain>
-SHIP_HOPPA_ALLOWED_ORIGIN_REGEX=https://.*\.vercel\.app
 SHIP_HOPPA_STORE_SNAPSHOT_ENABLED=1
 ```
 
@@ -80,40 +74,9 @@ The health check is:
 /health
 ```
 
-## Vercel App
+## Vercel (Marketing Website)
 
-The repo includes `vercel.json`, so Vercel can build the frontend from the project root.
-
-Required Vercel variables:
-
-```bash
-VITE_API_BASE_URL=https://<your-railway-api-domain>
-VITE_IMPORTER_TOKEN=<same value as SHIP_HOPPA_IMPORTER_TOKEN>
-VITE_ADMIN_TOKEN=<same value as SHIP_HOPPA_ADMIN_TOKEN>
-```
-
-Vercel uses:
-
-```bash
-npm --prefix frontend ci
-npm --prefix frontend run build
-```
-
-and serves:
-
-```text
-frontend/dist
-```
-
-## Vercel Marketing Website
-
-The marketing website is a separate Vercel project deployed from `marketing/`.
-
-It is static HTML and serves:
-
-```text
-marketing/index.html
-```
+The root `vercel.json` points Vercel at the `marketing/` directory. No build step — it's static HTML.
 
 Root website domains point here:
 
@@ -124,7 +87,7 @@ shiphoppa.com.au
 www.shiphoppa.com.au
 ```
 
-App domains point to the Vite app project:
+App domains point to Railway:
 
 ```text
 app.shiphoppa.com
@@ -140,6 +103,8 @@ A      app   76.76.21.21
 ```
 
 ## Production Note
+
+Since the frontend and API now share the same Railway domain, CORS is no longer required for the app itself. The CORS middleware remains for external API consumers — configure `SHIP_HOPPA_ALLOWED_ORIGINS` and `SHIP_HOPPA_ALLOWED_ORIGIN_REGEX` only if needed.
 
 The current token setup is acceptable for a private prototype, but not a public production launch. Before opening the app publicly, replace the shared frontend tokens with real user authentication and role-based sessions.
 

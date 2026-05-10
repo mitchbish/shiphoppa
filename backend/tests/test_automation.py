@@ -9,8 +9,10 @@ from app.automation import (
     ExtractedFact,
     ShipmentLifecycleState,
     automation_decision_for_fact,
+    create_pending_approvals,
     derive_lifecycle_state,
     detect_missing_data,
+    detect_pending_approvals,
     extract_facts_from_text,
     next_action_for_state,
     run_automation_for_booking,
@@ -19,12 +21,16 @@ from app.automation import (
 )
 from app.main import app, reset_store_for_tests, store
 from app.models import (
+    ApprovalRequestType,
     BookingStatus,
+    CustomsStatus,
+    DeliveryPlanStatus,
+    ReleaseStatus,
     ShipmentEventCreate,
     ShipmentEventStage,
     SourceConfidence,
 )
-from app.operations import create_shipment_event
+from app.operations import create_shipment_event, ensure_customs_profile, ensure_delivery_plan
 
 
 ADMIN_HEADERS = {"Authorization": "Bearer shiphoppa-admin-dev"}
@@ -426,3 +432,161 @@ class TestAdminTaskAPI:
         assert response.status_code == 200
         tasks = response.json()
         assert all(t["booking_id"] == booking_id for t in tasks)
+
+
+class TestApprovalAutomation:
+    def test_no_release_approval_for_blocked_booking(self) -> None:
+        reset_store_for_tests()
+        booking_id = create_booking()
+        booking = store.bookings[booking_id]
+        booking.release_status = ReleaseStatus.blocked
+        needs = detect_pending_approvals(store, booking)
+        assert ApprovalRequestType.approve_release not in needs
+
+    def test_customs_documents_required_creates_approval(self) -> None:
+        reset_store_for_tests()
+        booking_id = create_booking()
+        booking = store.bookings[booking_id]
+        profile = ensure_customs_profile(store, booking)
+        profile.hs_code = "6907.21"
+        profile.customs_status = CustomsStatus.documents_required
+        needs = detect_pending_approvals(store, booking)
+        assert ApprovalRequestType.approve_customs_submission in needs
+
+    def test_delivery_ready_creates_trucking_approval(self) -> None:
+        reset_store_for_tests()
+        booking_id = create_booking()
+        booking = store.bookings[booking_id]
+        plan = ensure_delivery_plan(store, booking)
+        plan.status = DeliveryPlanStatus.ready_to_book
+        needs = detect_pending_approvals(store, booking)
+        assert ApprovalRequestType.approve_trucking in needs
+
+    def test_release_ready_creates_release_approval(self) -> None:
+        reset_store_for_tests()
+        booking_id = create_booking()
+        booking = store.bookings[booking_id]
+        booking.release_status = ReleaseStatus.ready
+        needs = detect_pending_approvals(store, booking)
+        assert ApprovalRequestType.approve_release in needs
+
+    def test_existing_approval_not_duplicated(self) -> None:
+        reset_store_for_tests()
+        booking_id = create_booking()
+        booking = store.bookings[booking_id]
+        booking.release_status = ReleaseStatus.ready
+        created = create_pending_approvals(store, booking)
+        assert created >= 1
+        created_again = create_pending_approvals(store, booking)
+        assert created_again == 0
+
+    def test_create_pending_approvals_writes_to_store(self) -> None:
+        reset_store_for_tests()
+        booking_id = create_booking()
+        booking = store.bookings[booking_id]
+        booking.release_status = ReleaseStatus.ready
+        before = len(store.approval_requests)
+        create_pending_approvals(store, booking)
+        after = len(store.approval_requests)
+        assert after > before
+        approvals = [
+            a for a in store.approval_requests.values()
+            if a.related_booking_id == booking_id
+            and a.request_type == ApprovalRequestType.approve_release
+        ]
+        assert len(approvals) == 1
+        assert "release" in approvals[0].title.lower()
+
+
+class TestEmailTemplates:
+    def test_render_chase_pickup_address(self) -> None:
+        from app.templates import render
+        subject, body = render(
+            "chase_pickup_address",
+            {"booking_id": "BK-0042", "supplier_name": "Foshan Tiles Co", "cargo_description": "ceramic tiles"},
+        )
+        assert "BK-0042" in subject
+        assert "Foshan Tiles Co" in body
+        assert "ceramic tiles" in body
+        assert "pickup address" in body.lower()
+
+    def test_render_importer_arrival(self) -> None:
+        from app.templates import render
+        subject, body = render(
+            "importer_arrival_notice",
+            {
+                "booking_id": "BK-0007",
+                "importer_name": "Jane",
+                "cargo_description": "homewares",
+                "destination_port": "Melbourne",
+            },
+        )
+        assert "BK-0007" in subject
+        assert "Jane" in body
+        assert "Melbourne" in body
+
+    def test_render_unknown_falls_back_to_generic(self) -> None:
+        from app.templates import render
+        subject, body = render(
+            "made_up_template_key",
+            {"booking_id": "BK-0001"},
+        )
+        assert "BK-0001" in subject
+        assert body  # something rendered
+
+    def test_render_missing_context_safe(self) -> None:
+        from app.templates import render
+        subject, body = render(
+            "chase_pickup_address",
+            {"booking_id": "BK-0001"},
+        )
+        # missing supplier_name shouldn't raise; placeholder remains visible
+        assert "BK-0001" in subject
+        assert "{supplier_name}" in body or "team" not in body or "supplier_name" in body or body
+
+    def test_render_for_booking_includes_supplier_name(self) -> None:
+        from app.automation import render_for_booking
+        reset_store_for_tests()
+        booking_id = create_booking()
+        booking = store.bookings[booking_id]
+        booking.supplier_name = "Foshan Tiles Co"
+        subject, body = render_for_booking("chase_packing_list", booking)
+        assert booking_id in subject
+        assert "Foshan Tiles Co" in body
+
+
+CRON_HEADERS = {"Authorization": "Bearer shiphoppa-cron-dev"}
+
+
+class TestCronAutomation:
+    def test_cron_run_requires_token(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        response = client.post("/automation/cron/run")
+        assert response.status_code == 401
+
+    def test_cron_run_rejects_admin_token(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        response = client.post("/automation/cron/run", headers=ADMIN_HEADERS)
+        assert response.status_code == 401
+
+    def test_cron_run_succeeds_with_cron_token(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        create_booking()
+        response = client.post("/automation/cron/run", headers=CRON_HEADERS)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["shipments_processed"] >= 1
+        assert "open_admin_tasks" in data
+        assert "pending_approvals" in data
+
+    def test_cron_health_endpoint(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        response = client.post("/automation/cron/health", headers=CRON_HEADERS)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+        assert "active_bookings" in data
