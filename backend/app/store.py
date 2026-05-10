@@ -15,11 +15,14 @@ from .models import (
     AutomationRun,
     CarrierService,
     ConsolidationWarehouse,
+    ContingencyOption,
     Container,
     CustomsProfile,
     DeliveryJob,
     DeliveryPlan,
     DocumentRequirement,
+    PartnerCapability,
+    PartnerProfile,
     GrowthAttributionEvent,
     ImportProject,
     ImportProjectEvent,
@@ -80,6 +83,9 @@ class Store:
         self.customs_profiles: Dict[str, CustomsProfile] = {}
         self.delivery_plans: Dict[str, DeliveryPlan] = {}
         self.delivery_jobs: Dict[str, DeliveryJob] = {}
+        self.partner_profiles: Dict[str, PartnerProfile] = {}
+        self.partner_capabilities: Dict[str, PartnerCapability] = {}
+        self.contingency_options: Dict[str, ContingencyOption] = {}
         self.admin_tasks: Dict[str, AdminTask] = {}
         self.purchase_orders: Dict[str, PurchaseOrder] = {}
         self.production_milestones: Dict[str, ProductionMilestone] = {}

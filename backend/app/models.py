@@ -1706,6 +1706,199 @@ class DeliveryJobUpdate(BaseModel):
     notes: Optional[str] = None
 
 
+class PartnerType(str, Enum):
+    supplier = "supplier"
+    courier = "courier"
+    broker = "broker"
+    forwarder = "forwarder"
+    warehouse = "warehouse"
+    destination_agent = "destination_agent"
+    trucker = "trucker"
+    inspection = "inspection"
+    customs = "customs"
+    other = "other"
+
+
+class PartnerCommunicationChannel(str, Enum):
+    email = "email"
+    sms = "sms"
+    whatsapp = "whatsapp"
+    wechat = "wechat"
+    portal = "portal"
+
+
+class PartnerCapabilityType(str, Enum):
+    supplier_production = "supplier_production"
+    origin_pickup = "origin_pickup"
+    inspection = "inspection"
+    warehouse_receipt = "warehouse_receipt"
+    customs_brokerage = "customs_brokerage"
+    port_drayage = "port_drayage"
+    local_delivery = "local_delivery"
+    freight_forwarding = "freight_forwarding"
+    payment_support = "payment_support"
+
+
+class ContingencyIssueType(str, Enum):
+    production_delay = "production_delay"
+    cutoff_miss = "cutoff_miss"
+    sailing_change = "sailing_change"
+    eta_slip = "eta_slip"
+    customs_hold = "customs_hold"
+    biosecurity_risk = "biosecurity_risk"
+    payment_delay = "payment_delay"
+    release_block = "release_block"
+    trucking_risk = "trucking_risk"
+    spare_space_opportunity = "spare_space_opportunity"
+
+
+class ContingencyOptionType(str, Enum):
+    approve_change = "approve_change"
+    book_next_sailing = "book_next_sailing"
+    change_trucker = "change_trucker"
+    request_partner_update = "request_partner_update"
+    pay_charge = "pay_charge"
+    split_shipment = "split_shipment"
+    hold_for_review = "hold_for_review"
+
+
+class ContingencyRiskLevel(str, Enum):
+    low = "low"
+    medium = "medium"
+    high = "high"
+
+
+class ContingencyStatus(str, Enum):
+    proposed = "proposed"
+    approved = "approved"
+    rejected = "rejected"
+    expired = "expired"
+    applied = "applied"
+
+
+class PartnerProfile(BaseModel):
+    id: str
+    partner_type: PartnerType
+    name: str
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    organization_id: Optional[str] = None
+    preferred_channel: PartnerCommunicationChannel = PartnerCommunicationChannel.email
+    upload_permissions: List[str] = Field(default_factory=list)
+    notes: Optional[str] = None
+    active: bool = True
+    created_at: datetime
+    updated_at: datetime
+
+
+class PartnerProfileCreate(BaseModel):
+    partner_type: PartnerType
+    name: str
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    organization_id: Optional[str] = None
+    preferred_channel: PartnerCommunicationChannel = PartnerCommunicationChannel.email
+    upload_permissions: List[str] = Field(default_factory=list)
+    notes: Optional[str] = None
+
+
+class PartnerProfileUpdate(BaseModel):
+    partner_type: Optional[PartnerType] = None
+    name: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    organization_id: Optional[str] = None
+    preferred_channel: Optional[PartnerCommunicationChannel] = None
+    upload_permissions: Optional[List[str]] = None
+    notes: Optional[str] = None
+    active: Optional[bool] = None
+
+
+class PartnerCapability(BaseModel):
+    id: str
+    partner_id: str
+    capability_type: PartnerCapabilityType
+    service_regions: List[str] = Field(default_factory=list)
+    service_lanes: List[str] = Field(default_factory=list)
+    equipment: List[str] = Field(default_factory=list)
+    cutoff_rules: Optional[str] = None
+    operating_hours: Optional[str] = None
+    escalation_contacts: List[str] = Field(default_factory=list)
+    average_response_hours: Optional[float] = None
+    average_completion_hours: Optional[float] = None
+    failure_rate: Optional[float] = None
+    cost_model: Optional[str] = None
+    active: bool = True
+    created_at: datetime
+    updated_at: datetime
+
+
+class PartnerCapabilityCreate(BaseModel):
+    capability_type: PartnerCapabilityType
+    service_regions: List[str] = Field(default_factory=list)
+    service_lanes: List[str] = Field(default_factory=list)
+    equipment: List[str] = Field(default_factory=list)
+    cutoff_rules: Optional[str] = None
+    operating_hours: Optional[str] = None
+    escalation_contacts: List[str] = Field(default_factory=list)
+    average_response_hours: Optional[float] = None
+    average_completion_hours: Optional[float] = None
+    failure_rate: Optional[float] = None
+    cost_model: Optional[str] = None
+
+
+class PartnerCapabilityUpdate(BaseModel):
+    capability_type: Optional[PartnerCapabilityType] = None
+    service_regions: Optional[List[str]] = None
+    service_lanes: Optional[List[str]] = None
+    equipment: Optional[List[str]] = None
+    cutoff_rules: Optional[str] = None
+    operating_hours: Optional[str] = None
+    escalation_contacts: Optional[List[str]] = None
+    average_response_hours: Optional[float] = None
+    average_completion_hours: Optional[float] = None
+    failure_rate: Optional[float] = None
+    cost_model: Optional[str] = None
+    active: Optional[bool] = None
+
+
+class ContingencyOption(BaseModel):
+    id: str
+    booking_id: str
+    issue_type: ContingencyIssueType
+    option_type: ContingencyOptionType
+    plain_language_summary: str
+    cost_impact_usd: Optional[float] = None
+    time_impact_days: Optional[float] = None
+    risk_level: ContingencyRiskLevel = ContingencyRiskLevel.medium
+    source_evidence: Optional[str] = None
+    approval_request_id: Optional[str] = None
+    status: ContingencyStatus = ContingencyStatus.proposed
+    created_at: datetime
+    updated_at: datetime
+
+
+class ContingencyOptionCreate(BaseModel):
+    issue_type: ContingencyIssueType
+    option_type: ContingencyOptionType
+    plain_language_summary: str
+    cost_impact_usd: Optional[float] = None
+    time_impact_days: Optional[float] = None
+    risk_level: ContingencyRiskLevel = ContingencyRiskLevel.medium
+    source_evidence: Optional[str] = None
+    approval_request_id: Optional[str] = None
+
+
+class ContingencyOptionUpdate(BaseModel):
+    plain_language_summary: Optional[str] = None
+    cost_impact_usd: Optional[float] = None
+    time_impact_days: Optional[float] = None
+    risk_level: Optional[ContingencyRiskLevel] = None
+    source_evidence: Optional[str] = None
+    approval_request_id: Optional[str] = None
+    status: Optional[ContingencyStatus] = None
+
+
 class GrowthAttributionCreate(BaseModel):
     event_type: GrowthAttributionEventType
     source: str = Field(..., min_length=1)

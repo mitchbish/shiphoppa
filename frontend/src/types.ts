@@ -927,6 +927,106 @@ export interface ImportProjectWorkspaceResponse {
   approvals: ApprovalRequest[]
 }
 
+export type PartnerType =
+  | 'supplier'
+  | 'courier'
+  | 'broker'
+  | 'forwarder'
+  | 'warehouse'
+  | 'destination_agent'
+  | 'trucker'
+  | 'inspection'
+  | 'customs'
+  | 'other'
+
+export type PartnerCommunicationChannel = 'email' | 'sms' | 'whatsapp' | 'wechat' | 'portal'
+
+export type PartnerCapabilityType =
+  | 'supplier_production'
+  | 'origin_pickup'
+  | 'inspection'
+  | 'warehouse_receipt'
+  | 'customs_brokerage'
+  | 'port_drayage'
+  | 'local_delivery'
+  | 'freight_forwarding'
+  | 'payment_support'
+
+export interface PartnerProfile {
+  id: string
+  partner_type: PartnerType
+  name: string
+  contact_email: string | null
+  contact_phone: string | null
+  organization_id: string | null
+  preferred_channel: PartnerCommunicationChannel
+  upload_permissions: string[]
+  notes: string | null
+  active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface PartnerCapability {
+  id: string
+  partner_id: string
+  capability_type: PartnerCapabilityType
+  service_regions: string[]
+  service_lanes: string[]
+  equipment: string[]
+  cutoff_rules: string | null
+  operating_hours: string | null
+  escalation_contacts: string[]
+  average_response_hours: number | null
+  average_completion_hours: number | null
+  failure_rate: number | null
+  cost_model: string | null
+  active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export type ContingencyIssueType =
+  | 'production_delay'
+  | 'cutoff_miss'
+  | 'sailing_change'
+  | 'eta_slip'
+  | 'customs_hold'
+  | 'biosecurity_risk'
+  | 'payment_delay'
+  | 'release_block'
+  | 'trucking_risk'
+  | 'spare_space_opportunity'
+
+export type ContingencyOptionType =
+  | 'approve_change'
+  | 'book_next_sailing'
+  | 'change_trucker'
+  | 'request_partner_update'
+  | 'pay_charge'
+  | 'split_shipment'
+  | 'hold_for_review'
+
+export type ContingencyRiskLevel = 'low' | 'medium' | 'high'
+
+export type ContingencyStatus = 'proposed' | 'approved' | 'rejected' | 'expired' | 'applied'
+
+export interface ContingencyOption {
+  id: string
+  booking_id: string
+  issue_type: ContingencyIssueType
+  option_type: ContingencyOptionType
+  plain_language_summary: string
+  cost_impact_usd: number | null
+  time_impact_days: number | null
+  risk_level: ContingencyRiskLevel
+  source_evidence: string | null
+  approval_request_id: string | null
+  status: ContingencyStatus
+  created_at: string
+  updated_at: string
+}
+
 export type DeliveryJobMode =
   | 'courier'
   | 'pallet_freight'

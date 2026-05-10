@@ -55,6 +55,15 @@ from .models import (
     DeliveryJob,
     DeliveryJobCreate,
     DeliveryJobUpdate,
+    ContingencyOption,
+    ContingencyOptionCreate,
+    ContingencyOptionUpdate,
+    PartnerCapability,
+    PartnerCapabilityCreate,
+    PartnerCapabilityUpdate,
+    PartnerProfile,
+    PartnerProfileCreate,
+    PartnerProfileUpdate,
     ApprovalRequest,
     ApprovalStatus,
     AuditEvent,
@@ -180,14 +189,22 @@ from .operations import (
     release_status_for_booking,
     accept_supplier_claim,
     confirm_sentinel_subscriber,
+    create_contingency_option,
     create_delivery_job,
+    create_partner_capability,
+    create_partner_profile,
     create_sentinel_subscriber,
     create_supplier_claim_link,
     get_supplier_claim_by_token,
+    list_contingency_options_for_booking,
     list_delivery_jobs_for_booking,
+    list_partner_capabilities,
     opt_out_sentinel_subscriber,
     request_approval_review,
+    update_contingency_option,
     update_delivery_job,
+    update_partner_capability,
+    update_partner_profile,
     sailing_search,
     shipment_workspace,
     create_seo_opportunity,
@@ -1751,6 +1768,103 @@ def patch_delivery_job(
 ) -> DeliveryJob:
     try:
         return persist_result(update_delivery_job(store, job_id, payload, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/partners", response_model=List[PartnerProfile])
+def list_partners(_principal: Principal = Depends(require_admin)) -> List[PartnerProfile]:
+    return sorted(store.partner_profiles.values(), key=lambda p: (p.created_at, p.id), reverse=True)
+
+
+@app.post("/partners", response_model=PartnerProfile, status_code=201)
+def post_partner(
+    payload: PartnerProfileCreate,
+    principal: Principal = Depends(require_admin),
+) -> PartnerProfile:
+    return persist_result(create_partner_profile(store, payload, principal.actor_id))
+
+
+@app.patch("/partners/{partner_id}", response_model=PartnerProfile)
+def patch_partner(
+    partner_id: str,
+    payload: PartnerProfileUpdate,
+    principal: Principal = Depends(require_admin),
+) -> PartnerProfile:
+    try:
+        return persist_result(update_partner_profile(store, partner_id, payload, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/partners/{partner_id}/capabilities", response_model=List[PartnerCapability])
+def get_partner_capabilities(
+    partner_id: str,
+    _principal: Principal = Depends(require_admin),
+) -> List[PartnerCapability]:
+    if partner_id not in store.partner_profiles:
+        raise HTTPException(status_code=404, detail="Partner profile not found")
+    return list_partner_capabilities(store, partner_id)
+
+
+@app.post("/partners/{partner_id}/capabilities", response_model=PartnerCapability, status_code=201)
+def post_partner_capability(
+    partner_id: str,
+    payload: PartnerCapabilityCreate,
+    principal: Principal = Depends(require_admin),
+) -> PartnerCapability:
+    try:
+        return persist_result(create_partner_capability(store, partner_id, payload, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.patch("/partner-capabilities/{capability_id}", response_model=PartnerCapability)
+def patch_partner_capability(
+    capability_id: str,
+    payload: PartnerCapabilityUpdate,
+    principal: Principal = Depends(require_admin),
+) -> PartnerCapability:
+    try:
+        return persist_result(update_partner_capability(store, capability_id, payload, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/bookings/{booking_id}/contingency-options", response_model=List[ContingencyOption])
+def get_contingency_options(
+    booking_id: str,
+    _principal: Principal = Depends(require_admin),
+) -> List[ContingencyOption]:
+    if booking_id not in store.bookings:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return list_contingency_options_for_booking(store, booking_id)
+
+
+@app.post(
+    "/bookings/{booking_id}/contingency-options",
+    response_model=ContingencyOption,
+    status_code=201,
+)
+def post_contingency_option(
+    booking_id: str,
+    payload: ContingencyOptionCreate,
+    principal: Principal = Depends(require_admin),
+) -> ContingencyOption:
+    try:
+        return persist_result(create_contingency_option(store, booking_id, payload, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.patch("/contingency-options/{option_id}", response_model=ContingencyOption)
+def patch_contingency_option(
+    option_id: str,
+    payload: ContingencyOptionUpdate,
+    principal: Principal = Depends(require_admin),
+) -> ContingencyOption:
+    try:
+        return persist_result(update_contingency_option(store, option_id, payload, principal.actor_id))
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 

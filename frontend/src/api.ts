@@ -23,6 +23,7 @@ import type {
   CarrierOption,
   Container,
   ConfirmBookingResponse,
+  ContingencyOption,
   CustomsProfile,
   DocumentType,
   DashboardSummary,
@@ -30,6 +31,8 @@ import type {
   DeliveryJobCreatePayload,
   DeliveryJobUpdatePayload,
   DeliveryPlan,
+  PartnerCapability,
+  PartnerProfile,
   Invoice,
   ImportProjectWorkspaceResponse,
   MatchResult,
@@ -955,6 +958,55 @@ export function extractFactsPreview(text: string, subject?: string) {
   return request<ExtractionPreviewResponse>('/automation/extract-preview', {
     method: 'POST',
     body: JSON.stringify({ text, subject }),
+  })
+}
+
+// --- Partners + capabilities + contingencies (admin) ---
+
+export function listPartners() {
+  return request<PartnerProfile[]>('/partners')
+}
+
+export function createPartner(payload: Partial<PartnerProfile> & { partner_type: PartnerProfile['partner_type']; name: string }) {
+  return request<PartnerProfile>('/partners', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function updatePartner(partnerId: string, payload: Partial<PartnerProfile>) {
+  return request<PartnerProfile>(`/partners/${partnerId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function listPartnerCapabilities(partnerId: string) {
+  return request<PartnerCapability[]>(`/partners/${partnerId}/capabilities`)
+}
+
+export function createPartnerCapability(partnerId: string, payload: Partial<PartnerCapability> & { capability_type: PartnerCapability['capability_type'] }) {
+  return request<PartnerCapability>(`/partners/${partnerId}/capabilities`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function listContingencyOptions(bookingId: string) {
+  return request<ContingencyOption[]>(`/bookings/${bookingId}/contingency-options`)
+}
+
+export function createContingencyOption(bookingId: string, payload: Partial<ContingencyOption> & { issue_type: ContingencyOption['issue_type']; option_type: ContingencyOption['option_type']; plain_language_summary: string }) {
+  return request<ContingencyOption>(`/bookings/${bookingId}/contingency-options`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function updateContingencyOption(optionId: string, payload: Partial<ContingencyOption>) {
+  return request<ContingencyOption>(`/contingency-options/${optionId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
   })
 }
 

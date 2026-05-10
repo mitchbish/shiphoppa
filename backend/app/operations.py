@@ -37,11 +37,21 @@ from .models import (
     DocumentRequirement,
     DocumentStatus,
     DocumentType,
+    ContingencyOption,
+    ContingencyOptionCreate,
+    ContingencyOptionUpdate,
+    ContingencyStatus,
     DeliveryJob,
     DeliveryJobCreate,
     DeliveryJobMode,
     DeliveryJobStatus,
     DeliveryJobUpdate,
+    PartnerCapability,
+    PartnerCapabilityCreate,
+    PartnerCapabilityUpdate,
+    PartnerProfile,
+    PartnerProfileCreate,
+    PartnerProfileUpdate,
     DeliveryMode,
     DeliveryPlan,
     DeliveryPlanStatus,
@@ -4528,3 +4538,230 @@ def update_delivery_job(
             {"fields": list(update_fields.keys())},
         )
     return job
+
+
+def create_partner_profile(
+    store: Store,
+    payload: PartnerProfileCreate,
+    actor_id: str,
+) -> PartnerProfile:
+    timestamp = now_utc()
+    profile = PartnerProfile(
+        id=store.next_id("PARTNER"),
+        partner_type=payload.partner_type,
+        name=payload.name,
+        contact_email=payload.contact_email,
+        contact_phone=payload.contact_phone,
+        organization_id=payload.organization_id,
+        preferred_channel=payload.preferred_channel,
+        upload_permissions=list(payload.upload_permissions),
+        notes=payload.notes,
+        active=True,
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+    store.partner_profiles[profile.id] = profile
+    create_audit_event(
+        store,
+        ActorRole.admin,
+        actor_id,
+        "partner_profile_created",
+        "partner_profile",
+        profile.id,
+        f"Partner profile created for {profile.name} ({profile.partner_type.value}).",
+        {"partner_type": profile.partner_type.value},
+    )
+    return profile
+
+
+def update_partner_profile(
+    store: Store,
+    partner_id: str,
+    payload: PartnerProfileUpdate,
+    actor_id: str,
+) -> PartnerProfile:
+    if partner_id not in store.partner_profiles:
+        raise ValueError("Partner profile not found")
+    profile = store.partner_profiles[partner_id]
+    fields = payload.model_dump(exclude_unset=True)
+    for key, value in fields.items():
+        setattr(profile, key, value)
+    profile.updated_at = now_utc()
+    store.partner_profiles[profile.id] = profile
+    create_audit_event(
+        store,
+        ActorRole.admin,
+        actor_id,
+        "partner_profile_updated",
+        "partner_profile",
+        profile.id,
+        f"Partner profile {profile.id} updated.",
+        {"fields": list(fields.keys())},
+    )
+    return profile
+
+
+def create_partner_capability(
+    store: Store,
+    partner_id: str,
+    payload: PartnerCapabilityCreate,
+    actor_id: str,
+) -> PartnerCapability:
+    if partner_id not in store.partner_profiles:
+        raise ValueError("Partner profile not found")
+    timestamp = now_utc()
+    capability = PartnerCapability(
+        id=store.next_id("PCAP"),
+        partner_id=partner_id,
+        capability_type=payload.capability_type,
+        service_regions=list(payload.service_regions),
+        service_lanes=list(payload.service_lanes),
+        equipment=list(payload.equipment),
+        cutoff_rules=payload.cutoff_rules,
+        operating_hours=payload.operating_hours,
+        escalation_contacts=list(payload.escalation_contacts),
+        average_response_hours=payload.average_response_hours,
+        average_completion_hours=payload.average_completion_hours,
+        failure_rate=payload.failure_rate,
+        cost_model=payload.cost_model,
+        active=True,
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+    store.partner_capabilities[capability.id] = capability
+    create_audit_event(
+        store,
+        ActorRole.admin,
+        actor_id,
+        "partner_capability_created",
+        "partner_capability",
+        capability.id,
+        f"Partner capability {payload.capability_type.value} added to {partner_id}.",
+        {"partner_id": partner_id, "capability_type": payload.capability_type.value},
+    )
+    return capability
+
+
+def update_partner_capability(
+    store: Store,
+    capability_id: str,
+    payload: PartnerCapabilityUpdate,
+    actor_id: str,
+) -> PartnerCapability:
+    if capability_id not in store.partner_capabilities:
+        raise ValueError("Partner capability not found")
+    capability = store.partner_capabilities[capability_id]
+    fields = payload.model_dump(exclude_unset=True)
+    for key, value in fields.items():
+        setattr(capability, key, value)
+    capability.updated_at = now_utc()
+    store.partner_capabilities[capability.id] = capability
+    create_audit_event(
+        store,
+        ActorRole.admin,
+        actor_id,
+        "partner_capability_updated",
+        "partner_capability",
+        capability.id,
+        f"Partner capability {capability.id} updated.",
+        {"fields": list(fields.keys())},
+    )
+    return capability
+
+
+def list_partner_capabilities(store: Store, partner_id: str) -> List[PartnerCapability]:
+    return sorted(
+        [c for c in store.partner_capabilities.values() if c.partner_id == partner_id],
+        key=lambda c: c.created_at,
+        reverse=True,
+    )
+
+
+def create_contingency_option(
+    store: Store,
+    booking_id: str,
+    payload: ContingencyOptionCreate,
+    actor_id: str,
+) -> ContingencyOption:
+    if booking_id not in store.bookings:
+        raise ValueError("Booking not found")
+    timestamp = now_utc()
+    option = ContingencyOption(
+        id=store.next_id("CONT"),
+        booking_id=booking_id,
+        issue_type=payload.issue_type,
+        option_type=payload.option_type,
+        plain_language_summary=payload.plain_language_summary,
+        cost_impact_usd=payload.cost_impact_usd,
+        time_impact_days=payload.time_impact_days,
+        risk_level=payload.risk_level,
+        source_evidence=payload.source_evidence,
+        approval_request_id=payload.approval_request_id,
+        status=ContingencyStatus.proposed,
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+    store.contingency_options[option.id] = option
+    create_audit_event(
+        store,
+        ActorRole.admin,
+        actor_id,
+        "contingency_option_created",
+        "contingency_option",
+        option.id,
+        f"Contingency option proposed for booking {booking_id} ({payload.option_type.value}).",
+        {
+            "booking_id": booking_id,
+            "issue_type": payload.issue_type.value,
+            "option_type": payload.option_type.value,
+        },
+    )
+    return option
+
+
+def update_contingency_option(
+    store: Store,
+    option_id: str,
+    payload: ContingencyOptionUpdate,
+    actor_id: str,
+) -> ContingencyOption:
+    if option_id not in store.contingency_options:
+        raise ValueError("Contingency option not found")
+    option = store.contingency_options[option_id]
+    previous_status = option.status
+    fields = payload.model_dump(exclude_unset=True)
+    for key, value in fields.items():
+        setattr(option, key, value)
+    option.updated_at = now_utc()
+    store.contingency_options[option.id] = option
+    if "status" in fields and fields["status"] != previous_status:
+        create_audit_event(
+            store,
+            ActorRole.admin,
+            actor_id,
+            "contingency_option_status_changed",
+            "contingency_option",
+            option.id,
+            f"Contingency option moved from {previous_status.value} to {option.status.value}.",
+            {"previous_status": previous_status.value, "new_status": option.status.value},
+        )
+    else:
+        create_audit_event(
+            store,
+            ActorRole.admin,
+            actor_id,
+            "contingency_option_updated",
+            "contingency_option",
+            option.id,
+            f"Contingency option {option.id} updated.",
+            {"fields": list(fields.keys())},
+        )
+    return option
+
+
+def list_contingency_options_for_booking(store: Store, booking_id: str) -> List[ContingencyOption]:
+    return sorted(
+        [o for o in store.contingency_options.values() if o.booking_id == booking_id],
+        key=lambda o: o.created_at,
+        reverse=True,
+    )
