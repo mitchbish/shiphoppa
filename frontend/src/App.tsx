@@ -6173,7 +6173,18 @@ function App() {
                   <p className="eyebrow">Track orders</p>
                   <h2>{activeBooking ? `${activeBooking.id} live journey` : 'Choose an order to track'}</h2>
                 </div>
-                <Truck size={24} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <button
+                    className="primary-action"
+                    type="button"
+                    onClick={() => setView('book')}
+                    aria-label="Start a new shipment"
+                  >
+                    <PackageCheck size={16} />
+                    New shipment
+                  </button>
+                  <Truck size={24} />
+                </div>
               </div>
 
               {bookings.length ? (
