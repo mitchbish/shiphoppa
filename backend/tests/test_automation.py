@@ -665,3 +665,16 @@ class TestNotificationsAPI:
         client = TestClient(app)
         response = client.post("/notifications/NOTIF-9999/read", headers=IMPORTER_HEADERS)
         assert response.status_code == 404
+
+    def test_approval_creation_creates_notification(self) -> None:
+        reset_store_for_tests()
+        booking_id = create_booking()
+        booking = store.bookings[booking_id]
+        booking.release_status = ReleaseStatus.ready
+        before = len(store.notifications)
+        create_pending_approvals(store, booking)
+        after = len(store.notifications)
+        assert after > before
+        new_notifs = [n for n in store.notifications.values() if n.trigger == "approval_required"]
+        assert len(new_notifs) >= 1
+        assert all(n.read is False for n in new_notifs)

@@ -54,6 +54,7 @@ from .models import (
     ImportWorkflowType,
     Invoice,
     InvoiceLineItem,
+    Notification,
     OutboundChannel,
     OutboundMessage,
     OutboundMessageCreate,
@@ -896,6 +897,25 @@ def create_quality_inspection(
     return inspection
 
 
+def create_notification(
+    store: Store,
+    recipient_type: str,
+    recipient_id: str,
+    trigger: str,
+    message: str,
+) -> Notification:
+    notification = Notification(
+        id=store.next_id("NOTIF"),
+        recipient_type=recipient_type,
+        recipient_id=recipient_id,
+        trigger=trigger,
+        message=message,
+        created_at=now_utc(),
+    )
+    store.notifications[notification.id] = notification
+    return notification
+
+
 def create_approval_request(
     store: Store,
     request_type: ApprovalRequestType,
@@ -918,6 +938,13 @@ def create_approval_request(
         created_at=now_utc(),
     )
     store.approval_requests[approval.id] = approval
+    create_notification(
+        store,
+        recipient_type="importer",
+        recipient_id="dev-importer",
+        trigger="approval_required",
+        message=title,
+    )
     return approval
 
 
