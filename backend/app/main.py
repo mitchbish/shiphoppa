@@ -43,6 +43,7 @@ from .models import (
     AdminTask,
     AdminTaskStatus,
     ApprovalDecisionRequest,
+    ApprovalReviewRequest,
     ApprovalRequest,
     ApprovalStatus,
     AuditEvent,
@@ -166,6 +167,7 @@ from .operations import (
     mark_supplier_pay_paid_outside_app,
     mark_delivery_delivered,
     release_status_for_booking,
+    request_approval_review,
     sailing_search,
     shipment_workspace,
     create_seo_opportunity,
@@ -767,6 +769,22 @@ def reject_request(
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post("/approvals/{approval_id}/request-review", response_model=ApprovalRequest)
+def request_approval_review_endpoint(
+    approval_id: str,
+    payload: ApprovalReviewRequest,
+    principal: Principal = Depends(require_importer),
+) -> ApprovalRequest:
+    try:
+        return persist_result(
+            request_approval_review(store, approval_id, payload.reason, principal.actor_id)
+        )
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 404 if message == "Approval not found" else 400
+        raise HTTPException(status_code=status_code, detail=message)
 
 
 @app.get("/purchase-orders", response_model=List[PurchaseOrder])

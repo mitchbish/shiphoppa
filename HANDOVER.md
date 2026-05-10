@@ -265,6 +265,7 @@ Each row references the section in
 | Growth attribution events + summary | DONE 2026-05-11 | Activation Metrics (line 393-407), Adoption loop (line 261-310) | `backend/app/operations.py:filter_growth_attribution_events..summarise_growth_attribution`, `/growth/attribution-events` GET/POST + `/growth/attribution-summary` | (no separate plan; ad-hoc commit) |
 | Purchase order clone | DONE 2026-05-11 | Step 2 Order Phase Production (line 117-119), repeat-order ergonomics | `backend/app/operations.py:clone_purchase_order`, `POST /purchase-orders/{id}/clone` | (no separate plan; ad-hoc commit) |
 | Shipments aggregator endpoints | DONE 2026-05-11 | Phase 1 Reframe around shipments (line 3513-3515) | `backend/app/operations.py:list_shipment_summaries..shipment_workspace`, `backend/app/main.py:shipments..shipment_workspace_endpoint` | `docs/plans/shipments-aggregator/` |
+| Approval `request-review` endpoint | DONE 2026-05-11 | Phase 3 Approval queue (line 3583-3586) | `backend/app/operations.py:request_approval_review`, `POST /approvals/{id}/request-review` in `backend/app/main.py`, frontend `requestApprovalReview` in `frontend/src/api.ts` | `docs/plans/approval-request-review/` |
 | Cron-job.org wiring (was operator-blocked, unblocked) | DONE 2026-05-11 | Phase 5 Automation (line 174-181) | cron-job.org Job 7583175 hits `POST /automation/cron/run` every 15 minutes; `SHIP_HOPPA_CRON_TOKEN` rotated and matched between Railway and cron-job.org | (ops change, no code; verified HTTP 200 in cron-job.org history) |
 
 ### No-blocker, autonomous — NOT STARTED (the new chat picks from here)
@@ -274,7 +275,6 @@ existing code; sizing is a rough guess.
 
 | Feature | Plan ref | Adjacent code | Difficulty |
 |---|---|---|---|
-| **Approval `request-review` endpoint** — escalate a pending approval to admin without approving or rejecting it | Phase 3 Approval queue (line 3583-3586) | GET `/approvals`, POST `/approvals/{id}/approve` and `/reject` exist | Small |
 | **Supplier portal preview** — admin/importer-side read-only "see what your supplier sees" view that doesn't need a token | Supplier-side wedge (line 260-286) | Supplier portal at `/supplier/{token}` exists | Small |
 | **Frontend admin tab for audit filtering** — wire the new query params on `/audit-events` to a real admin UI with input fields and a results table | Production-Grade audit standard (line 209-225) | Backend filtering ships, admin tab is thin | Small |
 | **Frontend admin tab for growth attribution + supplier verification + import projects CRUD** — three small admin views surfacing endpoints already shipped | Adoption loop (line 261-310), Supplier acquisition (line 408-863) | Backend ships; admin UI is missing | Medium |

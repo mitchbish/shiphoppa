@@ -1402,6 +1402,13 @@ class ApprovalRequest(BaseModel):
     created_at: datetime
     decided_at: Optional[datetime] = None
     decided_by: Optional[str] = None
+    review_requested_by: Optional[str] = None
+    review_requested_at: Optional[datetime] = None
+    review_requested_reason: Optional[str] = None
+
+
+class ApprovalReviewRequest(BaseModel):
+    reason: str
 
 
 class OutboundMessage(BaseModel):

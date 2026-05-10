@@ -794,6 +794,9 @@ export interface ApprovalRequest {
   created_at: string
   decided_at: string | null
   decided_by: string | null
+  review_requested_by: string | null
+  review_requested_at: string | null
+  review_requested_reason: string | null
 }
 
 export interface PurchaseOrder {

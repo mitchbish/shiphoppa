@@ -1931,6 +1931,51 @@ def decide_approval_request(store: Store, approval_id: str, status: ApprovalStat
     return approval
 
 
+def request_approval_review(
+    store: Store,
+    approval_id: str,
+    reason: str,
+    actor_id: str,
+) -> ApprovalRequest:
+    if approval_id not in store.approval_requests:
+        raise ValueError("Approval not found")
+    approval = store.approval_requests[approval_id]
+    if approval.status != ApprovalStatus.pending:
+        raise ValueError("Approval already decided")
+    timestamp = now_utc()
+    approval.review_requested_by = actor_id
+    approval.review_requested_at = timestamp
+    approval.review_requested_reason = reason
+    store.approval_requests[approval.id] = approval
+
+    if approval.related_booking_id and approval.related_booking_id in store.bookings:
+        booking = store.bookings[approval.related_booking_id]
+        create_admin_task(
+            store,
+            booking,
+            "approval_review_requested",
+            f"Importer asked ops to review: {approval.title}",
+        )
+    create_notification(
+        store,
+        recipient_type="admin",
+        recipient_id="ops",
+        trigger="approval_review_requested",
+        message=f"Review requested on approval {approval.id}: {reason}",
+    )
+    create_audit_event(
+        store,
+        ActorRole.importer,
+        actor_id,
+        "approval_review_requested",
+        "approval_request",
+        approval.id,
+        reason or "Review requested.",
+        {"reason": reason, "actor": actor_id},
+    )
+    return approval
+
+
 def mark_supplier_pay_paid_outside_app(
     store: Store,
     supplier_pay_request_id: str,

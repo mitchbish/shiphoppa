@@ -858,6 +858,9 @@ export type ApprovalRequestRecord = {
   created_at: string
   decided_at: string | null
   decided_by: string | null
+  review_requested_by: string | null
+  review_requested_at: string | null
+  review_requested_reason: string | null
 }
 
 export function getApprovals() {
@@ -875,6 +878,13 @@ export function rejectApprovalRequest(approvalId: string, reason?: string) {
   return request<ApprovalRequestRecord>(`/approvals/${approvalId}/reject`, {
     method: 'POST',
     body: JSON.stringify({ reason: reason ?? 'Rejected' }),
+  })
+}
+
+export function requestApprovalReview(approvalId: string, reason: string) {
+  return request<ApprovalRequestRecord>(`/approvals/${approvalId}/request-review`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
   })
 }
 
