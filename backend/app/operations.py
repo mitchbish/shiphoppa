@@ -59,6 +59,7 @@ from .models import (
     OutboundMessage,
     OutboundMessageCreate,
     OutboundProvider,
+    OutboundStatus,
     PaymentRecord,
     PaymentStatus,
     ProductionMilestone,
@@ -349,6 +350,73 @@ def default_outbound_provider(channel: OutboundChannel) -> OutboundProvider:
     if channel == OutboundChannel.sms:
         return OutboundProvider.twilio
     return OutboundProvider.manual
+
+
+def dispatch_outbound_message(store: Store, message_id: str) -> OutboundMessage:
+    """
+    Try to send a queued outbound message via its real provider. Updates
+    status to sent/failed and writes the provider response back. Safe to
+    call when SHIP_HOPPA_LIVE_PROVIDERS is off; in that case the message
+    stays queued and the audit event records "deferred".
+    """
+    from . import providers
+
+    message = store.outbound_messages.get(message_id)
+    if not message:
+        raise ValueError(f"OutboundMessage {message_id} not found")
+    if message.status != OutboundStatus.queued:
+        return message
+
+    if message.channel == OutboundChannel.email:
+        result = providers.send_email_via_resend(
+            to_addresses=[message.recipient_id],
+            subject=message.subject or "(no subject)",
+            body=message.body_snapshot,
+        )
+    elif message.channel == OutboundChannel.sms:
+        result = providers.send_sms_via_twilio(
+            to_phone=message.recipient_id,
+            body=message.body_snapshot,
+        )
+    else:
+        result = {
+            "sent": False,
+            "provider": "manual",
+            "detail": "Channel does not have an automated provider.",
+            "provider_message_id": None,
+            "error_code": None,
+        }
+
+    timestamp = now_utc()
+    if result["sent"]:
+        message.status = OutboundStatus.sent
+        message.sent_at = timestamp
+        message.provider_message_id = result.get("provider_message_id")
+        message.failure_code = None
+        message.sentinel_error_code = None
+    elif result.get("deferred"):
+        # Provider not configured or live flag disabled — leave queued for later.
+        pass
+    elif result.get("error_code"):
+        message.status = OutboundStatus.failed
+        message.failure_code = result["detail"][:200]
+        message.sentinel_error_code = result["error_code"]
+
+    create_audit_event(
+        store,
+        ActorRole.system,
+        "outbound_dispatcher",
+        "outbound_message_dispatched",
+        "outbound_message",
+        message.id,
+        f"Dispatch attempt: {result['detail']}",
+        {
+            "provider": result["provider"],
+            "sent": result["sent"],
+            "error_code": result.get("error_code"),
+        },
+    )
+    return message
 
 
 def queue_outbound_message(

@@ -1247,3 +1247,100 @@ class TestCarrierEtaMonitoring:
             json={"new_eta": date.today().isoformat()},
         )
         assert response.status_code == 404
+
+
+class TestRealProviderHookups:
+    def test_provider_readiness_endpoint(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        response = client.get("/system/providers", headers=ADMIN_HEADERS)
+        assert response.status_code == 200
+        data = response.json()
+        assert "resend" in data
+        assert "twilio" in data
+        assert "wise" in data
+        # Without env vars and live flag, every provider should be unconfigured/non-live
+        assert data["resend"]["configured"] is False
+        assert data["resend"]["live"] is False
+
+    def test_dispatch_returns_queued_when_provider_not_configured(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        # Queue a message
+        msg = client.post(
+            "/outbound-messages",
+            headers=ADMIN_HEADERS,
+            json={
+                "recipient_type": "supplier",
+                "recipient_id": "supplier@factory.cn",
+                "channel": "email",
+                "template_key": "chase_packing_list",
+                "body_snapshot": "Please send packing list.",
+                "subject": "Packing list needed",
+                "compliance_basis": "automated_shipment_chase",
+            },
+        )
+        assert msg.status_code == 201
+        message_id = msg.json()["id"]
+        # Try to dispatch — without RESEND_API_KEY it stays queued
+        response = client.post(
+            f"/outbound-messages/{message_id}/dispatch", headers=ADMIN_HEADERS
+        )
+        assert response.status_code == 200
+        # Status should still be queued (not configured)
+        assert response.json()["status"] == "queued"
+
+    def test_dispatch_queue_endpoint(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        # Queue 3 messages
+        for i in range(3):
+            client.post(
+                "/outbound-messages",
+                headers=ADMIN_HEADERS,
+                json={
+                    "recipient_type": "supplier",
+                    "recipient_id": f"s{i}@factory.cn",
+                    "channel": "email",
+                    "template_key": "chase_packing_list",
+                    "body_snapshot": "ping",
+                    "subject": f"msg {i}",
+                    "compliance_basis": "automated_shipment_chase",
+                },
+            )
+        response = client.post(
+            "/outbound-messages/dispatch-queue", headers=ADMIN_HEADERS
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["attempted"] == 3
+        # Without provider env vars, every attempt is deferred
+        assert body["deferred"] == 3
+        assert body["sent"] == 0
+        assert body["failed"] == 0
+
+    def test_dispatch_unknown_message_404s(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        response = client.post(
+            "/outbound-messages/OUT-9999/dispatch", headers=ADMIN_HEADERS
+        )
+        assert response.status_code == 404
+
+    def test_email_send_without_keys_returns_not_configured(self) -> None:
+        from app.providers import send_email_via_resend
+        result = send_email_via_resend(["x@example.com"], "test", "body")
+        assert result["sent"] is False
+        assert "not configured" in result["detail"].lower() or result["error_code"] == "SH-3403"
+
+    def test_sms_send_without_keys_returns_not_configured(self) -> None:
+        from app.providers import send_sms_via_twilio
+        result = send_sms_via_twilio("+15551234567", "test")
+        assert result["sent"] is False
+        assert result["error_code"] == "SH-3502" or "not configured" in result["detail"].lower()
+
+    def test_wise_quote_without_keys_returns_not_configured(self) -> None:
+        from app.providers import get_fx_quote_via_wise
+        result = get_fx_quote_via_wise("USD", "AUD", 1000)
+        assert result["sent"] is False
+        assert result["error_code"] == "SH-4201" or "not configured" in result["detail"].lower()

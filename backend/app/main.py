@@ -71,6 +71,7 @@ from .models import (
     Notification,
     OutboundMessage,
     OutboundMessageCreate,
+    OutboundStatus,
     ProductionMilestone,
     ProductionMilestoneCompleteRequest,
     PurchaseOrder,
@@ -113,6 +114,7 @@ from .operations import (
     create_supplier_link,
     create_purchase_order,
     detect_fcl_spare_space,
+    dispatch_outbound_message,
     landed_cost_summary,
     list_quality_inspections_for_booking,
     list_space_opportunities_for_booking,
@@ -150,6 +152,7 @@ from .operations import (
     book_delivery_plan,
 )
 from .persistence import load_store_snapshot, save_store_snapshot, snapshot_enabled
+from .providers import provider_readiness
 from .sentinel import sentinel_error_definitions, system_health
 from .seed import seed_data
 from .store import Store
@@ -412,6 +415,45 @@ def post_outbound_message(
         return persist_result(queue_outbound_message(store, payload, principal.role, principal.actor_id))
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
+
+
+@app.post("/outbound-messages/{message_id}/dispatch", response_model=OutboundMessage)
+def post_dispatch_outbound_message(
+    message_id: str,
+    _principal: Principal = Depends(require_admin),
+) -> OutboundMessage:
+    try:
+        return persist_result(dispatch_outbound_message(store, message_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post("/outbound-messages/dispatch-queue")
+def post_dispatch_outbound_queue(
+    limit: int = 50, _principal: Principal = Depends(require_admin)
+) -> dict:
+    """Try to dispatch up to `limit` queued outbound messages."""
+    queued = [m for m in store.outbound_messages.values() if m.status == OutboundStatus.queued]
+    queued.sort(key=lambda m: m.created_at)
+    queued = queued[:limit]
+    sent = 0
+    failed = 0
+    deferred = 0
+    for msg in queued:
+        result = dispatch_outbound_message(store, msg.id)
+        if result.status == OutboundStatus.sent:
+            sent += 1
+        elif result.status == OutboundStatus.failed:
+            failed += 1
+        else:
+            deferred += 1
+    persist_store()
+    return {"attempted": len(queued), "sent": sent, "failed": failed, "deferred": deferred}
+
+
+@app.get("/system/providers")
+def get_provider_readiness(_principal: Principal = Depends(require_admin)) -> dict:
+    return provider_readiness()
 
 
 @app.post("/source-messages", response_model=SourceMessage, status_code=201)
