@@ -1048,6 +1048,33 @@ class AdminTask(BaseModel):
     updated_at: datetime
 
 
+class SpaceOpportunityStatus(str, Enum):
+    detected = "detected"
+    awaiting_owner_approval = "awaiting_owner_approval"
+    listed = "listed"
+    matched = "matched"
+    closed = "closed"
+    declined = "declined"
+
+
+class SpaceOpportunity(BaseModel):
+    id: str
+    booking_id: str
+    container_id: Optional[str] = None
+    opportunity_type: str = "sell_spare_fcl_space"
+    total_container_cbm: float
+    booked_cbm: float
+    protected_buffer_cbm: float = 0
+    recoverable_cbm: float
+    estimated_recovery_usd: float = 0
+    status: SpaceOpportunityStatus = SpaceOpportunityStatus.detected
+    owner_actor_id: str
+    detected_at: datetime
+    listed_at: Optional[datetime] = None
+    closed_at: Optional[datetime] = None
+    notes: Optional[str] = None
+
+
 class PurchaseOrder(BaseModel):
     id: str
     import_project_id: str

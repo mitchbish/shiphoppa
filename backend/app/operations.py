@@ -89,6 +89,8 @@ from .models import (
     SourceMessage,
     SourceMessageCreate,
     SourceType,
+    SpaceOpportunity,
+    SpaceOpportunityStatus,
     SupplierDiscoveryRun,
     SupplierDiscoveryRunStatus,
     SupplierLead,
@@ -2071,6 +2073,96 @@ def checklist_for_booking_without_holds(store: Store, booking: Booking) -> Booki
         documents=docs,
         missing_document_types=missing,
     )
+
+
+FCL_CONTAINER_CBM_20FT = 33.0
+FCL_CONTAINER_CBM_40FT = 67.0
+FCL_PROTECTED_BUFFER_CBM = 4.0  # leave room for stuffing and last-minute volume drift
+FCL_RECOVERABLE_RATE_USD_PER_CBM = 95.0  # rough internal rate for spare-space sales
+
+
+def detect_fcl_spare_space(store: Store, booking_id: str) -> Optional[SpaceOpportunity]:
+    """
+    Detect whether an FCL booking has spare capacity that could be sold to
+    other importers. Returns a SpaceOpportunity if recoverable_cbm > 0,
+    otherwise None. Idempotent: if an opportunity already exists for the
+    booking and is still active, returns it.
+    """
+    booking = store.bookings.get(booking_id)
+    if not booking:
+        return None
+
+    project = next(
+        (p for p in store.import_projects.values() if booking_id in (p.linked_shipment_ids or [])),
+        None,
+    )
+    is_fcl = bool(project and project.workflow_type == ImportWorkflowType.fcl_spare_space)
+    if not is_fcl:
+        return None
+
+    container = store.containers.get(booking.container_id) if booking.container_id else None
+    container_cbm = FCL_CONTAINER_CBM_40FT if container is None else (container.current_cbm + container.remaining_cbm)
+    booked_cbm = booking.cbm_actual or booking.cbm_estimate or 0.0
+    recoverable = max(0.0, container_cbm - booked_cbm - FCL_PROTECTED_BUFFER_CBM)
+
+    existing = next(
+        (
+            opp for opp in store.space_opportunities.values()
+            if opp.booking_id == booking_id and opp.status not in (SpaceOpportunityStatus.closed, SpaceOpportunityStatus.declined)
+        ),
+        None,
+    )
+
+    if existing:
+        existing.total_container_cbm = round_money(container_cbm)
+        existing.booked_cbm = round_money(booked_cbm)
+        existing.recoverable_cbm = round_money(recoverable)
+        existing.estimated_recovery_usd = round_money(recoverable * FCL_RECOVERABLE_RATE_USD_PER_CBM)
+        return existing
+
+    if recoverable < 1.0:
+        return None
+
+    opportunity = SpaceOpportunity(
+        id=store.next_id("SPACE"),
+        booking_id=booking_id,
+        container_id=booking.container_id,
+        total_container_cbm=round_money(container_cbm),
+        booked_cbm=round_money(booked_cbm),
+        protected_buffer_cbm=FCL_PROTECTED_BUFFER_CBM,
+        recoverable_cbm=round_money(recoverable),
+        estimated_recovery_usd=round_money(recoverable * FCL_RECOVERABLE_RATE_USD_PER_CBM),
+        owner_actor_id=booking.importer_id,
+        detected_at=now_utc(),
+    )
+    store.space_opportunities[opportunity.id] = opportunity
+    return opportunity
+
+
+def list_space_opportunities_for_booking(store: Store, booking_id: str) -> List[SpaceOpportunity]:
+    return [
+        opp for opp in store.space_opportunities.values()
+        if opp.booking_id == booking_id
+    ]
+
+
+def approve_space_opportunity_listing(store: Store, opportunity_id: str, actor_id: str) -> SpaceOpportunity:
+    opp = store.space_opportunities.get(opportunity_id)
+    if not opp:
+        raise ValueError(f"SpaceOpportunity {opportunity_id} not found")
+    opp.status = SpaceOpportunityStatus.listed
+    opp.listed_at = now_utc()
+    create_audit_event(
+        store,
+        ActorRole.importer,
+        actor_id,
+        "space_opportunity_listed",
+        "space_opportunity",
+        opp.id,
+        f"Owner approved listing {opp.recoverable_cbm} CBM of spare FCL space.",
+        {"opportunity_id": opp.id, "recoverable_cbm": opp.recoverable_cbm},
+    )
+    return opp
 
 
 def landed_cost_summary(store: Store, booking_id: str) -> Dict[str, Any]:

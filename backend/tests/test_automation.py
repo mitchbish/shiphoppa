@@ -696,3 +696,65 @@ class TestNotificationsAPI:
         new_notifs = [n for n in store.notifications.values() if n.trigger == "approval_required"]
         assert len(new_notifs) >= 1
         assert all(n.read is False for n in new_notifs)
+
+
+class TestSpaceOpportunity:
+    def _make_fcl_booking(self) -> str:
+        from app.models import ImportWorkflowType
+        booking_id = create_booking()
+        booking = store.bookings[booking_id]
+        booking.cbm_actual = 25.0
+        # Flip the auto-created import project to fcl_spare_space so detection runs
+        for project in store.import_projects.values():
+            if booking_id in (project.linked_shipment_ids or []):
+                project.workflow_type = ImportWorkflowType.fcl_spare_space
+                break
+        return booking_id
+
+    def test_detect_returns_none_for_non_fcl(self) -> None:
+        reset_store_for_tests()
+        booking_id = create_booking()
+        from app.operations import detect_fcl_spare_space
+        opp = detect_fcl_spare_space(store, booking_id)
+        assert opp is None
+
+    def test_detect_creates_opportunity_for_fcl(self) -> None:
+        reset_store_for_tests()
+        booking_id = self._make_fcl_booking()
+        from app.operations import detect_fcl_spare_space
+        opp = detect_fcl_spare_space(store, booking_id)
+        assert opp is not None
+        assert opp.recoverable_cbm > 0
+        assert opp.estimated_recovery_usd > 0
+
+    def test_detect_is_idempotent(self) -> None:
+        reset_store_for_tests()
+        booking_id = self._make_fcl_booking()
+        from app.operations import detect_fcl_spare_space
+        first = detect_fcl_spare_space(store, booking_id)
+        second = detect_fcl_spare_space(store, booking_id)
+        assert first is not None
+        assert second is not None
+        assert first.id == second.id
+
+    def test_list_endpoint(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        booking_id = self._make_fcl_booking()
+        client.post(f"/bookings/{booking_id}/space-opportunities/detect", headers=IMPORTER_HEADERS)
+        response = client.get(f"/bookings/{booking_id}/space-opportunities", headers=IMPORTER_HEADERS)
+        assert response.status_code == 200
+        items = response.json()
+        assert len(items) == 1
+
+    def test_owner_can_list_opportunity(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        booking_id = self._make_fcl_booking()
+        detect_response = client.post(
+            f"/bookings/{booking_id}/space-opportunities/detect", headers=IMPORTER_HEADERS
+        )
+        opp_id = detect_response.json()["id"]
+        list_response = client.post(f"/space-opportunities/{opp_id}/list", headers=IMPORTER_HEADERS)
+        assert list_response.status_code == 200
+        assert list_response.json()["status"] == "listed"

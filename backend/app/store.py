@@ -37,6 +37,7 @@ from .models import (
     ShipmentDocument,
     ShipmentEvent,
     SourceMessage,
+    SpaceOpportunity,
     SupplierDiscoveryRun,
     SupplierAccessLink,
     SupplierLead,
@@ -89,6 +90,7 @@ class Store:
         self.growth_attribution_events: Dict[str, GrowthAttributionEvent] = {}
         self.notifications: Dict[str, Notification] = {}
         self.audit_events: Dict[str, AuditEvent] = {}
+        self.space_opportunities: Dict[str, SpaceOpportunity] = {}
         self.idempotency_records: Dict[str, Any] = {}
         self._counters = defaultdict(int)
 

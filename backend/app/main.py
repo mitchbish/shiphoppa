@@ -86,6 +86,7 @@ from .models import (
     ShipmentEventCreate,
     SourceMessage,
     SourceMessageCreate,
+    SpaceOpportunity,
     SupplierDiscoveryRun,
     SupplierAccessLink,
     SupplierLead,
@@ -99,12 +100,15 @@ from .models import (
     SystemHealthResponse,
 )
 from .operations import (
+    approve_space_opportunity_listing,
     checklist_for_booking,
     complete_production_milestone,
     create_shipment_event,
     create_supplier_link,
     create_purchase_order,
+    detect_fcl_spare_space,
     landed_cost_summary,
+    list_space_opportunities_for_booking,
     create_supplier_pay_request,
     decide_document,
     decide_approval_request,
@@ -229,6 +233,7 @@ def reset_store_for_tests() -> None:
     store.growth_attribution_events.clear()
     store.notifications.clear()
     store.audit_events.clear()
+    store.space_opportunities.clear()
     store.idempotency_records.clear()
     store._counters.clear()
     seed_data(store)
@@ -773,6 +778,37 @@ def booking_landed_cost(booking_id: str, _principal: Principal = Depends(require
     if booking_id not in store.bookings:
         raise HTTPException(status_code=404, detail="Booking not found")
     return landed_cost_summary(store, booking_id)
+
+
+# --- FCL Spare-Space ---
+
+
+@app.get("/bookings/{booking_id}/space-opportunities", response_model=List[SpaceOpportunity])
+def booking_space_opportunities(
+    booking_id: str, _principal: Principal = Depends(require_importer)
+) -> List[SpaceOpportunity]:
+    if booking_id not in store.bookings:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return list_space_opportunities_for_booking(store, booking_id)
+
+
+@app.post("/bookings/{booking_id}/space-opportunities/detect", response_model=Optional[SpaceOpportunity])
+def trigger_space_opportunity_detection(
+    booking_id: str, _principal: Principal = Depends(require_importer)
+) -> Optional[SpaceOpportunity]:
+    if booking_id not in store.bookings:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return detect_fcl_spare_space(store, booking_id)
+
+
+@app.post("/space-opportunities/{opportunity_id}/list", response_model=SpaceOpportunity)
+def list_space_opportunity(
+    opportunity_id: str, principal: Principal = Depends(require_importer)
+) -> SpaceOpportunity:
+    try:
+        return persist_result(approve_space_opportunity_listing(store, opportunity_id, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 @app.post("/release-holds/{hold_id}/waive", response_model=ReleaseHold)
