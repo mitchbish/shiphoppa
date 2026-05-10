@@ -1,7 +1,6 @@
 .git/
 .DS_Store
 
-frontend/
 marketing/
 uploads/
 assets/
@@ -9,6 +8,9 @@ assets/
 /index.html
 /index v1.html
 /tweaks-panel.jsx
+
+frontend/node_modules/
+frontend/dist/
 
 backend/.venv/
 backend/.pytest_cache/
