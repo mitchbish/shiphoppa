@@ -298,6 +298,10 @@ Each row references the section in
 | Supplier portal preview button | DONE 2026-05-11 | Supplier-side wedge (line 260-310) | See what your supplier sees button on the customer Supplier tab opens a modal driven by `getSupplierPortalPreview` |
 | Public supplier-claim landing page | DONE 2026-05-11 | Supplier-side wedge (line 408-863) | New `SupplierClaimView` SPA route at `/supplier-claim/{token}`. API moved to `/api/supplier-claim/{token}`; api client treats path as public; backend tests updated |
 | Plain-language sweep across customer portal | DONE 2026-05-11 | Plain Language Rule (line 988), Decision Cards (line 2216) | Customer-facing labels: Warehouse cutoff → Arrive at warehouse by, Cargo ready → Goods ready by, Active holds / Release blockers → Delivery holds, Trucking estimate → Final delivery estimate, Rush service tier → Priority |
+| Customer LandedCostActual + MarketplaceOrder + Insurance + Claim cards | DONE 2026-05-11 | Phase 5/6 spec, Marketplace ingest (line 2535-2553), Insurance/Claims (line 2130-2148) | Money tab now shows actual landed cost vs estimate with variance highlighted. Supplier tab adds marketplace order capture for Alibaba / 1688 / Made-in-China / Global Sources / direct supplier with order ID, product URL, payment method. Delivery tab adds insurance summary and claim drafting form (damage / loss / shortage / delay / other) |
+| Customer DeliveryJob + PaymentProof cards | DONE 2026-05-11 | DeliveryJob spec (line 2968-2982), PaymentProof spec (line 3056-3094) | Delivery tab lists delivery jobs with mode, status pill that PATCHes, and a create form for the six modes. Money tab adds Payment proofs section with list (type, method, reference, amount, reconciliation status pill) and a record-payment form |
+| Admin Partners directory | DONE 2026-05-11 | PartnerProfile + PartnerCapability spec (line 2712-2759), Phase 1-2 (line 1939-1987) | New Partners admin tab. Add a partner with name, type, contact email and phone, preferred channel. Click to view and add capabilities (regions, lanes, hours). |
+| Admin ContingencyOption decision cards | DONE 2026-05-11 | ContingencyOption spec (line 2712-2759), Exception Recovery | Exceptions queue now shows contingency option cards under the selected shipment with Approve / Reject / Mark applied buttons. |
 
 ### No-blocker, autonomous — NOT STARTED (the new chat picks from here)
 
@@ -306,10 +310,11 @@ existing code; sizing is a rough guess.
 
 | Feature | Plan ref | Adjacent code | Difficulty |
 |---|---|---|---|
-| **Customer shipment workspace cards for the wave-3 records** (DeliveryJob, PaymentProof, LandedCostActual, InsurancePolicy, ClaimRecord, MarketplaceOrder) | Phase 5/6, model spec lines | Backends ship; UI cards still missing | Medium |
-| **Admin Partners directory + ContingencyOption cards** | Model spec (line 2712-2759), Exception Recovery | Backends ship; admin UI missing | Medium |
 | **Snapshot / version restore endpoint** — let an importer roll back an `ImportProject` to an earlier version | Phase -2 Saved import projects (line 1939-1987) | `ImportProjectVersion` and `ImportProjectSnapshot` models exist; soft-delete shipped | Medium |
 | **IA reframe to Today / Imports / Inbox / Approvals / Money / Space / Company** | Target Information Architecture (line 1031) | Existing Order/Ship/Deliver nav can coexist while migrating | Large |
+| **Document AI extraction (v2 of inbox intake)** | §"Phase 2" Inbox intake (line 2531-2566) | Current `automation.py:extract_facts_from_text` is regex-only | Large |
+| **Auto-route source messages to the right partner** | §"Ask The Best Person" (line 2186) | Today every chase goes to importer | Medium |
+| **More Sentinel checks (low-confidence rate, supplier bank-detail change, ETA stale, etc.)** | §"Health Checks And Monitoring" (line 3927), §"Sentinel Error Code Registry" (line 3953) | Some shipped in `automation.py:check_stale_shipments`; many missing | Medium |
 
 ### Operator-blocked — BLOCKED on external setup
 
