@@ -784,6 +784,8 @@ def try_advance_booking_status(store: Store, booking: Booking) -> bool:
             advanced = True
 
     if advanced:
+        from .operations import create_notification
+
         create_audit_event(
             store,
             ActorRole.system,
@@ -794,6 +796,22 @@ def try_advance_booking_status(store: Store, booking: Booking) -> bool:
             f"Shipment status automatically advanced to {booking.status.value}.",
             {"new_status": booking.status.value},
         )
+        status_messages = {
+            BookingStatus.at_warehouse: f"Cargo received at warehouse for {booking.id}.",
+            BookingStatus.loaded: f"Cargo loaded into container for {booking.id}.",
+            BookingStatus.shipped: f"Vessel departed origin for {booking.id}. Track the journey in Ship Hoppa.",
+            BookingStatus.arrived: f"Vessel arrived at destination port for {booking.id}.",
+            BookingStatus.delivered: f"Final delivery completed for {booking.id}.",
+        }
+        message = status_messages.get(booking.status)
+        if message:
+            create_notification(
+                store,
+                recipient_type="importer",
+                recipient_id="dev-importer",
+                trigger=f"status_{booking.status.value}",
+                message=message,
+            )
 
     return advanced
 

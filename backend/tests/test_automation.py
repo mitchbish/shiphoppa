@@ -338,6 +338,24 @@ class TestStatusAdvancement:
         assert advanced is False
         assert booking.status == BookingStatus.confirmed
 
+    def test_status_advancement_creates_notification(self) -> None:
+        reset_store_for_tests()
+        booking_id = create_booking()
+        booking = store.bookings[booking_id]
+        booking.status = BookingStatus.loaded
+        create_shipment_event(
+            store,
+            booking_id,
+            ShipmentEventCreate(stage=ShipmentEventStage.departed),
+        )
+        before = len(store.notifications)
+        try_advance_booking_status(store, booking)
+        after = len(store.notifications)
+        assert after > before
+        new_notifs = [n for n in store.notifications.values() if n.trigger == "status_shipped"]
+        assert len(new_notifs) == 1
+        assert booking_id in new_notifs[0].message
+
     def test_no_advance_loaded_without_actuals(self) -> None:
         reset_store_for_tests()
         booking_id = create_booking()
