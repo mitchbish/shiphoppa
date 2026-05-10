@@ -92,6 +92,7 @@ import {
   parseInvoicePdf,
   getBookingInspections,
   bookInspection,
+  getAuditEvents,
   getHsSuggestions,
   acceptHsSuggestion,
   supplierReady,
@@ -102,6 +103,7 @@ import {
   uploadDocument,
   uploadSupplierDocument,
 } from './api'
+import type { AuditEventFilters } from './api'
 import type {
   AdminTask,
   AdminTaskSummary,
@@ -120,6 +122,7 @@ import type {
   AccountIntegration,
   AccountIntegrationProvider,
   AccountProfile,
+  AuditEvent,
   Booking,
   BookingPayload,
   BookingChecklistResponse,
@@ -3584,6 +3587,11 @@ function App() {
   const [adminTasks, setAdminTasks] = useState<AdminTask[]>([])
   const [adminTaskSummary, setAdminTaskSummary] = useState<AdminTaskSummary | null>(null)
   const [allApprovals, setAllApprovals] = useState<ApprovalRequestRecord[]>([])
+  const [auditFilters, setAuditFilters] = useState<AuditEventFilters>({})
+  const [auditFilterDraft, setAuditFilterDraft] = useState<AuditEventFilters>({})
+  const [auditResults, setAuditResults] = useState<AuditEvent[] | null>(null)
+  const [auditLoading, setAuditLoading] = useState(false)
+  const [auditError, setAuditError] = useState<string | null>(null)
   const [inboxMessages, setInboxMessages] = useState<SourceMessage[]>([])
   const [landedCost, setLandedCost] = useState<LandedCostSummary | null>(null)
   const [notifications, setNotifications] = useState<Notification[]>([])
@@ -5961,6 +5969,182 @@ function App() {
                     </div>
                   ))}
                 </div>
+              </section>
+
+              <section className="panel admin-panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">Audit search</p>
+                    <h2>Filter the full audit log.</h2>
+                  </div>
+                  <ClipboardCheck size={24} />
+                </div>
+                <form
+                  className="audit-filter-form"
+                  onSubmit={async (event) => {
+                    event.preventDefault()
+                    setAuditLoading(true)
+                    setAuditError(null)
+                    try {
+                      const cleaned: AuditEventFilters = {}
+                      for (const [key, value] of Object.entries(auditFilterDraft)) {
+                        if (value !== undefined && value !== null && value !== '') {
+                          ;(cleaned as Record<string, unknown>)[key] = value
+                        }
+                      }
+                      setAuditFilters(cleaned)
+                      const events = await getAuditEvents(cleaned)
+                      setAuditResults(events)
+                    } catch (err) {
+                      setAuditError(err instanceof Error ? err.message : 'Could not load audit events.')
+                    } finally {
+                      setAuditLoading(false)
+                    }
+                  }}
+                  style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', alignItems: 'end' }}
+                >
+                  <label>
+                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Actor id</span>
+                    <input
+                      type="text"
+                      value={auditFilterDraft.actor_id ?? ''}
+                      placeholder="any"
+                      onChange={(e) => setAuditFilterDraft((d) => ({ ...d, actor_id: e.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Actor role</span>
+                    <select
+                      value={auditFilterDraft.actor_role ?? ''}
+                      onChange={(e) =>
+                        setAuditFilterDraft((d) => ({
+                          ...d,
+                          actor_role: (e.target.value || undefined) as AuditEventFilters['actor_role'],
+                        }))
+                      }
+                    >
+                      <option value="">any</option>
+                      <option value="importer">importer</option>
+                      <option value="admin">admin</option>
+                      <option value="system">system</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Event type</span>
+                    <input
+                      type="text"
+                      value={auditFilterDraft.event_type ?? ''}
+                      placeholder="e.g. approval_decided"
+                      onChange={(e) => setAuditFilterDraft((d) => ({ ...d, event_type: e.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Entity type</span>
+                    <input
+                      type="text"
+                      value={auditFilterDraft.entity_type ?? ''}
+                      placeholder="e.g. booking"
+                      onChange={(e) => setAuditFilterDraft((d) => ({ ...d, entity_type: e.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Entity id</span>
+                    <input
+                      type="text"
+                      value={auditFilterDraft.entity_id ?? ''}
+                      placeholder="e.g. BKG-0001"
+                      onChange={(e) => setAuditFilterDraft((d) => ({ ...d, entity_id: e.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Since</span>
+                    <input
+                      type="date"
+                      value={auditFilterDraft.since ?? ''}
+                      onChange={(e) => setAuditFilterDraft((d) => ({ ...d, since: e.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Until</span>
+                    <input
+                      type="date"
+                      value={auditFilterDraft.until ?? ''}
+                      onChange={(e) => setAuditFilterDraft((d) => ({ ...d, until: e.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Limit</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={1000}
+                      value={auditFilterDraft.limit ?? ''}
+                      placeholder="200"
+                      onChange={(e) =>
+                        setAuditFilterDraft((d) => ({
+                          ...d,
+                          limit: e.target.value ? Number(e.target.value) : undefined,
+                        }))
+                      }
+                    />
+                  </label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button type="submit" className="primary" disabled={auditLoading}>
+                      {auditLoading ? 'Filtering' : 'Filter'}
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost"
+                      onClick={() => {
+                        setAuditFilterDraft({})
+                        setAuditFilters({})
+                        setAuditResults(null)
+                        setAuditError(null)
+                      }}
+                    >
+                      Reset
+                    </button>
+                  </div>
+                </form>
+                {auditError && <p style={{ color: '#dc2626', marginTop: 12 }}>{auditError}</p>}
+                {auditResults !== null && (
+                  <div style={{ marginTop: 16 }}>
+                    <p style={{ fontSize: 13, color: '#64748b' }}>
+                      {auditResults.length} event{auditResults.length === 1 ? '' : 's'}
+                      {Object.keys(auditFilters).length > 0 ? ' match the filters.' : '.'}
+                    </p>
+                    {auditResults.length === 0 ? (
+                      <p>No matching audit events.</p>
+                    ) : (
+                      <table className="data-table">
+                        <thead>
+                          <tr>
+                            <th>When</th>
+                            <th>Actor</th>
+                            <th>Event</th>
+                            <th>Entity</th>
+                            <th>Message</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {auditResults.map((event) => (
+                            <tr key={event.id}>
+                              <td>{new Date(event.created_at).toLocaleString()}</td>
+                              <td>
+                                {event.actor_role} / {event.actor_id}
+                              </td>
+                              <td>{event.event_type}</td>
+                              <td>
+                                {event.entity_type} / {event.entity_id}
+                              </td>
+                              <td>{event.message}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                )}
               </section>
             </div>
           )}

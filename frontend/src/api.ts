@@ -3,6 +3,7 @@ import type {
   AccountIntegrationProvider,
   AccountIntegrationStatus,
   AccountProfile,
+  AuditEvent,
   Booking,
   BookingPayload,
   BookingChecklistResponse,
@@ -950,4 +951,28 @@ export function extractFactsPreview(text: string, subject?: string) {
     method: 'POST',
     body: JSON.stringify({ text, subject }),
   })
+}
+
+// --- Audit log (admin) ---
+
+export type AuditEventFilters = {
+  actor_id?: string
+  actor_role?: 'importer' | 'admin' | 'system'
+  event_type?: string
+  entity_type?: string
+  entity_id?: string
+  since?: string
+  until?: string
+  limit?: number
+}
+
+export function getAuditEvents(filters: AuditEventFilters = {}) {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== null && value !== '') {
+      params.set(key, String(value))
+    }
+  }
+  const suffix = params.toString()
+  return request<AuditEvent[]>(`/audit-events${suffix ? `?${suffix}` : ''}`)
 }
