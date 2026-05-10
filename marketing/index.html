@@ -93,113 +93,54 @@ nav { position: sticky; top: 0; z-index: 50; background: rgba(250,250,247,.92); 
 }
 .phase-pane { display: none; }
 .phase-pane.is-active { display: block; }
-.scene { border-radius: 10px; overflow: hidden; border: 2px solid rgba(15,29,50,.55); }
-.scene-body {
-  background:
-    repeating-linear-gradient(90deg, rgba(255,255,255,.035) 0 1px, transparent 1px 22px),
-    linear-gradient(180deg, #1e3654 0%, #0f1f38 100%);
-  min-height: 215px;
+.phase-inner {
+  border-radius: 10px; overflow: hidden;
+  background: var(--navy); border: 2px solid rgba(15,29,50,.55);
 }
-.scene-legend {
-  display: flex; gap: 18px; padding: 10px 16px; flex-wrap: wrap;
-  background: rgba(15,29,50,.88); border-top: 1px solid rgba(255,255,255,.1);
+.phase-desc {
+  padding: 20px 22px 0; color: rgba(255,255,255,.75); font-size: 14px; line-height: 1.5;
 }
-.scene-legend span {
-  display: flex; align-items: center; gap: 6px;
-  color: rgba(255,255,255,.88); font-size: 13px; font-weight: 500;
+.phase-desc strong { color: white; }
+.flow {
+  display: flex; align-items: flex-start; gap: 0; padding: 24px 22px 22px;
+  overflow-x: auto;
 }
-.legend-dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; flex: 0 0 auto; }
-.order-body {
-  display: grid; grid-template-columns: 1fr auto 1.3fr; gap: 18px;
-  align-items: center; padding: 28px 24px;
+.flow-step {
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  flex: 1; min-width: 0; position: relative;
 }
-.email-block {
-  border-radius: 10px; padding: 20px; text-align: center;
-  background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.12);
+.flow-step:not(:last-child)::after {
+  content: ''; position: absolute; top: 17px;
+  left: calc(50% + 18px); right: calc(-50% + 18px);
+  height: 2px; background: rgba(255,255,255,.15);
 }
-.email-from {
-  display: flex; align-items: center; justify-content: center; gap: 8px;
-  color: white; font-size: 14px; font-weight: 700; margin-bottom: 14px;
+.flow-step.done:not(:last-child)::after { background: var(--orange); }
+.flow-node {
+  width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 15px; font-weight: 800; flex: 0 0 auto; position: relative; z-index: 1;
+  border: 2px solid rgba(255,255,255,.15); background: rgba(255,255,255,.06); color: rgba(255,255,255,.5);
 }
-.email-from .i-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--orange); flex: 0 0 auto; }
-.email-attach { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
-.email-attach span {
-  padding: 5px 10px; border-radius: 6px; font-size: 12px; font-weight: 700;
-  background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.1);
-  color: rgba(255,255,255,.7);
+.flow-step.done .flow-node {
+  background: var(--orange); border-color: var(--orange); color: var(--navy);
 }
-.scene-arrow {
-  width: 36px; height: 36px; display: grid; place-items: center; border-radius: 999px;
-  background: var(--orange); color: var(--navy); font-size: 18px; font-weight: 900;
-  box-shadow: 0 8px 20px -10px rgba(242,106,46,.7);
+.flow-step.active .flow-node {
+  background: transparent; border-color: var(--orange); color: var(--orange);
+  box-shadow: 0 0 0 4px rgba(242,106,46,.2);
 }
-.record-card { border-radius: 10px; overflow: hidden; border: 1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.05); }
-.record-card-head {
-  padding: 12px 16px; background: rgba(242,106,46,.12);
-  border-bottom: 1px solid rgba(255,255,255,.08);
-  color: #ffd0a6; font-size: 15px; font-weight: 800; letter-spacing: .03em;
+.flow-label {
+  margin-top: 8px; font-size: 11px; font-weight: 600; color: rgba(255,255,255,.55);
+  line-height: 1.3; max-width: 80px;
 }
-.record-row {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 10px 16px; border-bottom: 1px solid rgba(255,255,255,.05); font-size: 14px;
+.flow-step.done .flow-label { color: rgba(255,255,255,.85); }
+.flow-step.active .flow-label { color: var(--orange); }
+.phase-footer {
+  display: flex; align-items: center; gap: 10px; padding: 12px 22px;
+  background: rgba(255,255,255,.04); border-top: 1px solid rgba(255,255,255,.08);
+  color: rgba(255,255,255,.6); font-size: 13px; font-weight: 600;
 }
-.record-row:last-child { border-bottom: 0; }
-.record-row .k { color: rgba(255,255,255,.5); }
-.record-row .v { color: white; font-weight: 700; }
-.record-row .v.pending { color: #ffd0a6; }
-.ship-body { padding: 16px; }
-.ship-cutaway {
-  display: flex; height: 190px; position: relative;
-  border-radius: 6px; overflow: hidden;
-  border: 2px solid rgba(255,255,255,.12);
+.phase-footer .dot {
+  width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto;
 }
-.ship-cutaway::after {
-  content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 8px;
-  background: linear-gradient(180deg, transparent, rgba(15,29,50,.4));
-}
-.ship-block {
-  display: flex; align-items: flex-end; justify-content: center;
-  padding-bottom: 16px; position: relative; overflow: hidden;
-}
-.ship-block .s-fill {
-  position: absolute; inset: 10px 4px 6px; border-radius: 5px; opacity: .92;
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,.22), inset 5px 0 0 rgba(255,255,255,.1);
-}
-.ship-block .s-label {
-  position: relative; z-index: 1; text-align: center;
-  color: white; font-size: 13px; font-weight: 700; line-height: 1.25;
-  text-shadow: 0 1px 2px rgba(15,29,50,.5);
-}
-.ship-block .s-label .num { font-size: 19px; display: block; }
-.ship-avail {
-  display: flex; align-items: center; justify-content: center;
-  border: 1.5px dashed rgba(255,224,197,.5); margin: 10px 6px 10px 0;
-  border-radius: 5px; color: rgba(255,255,255,.8); font-size: 13px; font-weight: 600;
-  padding: 8px; text-align: center; line-height: 1.3;
-  background: rgba(255,255,255,.06);
-}
-.ship-avail strong { display: block; color: #ffd0a6; font-size: 15px; }
-.clear-body {
-  display: flex; justify-content: center; padding: 28px 24px;
-}
-.arrival-card {
-  width: 100%; max-width: 320px; border-radius: 10px; overflow: hidden;
-  border: 1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.05);
-}
-.arrival-head {
-  padding: 12px 16px; background: rgba(47,125,91,.15);
-  border-bottom: 1px solid rgba(255,255,255,.08);
-  color: #7ad9a8; font-size: 15px; font-weight: 800;
-}
-.arrival-row {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 10px 16px; border-bottom: 1px solid rgba(255,255,255,.05); font-size: 14px;
-}
-.arrival-row:last-child { border-bottom: 0; }
-.arrival-row .k { color: rgba(255,255,255,.5); }
-.arrival-row .v { color: white; font-weight: 700; }
-.arrival-row .v.ok { color: #7ad9a8; }
-.arrival-row .v.pending { color: #ffd0a6; }
 
 .trust-bar { padding: 20px 0; border-top: 1px solid var(--border); }
 .trust-items { display: flex; align-items: center; justify-content: center; gap: 34px; flex-wrap: wrap; color: var(--text-2); font-size: 14px; }
@@ -318,9 +259,8 @@ footer { background: var(--navy); color: rgba(255,255,255,.76); padding: 56px 0 
   .hero-art { max-width: 680px; margin: 0 auto; }
 }
 @media (max-width: 760px) {
-  .order-body { grid-template-columns: 1fr; }
-  .order-body .scene-arrow { justify-self: center; transform: rotate(90deg); }
-  .ship-cutaway { height: 140px; }
+  .flow { gap: 0; padding: 20px 16px 18px; }
+  .flow-label { font-size: 10px; max-width: 64px; }
 }
 @media (max-width: 600px) {
   .hero-stats, .nav-cta { gap: 10px; }
@@ -331,7 +271,8 @@ footer { background: var(--navy); color: rgba(255,255,255,.76); padding: 56px 0 
   .hero { padding-top: 44px; }
   .phase-demo { padding: 14px; }
   .phase-tabs { grid-template-columns: 1fr; }
-  .ship-cutaway { height: 120px; }
+  .flow { flex-wrap: wrap; justify-content: center; gap: 12px; }
+  .flow-step:not(:last-child)::after { display: none; }
 }
 </style>
 </head>
@@ -375,80 +316,54 @@ footer { background: var(--navy); color: rgba(255,255,255,.76); padding: 56px 0 
         <div class="phase-tabs" role="tablist" aria-label="See the Shiphoppa workflow">
           <button class="phase-tab" type="button" role="tab" aria-selected="true" data-phase-tab="order">1. Order</button>
           <button class="phase-tab" type="button" role="tab" aria-selected="false" data-phase-tab="ship">2. Ship</button>
-          <button class="phase-tab" type="button" role="tab" aria-selected="false" data-phase-tab="clear">3. Clear</button>
+          <button class="phase-tab" type="button" role="tab" aria-selected="false" data-phase-tab="deliver">3. Deliver</button>
         </div>
 
         <div class="phase-pane is-active" data-phase-pane="order">
-          <div class="scene">
-            <div class="scene-body order-body">
-              <div class="email-block">
-                <div class="email-from"><span class="i-dot"></span> supplier@factory.cn</div>
-                <div class="email-attach">
-                  <span>invoice.pdf</span>
-                  <span>packing-list.xlsx</span>
-                  <span>terms.msg</span>
-                </div>
-              </div>
-              <div class="scene-arrow" aria-hidden="true">›</div>
-              <div class="record-card">
-                <div class="record-card-head">Order #SH-2406</div>
-                <div class="record-row"><span class="k">Supplier</span><span class="v">Guangzhou MFG Co</span></div>
-                <div class="record-row"><span class="k">Volume</span><span class="v">8.4 cbm</span></div>
-                <div class="record-row"><span class="k">Docs</span><span class="v pending">3 pending</span></div>
-              </div>
+          <div class="phase-inner">
+            <p class="phase-desc"><strong>Place your order and we handle everything</strong> until it's ready to ship — supplier management, production tracking, inspections and documents.</p>
+            <div class="flow">
+              <div class="flow-step done"><div class="flow-node">&#10003;</div><div class="flow-label">Purchase order</div></div>
+              <div class="flow-step done"><div class="flow-node">&#10003;</div><div class="flow-label">Supplier payment</div></div>
+              <div class="flow-step done"><div class="flow-node">&#10003;</div><div class="flow-label">Production tracked</div></div>
+              <div class="flow-step active"><div class="flow-node">4</div><div class="flow-label">Inspection</div></div>
+              <div class="flow-step"><div class="flow-node">5</div><div class="flow-label">Docs collected</div></div>
+              <div class="flow-step"><div class="flow-node">6</div><div class="flow-label">Ready to ship</div></div>
             </div>
-            <div class="scene-legend">
-              <span><i class="legend-dot" style="background:#F26A2E"></i> Email parsed</span>
-              <span><i class="legend-dot" style="background:#268DF2"></i> Docs extracted</span>
-              <span><i class="legend-dot" style="background:#32BF6B"></i> Tasks created</span>
+            <div class="phase-footer">
+              <span class="dot" style="background:var(--orange)"></span> Automated — supplier chased 2 hrs ago
             </div>
           </div>
         </div>
 
         <div class="phase-pane" data-phase-pane="ship">
-          <div class="scene">
-            <div class="scene-body ship-body">
-              <div class="ship-cutaway">
-                <div class="ship-block" style="flex:8.4">
-                  <div class="s-fill" style="background:#F26A2E"></div>
-                  <div class="s-label"><span class="num">8.4</span>your cbm</div>
-                </div>
-                <div class="ship-block" style="flex:12.1">
-                  <div class="s-fill" style="background:#268DF2"></div>
-                  <div class="s-label"><span class="num">12.1</span>co-load</div>
-                </div>
-                <div class="ship-block" style="flex:6.8">
-                  <div class="s-fill" style="background:#32BF6B"></div>
-                  <div class="s-label"><span class="num">6.8</span>co-load</div>
-                </div>
-                <div class="ship-avail" style="flex:40.2">
-                  <div><strong>40.2 cbm</strong>available</div>
-                </div>
-              </div>
+          <div class="phase-inner">
+            <p class="phase-desc"><strong>We move your cargo from supplier to port</strong> — choose full container, shared container, or contracted freight. Track it the whole way.</p>
+            <div class="flow">
+              <div class="flow-step done"><div class="flow-node">&#10003;</div><div class="flow-label">Pickup from supplier</div></div>
+              <div class="flow-step done"><div class="flow-node">&#10003;</div><div class="flow-label">Container loaded</div></div>
+              <div class="flow-step done"><div class="flow-node">&#10003;</div><div class="flow-label">Departed port</div></div>
+              <div class="flow-step active"><div class="flow-node">4</div><div class="flow-label">In transit</div></div>
+              <div class="flow-step"><div class="flow-node">5</div><div class="flow-label">Arrives at port</div></div>
             </div>
-            <div class="scene-legend">
-              <span><i class="legend-dot" style="background:#F26A2E"></i> Your cargo · 8.4 cbm</span>
-              <span><i class="legend-dot" style="background:#268DF2"></i> ETD Jun 14 → ETA Jul 02</span>
-              <span><i class="legend-dot" style="background:#32BF6B"></i> Supplier chased ✓</span>
+            <div class="phase-footer">
+              <span class="dot" style="background:#268DF2"></span> MCL · 8.4 cbm · ETA Jul 02
             </div>
           </div>
         </div>
 
-        <div class="phase-pane" data-phase-pane="clear">
-          <div class="scene">
-            <div class="scene-body clear-body">
-              <div class="arrival-card">
-                <div class="arrival-head">✓ Cleared · Arriving Jul 04</div>
-                <div class="arrival-row"><span class="k">Duty</span><span class="v">$1,240 AUD</span></div>
-                <div class="arrival-row"><span class="k">GST</span><span class="v">$820 AUD</span></div>
-                <div class="arrival-row"><span class="k">Truck</span><span class="v ok">Booked</span></div>
-                <div class="arrival-row"><span class="k">POD</span><span class="v pending">Pending</span></div>
-              </div>
+        <div class="phase-pane" data-phase-pane="deliver">
+          <div class="phase-inner">
+            <p class="phase-desc"><strong>From the moment the ship docks, we take over</strong> — customs clearance, duty, quarantine, trucking and proof of delivery to your door.</p>
+            <div class="flow">
+              <div class="flow-step done"><div class="flow-node">&#10003;</div><div class="flow-label">Ship docked</div></div>
+              <div class="flow-step done"><div class="flow-node">&#10003;</div><div class="flow-label">Customs cleared</div></div>
+              <div class="flow-step done"><div class="flow-node">&#10003;</div><div class="flow-label">Duty &amp; GST paid</div></div>
+              <div class="flow-step active"><div class="flow-node">4</div><div class="flow-label">Truck dispatched</div></div>
+              <div class="flow-step"><div class="flow-node">5</div><div class="flow-label">Delivered</div></div>
             </div>
-            <div class="scene-legend">
-              <span><i class="legend-dot" style="background:#2F7D5B"></i> Duty prepared</span>
-              <span><i class="legend-dot" style="background:#268DF2"></i> Released</span>
-              <span><i class="legend-dot" style="background:#FFD0A6"></i> Delivery Jul 04</span>
+            <div class="phase-footer">
+              <span class="dot" style="background:#2F7D5B"></span> Delivery booked — arriving Jul 04
             </div>
           </div>
         </div>
@@ -689,9 +604,9 @@ footer { background: var(--navy); color: rgba(255,255,255,.76); padding: 56px 0 
 <script>
 document.querySelectorAll('[data-phase-demo]').forEach((demo) => {
   const copy = {
-    order: 'Order: forward the product order and Shiphoppa creates the live record.',
-    ship: 'Ship: Shiphoppa chases the supplier and prepares space, pickup and trucking options.',
-    clear: 'Clear: duties, release and delivery stay attached until the order arrives.'
+    order: 'Order: place the order, run production, inspect, get cargo ready to ship.',
+    ship: 'Ship: FCL, MCL or LCL transport from origin port to destination port with live tracking.',
+    deliver: 'Deliver: from the moment the ship docks through customs, release and final delivery to your warehouse.'
   };
   const tabs = Array.from(demo.querySelectorAll('[data-phase-tab]'));
   const panes = Array.from(demo.querySelectorAll('[data-phase-pane]'));
