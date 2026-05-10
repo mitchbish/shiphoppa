@@ -1305,7 +1305,7 @@ def post_supplier_claim_link(
         raise HTTPException(status_code=status_code, detail=message)
 
 
-@app.get("/supplier-claim/{token}", response_model=SupplierProfileClaimResponse)
+@app.get("/api/supplier-claim/{token}", response_model=SupplierProfileClaimResponse)
 def get_supplier_claim(token: str) -> SupplierProfileClaimResponse:
     try:
         claim = get_supplier_claim_by_token(store, token)
@@ -1317,7 +1317,7 @@ def get_supplier_claim(token: str) -> SupplierProfileClaimResponse:
     return SupplierProfileClaimResponse(claim=claim, lead=lead)
 
 
-@app.post("/supplier-claim/{token}/accept", response_model=SupplierProfileClaimResponse)
+@app.post("/api/supplier-claim/{token}/accept", response_model=SupplierProfileClaimResponse)
 def accept_supplier_claim_endpoint(
     token: str,
     payload: SupplierProfileClaimAccept,

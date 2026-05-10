@@ -88,6 +88,8 @@ import {
   requestApprovalReview,
   extractFactsPreview,
   getSupplierPortalPreview,
+  getSupplierClaim,
+  acceptSupplierClaim,
   getSentinelSubscribers,
   createSentinelSubscriber,
   confirmSentinelSubscriber,
@@ -145,6 +147,7 @@ import type {
   ImportProject,
   SentinelSubscriber,
   SupplierLead,
+  SupplierProfileClaimResponse,
   SupplierVerificationStatus,
 } from './types'
 import type {
@@ -209,7 +212,7 @@ type View =
   | 'customs'
   | 'delivery'
   | 'admin'
-type WorkspaceMode = 'customer' | 'admin-login' | 'admin' | 'broker-portal' | 'warehouse-portal' | 'carrier-portal' | 'trucker-portal'
+type WorkspaceMode = 'customer' | 'admin-login' | 'admin' | 'broker-portal' | 'warehouse-portal' | 'carrier-portal' | 'trucker-portal' | 'supplier-claim'
 type AdminView =
   | 'overview'
   | 'containers'
@@ -2496,11 +2499,18 @@ function truckerTokenFromPath(): string | null {
   return match ? match[1] : null
 }
 
+function supplierClaimTokenFromPath(): string | null {
+  const pathname = globalThis.location?.pathname ?? ''
+  const match = pathname.match(/^\/supplier-claim\/([^/]+)\/?$/)
+  return match ? match[1] : null
+}
+
 function initialWorkspaceMode(): WorkspaceMode {
   if (brokerTokenFromPath()) return 'broker-portal'
   if (warehouseTokenFromPath()) return 'warehouse-portal'
   if (carrierTokenFromPath()) return 'carrier-portal'
   if (truckerTokenFromPath()) return 'trucker-portal'
+  if (supplierClaimTokenFromPath()) return 'supplier-claim'
   return globalThis.location?.pathname === '/admin' ? 'admin-login' : 'customer'
 }
 
@@ -3671,6 +3681,172 @@ function TruckerPortalView({ token }: { token: string }) {
             </ul>
           )}
         </section>
+      </main>
+    </div>
+  )
+}
+
+
+function SupplierClaimView({ token }: { token: string }) {
+  const [data, setData] = useState<SupplierProfileClaimResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [contactName, setContactName] = useState('')
+  const [contactEmail, setContactEmail] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [accepted, setAccepted] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    getSupplierClaim(token)
+      .then((response) => {
+        if (cancelled) return
+        setData(response)
+        setContactEmail(response.claim.claimed_by_email ?? '')
+        setContactName(response.claim.claimed_contact_name ?? '')
+        if (response.claim.status === 'claimed') setAccepted(true)
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setLoadError(err instanceof Error ? err.message : 'Could not load this claim link')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [token])
+
+  async function handleAccept(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setSubmitError(null)
+    if (!contactEmail.trim() || !contactName.trim()) {
+      setSubmitError('Add your name and email so we know who claimed the profile.')
+      return
+    }
+    setSubmitting(true)
+    try {
+      const response = await acceptSupplierClaim(token, contactEmail.trim(), contactName.trim())
+      setData(response)
+      setAccepted(true)
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Could not accept the claim')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="app-shell broker-portal-shell">
+      <header className="topbar broker-portal-topbar">
+        <Logo />
+        <span className="status-chip orange">Supplier claim</span>
+      </header>
+      <main className="broker-portal-main">
+        {loading && <p>Loading your supplier profile…</p>}
+        {loadError && (
+          <section className="panel">
+            <h2>This link is no longer valid.</h2>
+            <p>{loadError}</p>
+            <p>Please ask Ship Hoppa for a fresh link.</p>
+          </section>
+        )}
+        {data && (
+          <>
+            <section className="panel">
+              <div className="panel-heading">
+                <div>
+                  <p className="eyebrow">Welcome to Ship Hoppa</p>
+                  <h2>{data.lead.company_name}</h2>
+                </div>
+              </div>
+              <p className="tab-intro-copy">
+                Ship Hoppa created a free profile for your business so importers can route real
+                orders to you. Confirm the profile below to claim it. After you claim, you can
+                log in to manage orders, photos, and documents in one place.
+              </p>
+              <dl className="decision-card-grid">
+                <div>
+                  <dt>Country</dt>
+                  <dd>{data.lead.country}</dd>
+                </div>
+                {data.lead.city && (
+                  <div>
+                    <dt>City</dt>
+                    <dd>{data.lead.city}</dd>
+                  </div>
+                )}
+                <div>
+                  <dt>Source</dt>
+                  <dd>{data.lead.discovery_source.replace('_', ' ')}</dd>
+                </div>
+                {data.lead.public_email && (
+                  <div>
+                    <dt>Listed email</dt>
+                    <dd>{data.lead.public_email}</dd>
+                  </div>
+                )}
+                {data.lead.public_phone && (
+                  <div>
+                    <dt>Listed phone</dt>
+                    <dd>{data.lead.public_phone}</dd>
+                  </div>
+                )}
+                {data.lead.product_categories.length > 0 && (
+                  <div>
+                    <dt>Listed categories</dt>
+                    <dd>{data.lead.product_categories.join(', ')}</dd>
+                  </div>
+                )}
+              </dl>
+            </section>
+
+            {accepted ? (
+              <section className="panel">
+                <h2>Thank you. Your profile is claimed.</h2>
+                <p>
+                  We sent a confirmation to {data.claim.claimed_by_email ?? contactEmail}.
+                  We will follow up with login details so you can manage orders.
+                </p>
+              </section>
+            ) : (
+              <section className="panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">Claim this profile</p>
+                    <h2>Add a contact name and email so we can reach you.</h2>
+                  </div>
+                </div>
+                <form onSubmit={handleAccept} style={{ display: 'grid', gap: 12, maxWidth: 480 }}>
+                  <label>
+                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Your name</span>
+                    <input
+                      type="text"
+                      value={contactName}
+                      onChange={(e) => setContactName(e.target.value)}
+                      required
+                    />
+                  </label>
+                  <label>
+                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Your email</span>
+                    <input
+                      type="email"
+                      value={contactEmail}
+                      onChange={(e) => setContactEmail(e.target.value)}
+                      required
+                    />
+                  </label>
+                  {submitError && <p style={{ color: '#dc2626' }}>{submitError}</p>}
+                  <button type="submit" className="primary" disabled={submitting}>
+                    {submitting ? 'Submitting…' : 'Claim profile'}
+                  </button>
+                </form>
+              </section>
+            )}
+          </>
+        )}
       </main>
     </div>
   )
@@ -5409,6 +5585,13 @@ function App() {
     const truckerToken = truckerTokenFromPath()
     if (truckerToken) {
       return <TruckerPortalView token={truckerToken} />
+    }
+  }
+
+  if (workspaceMode === 'supplier-claim') {
+    const claimToken = supplierClaimTokenFromPath()
+    if (claimToken) {
+      return <SupplierClaimView token={claimToken} />
     }
   }
 

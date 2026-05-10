@@ -103,7 +103,7 @@ def test_get_supplier_claim_returns_claim_and_lead() -> None:
         headers=ADMIN_HEADERS,
     ).json()
 
-    response = client.get(f"/supplier-claim/{claim_resp['token']}")
+    response = client.get(f"/api/supplier-claim/{claim_resp['token']}")
     assert response.status_code == 200
     body = response.json()
     assert body["claim"]["id"] == claim_resp["id"]
@@ -113,7 +113,7 @@ def test_get_supplier_claim_returns_claim_and_lead() -> None:
 def test_get_supplier_claim_404_for_unknown_token() -> None:
     reset_store_for_tests()
     client = TestClient(app)
-    response = client.get("/supplier-claim/notarealtoken")
+    response = client.get("/api/supplier-claim/notarealtoken")
     assert response.status_code == 404
 
 
@@ -127,7 +127,7 @@ def test_accept_supplier_claim_marks_lead_onboarded_and_records_growth() -> None
     ).json()
 
     response = client.post(
-        f"/supplier-claim/{claim_resp['token']}/accept",
+        f"/api/supplier-claim/{claim_resp['token']}/accept",
         json={"contact_email": "owner@example.com", "contact_name": "Wei Lin"},
     )
     assert response.status_code == 200
@@ -158,11 +158,11 @@ def test_accept_supplier_claim_idempotent_does_not_re_emit_growth_event() -> Non
     ).json()["token"]
 
     first = client.post(
-        f"/supplier-claim/{token}/accept",
+        f"/api/supplier-claim/{token}/accept",
         json={"contact_email": "first@example.com", "contact_name": "First"},
     )
     second = client.post(
-        f"/supplier-claim/{token}/accept",
+        f"/api/supplier-claim/{token}/accept",
         json={"contact_email": "second@example.com", "contact_name": "Second"},
     )
     assert first.status_code == 200
@@ -189,7 +189,7 @@ def test_accept_returns_410_for_expired_claim() -> None:
     store.supplier_profile_claims[claim_id] = claim_obj
 
     response = client.post(
-        f"/supplier-claim/{claim_resp['token']}/accept",
+        f"/api/supplier-claim/{claim_resp['token']}/accept",
         json={"contact_email": "late@example.com", "contact_name": "Late"},
     )
     assert response.status_code == 410

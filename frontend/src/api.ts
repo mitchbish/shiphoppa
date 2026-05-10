@@ -110,13 +110,16 @@ function idempotencyKey() {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const method = init?.method ?? 'GET'
-  const token = tokenFor(path, method)
-  if (!API_BASE_URL || !token) {
+  const isPublic = path.startsWith('/api/supplier-claim/')
+  const token = isPublic ? '' : tokenFor(path, method)
+  if (!API_BASE_URL || (!isPublic && !token)) {
     throw new Error('Ship Hoppa is missing its API deployment settings.')
   }
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    Authorization: `Bearer ${token}`,
+  }
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
   }
   if (method !== 'GET') {
     headers['Idempotency-Key'] = idempotencyKey()
@@ -1237,11 +1240,11 @@ export function createSupplierClaimLink(leadId: string) {
 }
 
 export function getSupplierClaim(token: string) {
-  return request<SupplierProfileClaimResponse>(`/supplier-claim/${token}`)
+  return request<SupplierProfileClaimResponse>(`/api/supplier-claim/${token}`)
 }
 
 export function acceptSupplierClaim(token: string, contact_email: string, contact_name: string) {
-  return request<SupplierProfileClaimResponse>(`/supplier-claim/${token}/accept`, {
+  return request<SupplierProfileClaimResponse>(`/api/supplier-claim/${token}/accept`, {
     method: 'POST',
     body: JSON.stringify({ contact_email, contact_name }),
   })
