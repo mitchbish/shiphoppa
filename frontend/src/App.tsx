@@ -30,10 +30,14 @@ import {
   bookDeliveryPlan,
   createBrokerLink,
   createSupplierLink,
+  createWarehouseLink,
   commitContainer,
   getBrokerPortal,
+  getWarehousePortal,
   submitBrokerClearance,
+  submitWarehouseReceipt,
   uploadBrokerDocument,
+  uploadWarehouseDocument,
   confirmBooking,
   createBooking,
   createPurchaseOrder,
@@ -114,6 +118,8 @@ import type {
   BrokerClearanceUpdate,
   BrokerPortalResponse,
   BrokerSubmittableStatus,
+  WarehouseAccessLink,
+  WarehousePortalResponse,
   CargoCategory,
   CarrierOption,
   Container,
@@ -156,7 +162,7 @@ type View =
   | 'customs'
   | 'delivery'
   | 'admin'
-type WorkspaceMode = 'customer' | 'admin-login' | 'admin' | 'broker-portal'
+type WorkspaceMode = 'customer' | 'admin-login' | 'admin' | 'broker-portal' | 'warehouse-portal'
 type AdminView = 'overview' | 'containers' | 'exceptions' | 'documents' | 'tracking' | 'payments' | 'customs' | 'automation' | 'audit'
 type TrackingStage = ShipmentEvent['stage']
 type MapPoint = { lat: number; lng: number }
@@ -2353,8 +2359,15 @@ function brokerTokenFromPath(): string | null {
   return match ? match[1] : null
 }
 
+function warehouseTokenFromPath(): string | null {
+  const pathname = globalThis.location?.pathname ?? ''
+  const match = pathname.match(/^\/warehouse\/([^/]+)\/?$/)
+  return match ? match[1] : null
+}
+
 function initialWorkspaceMode(): WorkspaceMode {
   if (brokerTokenFromPath()) return 'broker-portal'
+  if (warehouseTokenFromPath()) return 'warehouse-portal'
   return globalThis.location?.pathname === '/admin' ? 'admin-login' : 'customer'
 }
 
@@ -2698,6 +2711,286 @@ function BrokerPortalView({ token }: { token: string }) {
 }
 
 
+function WarehousePortalView({ token }: { token: string }) {
+  const [portal, setPortal] = useState<WarehousePortalResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [actualCbm, setActualCbm] = useState('')
+  const [actualWeight, setActualWeight] = useState('')
+  const [notes, setNotes] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [confirmedAt, setConfirmedAt] = useState<string | null>(null)
+  const [statusMessage, setStatusMessage] = useState<string | null>(null)
+  const [docFile, setDocFile] = useState('')
+  const [docNotes, setDocNotes] = useState('')
+  const [docSubmitting, setDocSubmitting] = useState(false)
+  const [docMessage, setDocMessage] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    getWarehousePortal(token)
+      .then((data) => {
+        if (cancelled) return
+        setPortal(data)
+        if (data.booking.cbm_actual != null) setActualCbm(String(data.booking.cbm_actual))
+        if (data.booking.weight_kg_actual != null) setActualWeight(String(data.booking.weight_kg_actual))
+        if (data.booking.received_at_warehouse) setConfirmedAt(data.booking.received_at_warehouse)
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setLoadError(err instanceof Error ? err.message : 'Could not load warehouse portal')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [token])
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!portal) return
+    const cbmValue = Number(actualCbm)
+    const weightValue = Number(actualWeight)
+    if (!Number.isFinite(cbmValue) || cbmValue <= 0) {
+      setStatusMessage('Enter actual cubic meters greater than zero.')
+      return
+    }
+    if (!Number.isFinite(weightValue) || weightValue <= 0) {
+      setStatusMessage('Enter actual weight in kilograms greater than zero.')
+      return
+    }
+    setSubmitting(true)
+    setStatusMessage(null)
+    try {
+      const updated = await submitWarehouseReceipt(token, {
+        actual_cbm: cbmValue,
+        actual_weight_kg: weightValue,
+        notes: notes.trim() || null,
+      })
+      setPortal(updated)
+      setConfirmedAt(updated.booking.received_at_warehouse ?? new Date().toISOString())
+      setStatusMessage('Receipt confirmed. The importer has been notified.')
+    } catch (err) {
+      setStatusMessage(err instanceof Error ? err.message : 'Could not save receipt.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleDocUpload(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!docFile.trim()) {
+      setDocMessage('A file name is required before uploading.')
+      return
+    }
+    setDocSubmitting(true)
+    setDocMessage(null)
+    try {
+      await uploadWarehouseDocument(token, 'supplier_photos', docFile.trim(), docNotes.trim() || undefined)
+      const refreshed = await getWarehousePortal(token)
+      setPortal(refreshed)
+      setDocMessage(`${docFile} attached.`)
+      setDocFile('')
+      setDocNotes('')
+    } catch (err) {
+      setDocMessage(err instanceof Error ? err.message : 'Could not upload the photo.')
+    } finally {
+      setDocSubmitting(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="app-shell broker-portal-shell">
+        <header className="topbar">
+          <Logo />
+          <span className="eyebrow">Warehouse workspace</span>
+        </header>
+        <main className="broker-portal-main">
+          <p>Loading shipment.</p>
+        </main>
+      </div>
+    )
+  }
+
+  if (loadError || !portal) {
+    return (
+      <div className="app-shell broker-portal-shell">
+        <header className="topbar">
+          <Logo />
+          <span className="eyebrow">Warehouse workspace</span>
+        </header>
+        <main className="broker-portal-main">
+          <div className="notice error">{loadError ?? 'Warehouse link not found.'}</div>
+        </main>
+      </div>
+    )
+  }
+
+  const { booking, documents, events } = portal
+  const isPickupMode = booking.delivery_mode === 'ship_hoppa_pickup'
+
+  return (
+    <div className="app-shell broker-portal-shell">
+      <header className="topbar broker-portal-topbar">
+        <Logo />
+        <span className="eyebrow">Warehouse workspace</span>
+      </header>
+      <main className="broker-portal-main">
+        <section className="broker-portal-card">
+          <p className="eyebrow">Shipment</p>
+          <h1>{booking.id}</h1>
+          <p className="broker-portal-subtitle">
+            {booking.importer_company_name ?? 'Importer'} from {booking.supplier_city}, {booking.supplier_country}.
+            Ready by {booking.cargo_ready_date_latest}.
+            {booking.warehouse_name && <> Drop at {booking.warehouse_name}.</>}
+          </p>
+          <div className="broker-portal-grid">
+            <div>
+              <p className="broker-portal-label">Cargo</p>
+              <p>{booking.cargo_description ?? booking.cargo_category}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Expected cubic meters (CBM)</p>
+              <p>{booking.cbm_estimate}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Expected weight (kg)</p>
+              <p>{booking.weight_kg_estimate}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Packages</p>
+              <p>{booking.number_of_packages ?? 'Not provided'}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Receipt cutoff</p>
+              <p>{booking.warehouse_receipt_cutoff ?? 'No cutoff set'}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Booking status</p>
+              <p>{booking.status.replace('_', ' ')}</p>
+            </div>
+          </div>
+        </section>
+
+        {isPickupMode ? (
+          <section className="broker-portal-card">
+            <h2>Ship Hoppa is collecting from the supplier</h2>
+            <p>
+              This shipment is on Ship Hoppa pickup. You do not need to receive it at a warehouse. The pickup driver will contact
+              the supplier directly. If you reached this page by mistake, please tell the importer.
+            </p>
+          </section>
+        ) : confirmedAt ? (
+          <section className="broker-portal-card">
+            <h2>Receipt confirmed</h2>
+            <p>
+              You confirmed receipt at {new Date(confirmedAt).toLocaleString()} with {booking.cbm_actual ?? actualCbm} CBM and{' '}
+              {booking.weight_kg_actual ?? actualWeight} kg. The importer can see this in their tracking tab.
+            </p>
+            <p className="muted">If something is wrong, contact the importer to correct the record.</p>
+          </section>
+        ) : (
+          <section className="broker-portal-card">
+            <h2>Confirm cargo receipt</h2>
+            <form onSubmit={handleSubmit} className="broker-portal-form">
+              <label>
+                <span>Actual cubic meters (CBM)</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={actualCbm}
+                  onChange={(event) => setActualCbm(event.target.value)}
+                  required
+                />
+              </label>
+              <label>
+                <span>Actual weight (kg)</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={actualWeight}
+                  onChange={(event) => setActualWeight(event.target.value)}
+                  required
+                />
+              </label>
+              <label className="broker-portal-textarea">
+                <span>Receipt notes (damage, missing items, anything unusual)</span>
+                <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} />
+              </label>
+              <button className="primary-action" type="submit" disabled={submitting}>
+                {submitting ? <Loader2 size={16} className="spin" /> : <Check size={16} />}
+                {submitting ? 'Saving' : 'Confirm receipt'}
+              </button>
+            </form>
+            {statusMessage && <div className="notice">{statusMessage}</div>}
+          </section>
+        )}
+
+        {!isPickupMode && (
+          <section className="broker-portal-card">
+            <h2>Attach a cargo photo</h2>
+            <form onSubmit={handleDocUpload} className="broker-portal-form">
+              <label>
+                <span>File name</span>
+                <input
+                  value={docFile}
+                  onChange={(event) => setDocFile(event.target.value)}
+                  placeholder="e.g. cargo-photo-front.jpg"
+                />
+              </label>
+              <label className="broker-portal-textarea">
+                <span>Notes</span>
+                <textarea value={docNotes} onChange={(event) => setDocNotes(event.target.value)} rows={2} />
+              </label>
+              <button className="secondary-action" type="submit" disabled={docSubmitting}>
+                {docSubmitting ? <Loader2 size={16} className="spin" /> : <FileText size={16} />}
+                {docSubmitting ? 'Attaching' : 'Attach photo'}
+              </button>
+            </form>
+            {docMessage && <div className="notice">{docMessage}</div>}
+          </section>
+        )}
+
+        <section className="broker-portal-card">
+          <h2>Recent documents</h2>
+          {documents.length === 0 ? (
+            <p>No documents attached yet.</p>
+          ) : (
+            <ul className="broker-portal-list">
+              {documents.slice(0, 8).map((doc) => (
+                <li key={doc.id}>
+                  {doc.file_name} <span className="muted">({doc.document_type.replace('_', ' ')})</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="broker-portal-card">
+          <h2>Recent events</h2>
+          {events.length === 0 ? (
+            <p>No events recorded yet.</p>
+          ) : (
+            <ul className="broker-portal-list">
+              {events.slice(0, 8).map((event) => (
+                <li key={event.id}>
+                  <strong>{event.label}</strong> <span className="muted">({event.stage.replace('_', ' ')})</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </main>
+    </div>
+  )
+}
+
+
 function App() {
   const [view, setView] = useState<View>('book')
   const hasAutoRoutedRef = useRef(false)
@@ -2753,6 +3046,8 @@ function App() {
   const [supplierPortal, setSupplierPortal] = useState<SupplierPortalResponse | null>(null)
   const [brokerLink, setBrokerLink] = useState<BrokerAccessLink | null>(null)
   const [brokerInviteMessage, setBrokerInviteMessage] = useState<string | null>(null)
+  const [warehouseLink, setWarehouseLink] = useState<WarehouseAccessLink | null>(null)
+  const [warehouseInviteMessage, setWarehouseInviteMessage] = useState<string | null>(null)
   const [sourceMessageDraft, setSourceMessageDraft] = useState({
     from_address: 'sales@supplier.example',
     subject: 'Supplier pro forma and production update',
@@ -2830,6 +3125,10 @@ function App() {
     function syncWorkspaceToPath() {
       if (brokerTokenFromPath()) {
         setWorkspaceMode('broker-portal')
+        return
+      }
+      if (warehouseTokenFromPath()) {
+        setWorkspaceMode('warehouse-portal')
         return
       }
       if (globalThis.location?.pathname === '/admin') {
@@ -3532,6 +3831,34 @@ function App() {
     }
   }
 
+  async function handleInviteWarehouse() {
+    if (!activeBooking) return
+    setLoading(true)
+    setError(null)
+    setWarehouseInviteMessage(null)
+    try {
+      const link = await createWarehouseLink(activeBooking.id)
+      setWarehouseLink(link)
+      const url = `${globalThis.location?.origin ?? ''}/warehouse/${link.token}`
+      let copied = false
+      try {
+        await globalThis.navigator?.clipboard?.writeText(url)
+        copied = true
+      } catch {
+        copied = false
+      }
+      setWarehouseInviteMessage(
+        copied
+          ? 'Warehouse link copied to clipboard. Send it to the warehouse contact.'
+          : 'Warehouse link ready. Copy the URL below and send it to the warehouse contact.',
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create warehouse link')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   async function handleSupplierUpload() {
     if (!supplierLink || !activeBooking) return
     setLoading(true)
@@ -4181,6 +4508,13 @@ function App() {
     const brokerToken = brokerTokenFromPath()
     if (brokerToken) {
       return <BrokerPortalView token={brokerToken} />
+    }
+  }
+
+  if (workspaceMode === 'warehouse-portal') {
+    const whToken = warehouseTokenFromPath()
+    if (whToken) {
+      return <WarehousePortalView token={whToken} />
     }
   }
 
@@ -6797,6 +7131,43 @@ function App() {
                       </button>
                     </div>
                   </section>
+
+                  {activeBooking && activeBooking.delivery_mode !== 'ship_hoppa_pickup' && (
+                    <section className="form-section document-step">
+                      <div className="form-section-heading">
+                        <span>4</span>
+                        <div>
+                          <strong>Bring your warehouse into the workspace</strong>
+                          <small>
+                            Send a self-serve link your warehouse can open without an account. They confirm receipt with actual
+                            CBM, weight, and a photo, and the cargo timeline updates here.
+                          </small>
+                        </div>
+                      </div>
+                      <div className="broker-invite-block">
+                        <button
+                          className="primary-action small"
+                          type="button"
+                          onClick={handleInviteWarehouse}
+                          disabled={loading || !activeBooking}
+                        >
+                          <UserRound size={16} />
+                          Invite warehouse
+                        </button>
+                        {warehouseInviteMessage && <p className="muted">{warehouseInviteMessage}</p>}
+                        {warehouseLink && (
+                          <label className="broker-invite-url">
+                            <span>Warehouse link</span>
+                            <input
+                              readOnly
+                              value={`${globalThis.location?.origin ?? ''}/warehouse/${warehouseLink.token}`}
+                              onFocus={(event) => event.target.select()}
+                            />
+                          </label>
+                        )}
+                      </div>
+                    </section>
+                  )}
                 </div>
               </section>
             )}

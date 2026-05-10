@@ -114,6 +114,10 @@ from .models import (
     BrokerClearanceUpdate,
     BrokerCustomsSummary,
     BrokerPortalResponse,
+    WarehouseAccessLink,
+    WarehouseBookingSummary,
+    WarehousePortalResponse,
+    WarehouseReceiptUpdate,
 )
 from .store import Store
 
@@ -3226,6 +3230,110 @@ def broker_clearance_update(store: Store, token: str, request: BrokerClearanceUp
     link.last_used_at = now_utc()
     store.broker_links[link.id] = link
     return _broker_portal_response(store, booking)
+
+
+def create_warehouse_link(store: Store, booking_id: str) -> WarehouseAccessLink:
+    if booking_id not in store.bookings:
+        raise ValueError("Booking not found")
+    for link in store.warehouse_links.values():
+        if link.booking_id == booking_id and link.active:
+            return link
+    link = WarehouseAccessLink(
+        id=store.next_id("WHL"),
+        booking_id=booking_id,
+        token=secrets.token_urlsafe(24),
+        expires_at=now_utc() + timedelta(days=45),
+        created_at=now_utc(),
+    )
+    store.warehouse_links[link.id] = link
+    create_audit_event(store, ActorRole.admin, "ops", "warehouse_link_created", "booking", booking_id, f"Warehouse link created for {booking_id}.")
+    return link
+
+
+def warehouse_link_by_token(store: Store, token: str) -> WarehouseAccessLink:
+    for link in store.warehouse_links.values():
+        if link.token == token and link.active:
+            if link.expires_at and link.expires_at < now_utc():
+                raise ValueError("Warehouse link has expired")
+            return link
+    raise ValueError("Warehouse link not found")
+
+
+def _warehouse_portal_response(store: Store, booking: Booking) -> WarehousePortalResponse:
+    importer = store.importers.get(booking.importer_id)
+    warehouse = store.warehouse_for_lane(booking.lane_id or "") if booking.lane_id else None
+    summary = WarehouseBookingSummary(
+        id=booking.id,
+        importer_company_name=importer.company_name if importer else None,
+        supplier_country=booking.supplier_country,
+        supplier_city=booking.supplier_city,
+        cargo_description=booking.cargo_description,
+        cargo_category=booking.cargo_category,
+        cbm_estimate=booking.cbm_estimate,
+        weight_kg_estimate=booking.weight_kg_estimate,
+        number_of_packages=booking.number_of_packages,
+        cargo_ready_date_latest=booking.cargo_ready_date_latest,
+        delivery_mode=booking.delivery_mode,
+        warehouse_receipt_cutoff=booking.warehouse_receipt_cutoff,
+        warehouse_name=warehouse.name if warehouse else None,
+        cbm_actual=booking.cbm_actual,
+        weight_kg_actual=booking.weight_kg_actual,
+        received_at_warehouse=booking.received_at_warehouse,
+        status=booking.status,
+    )
+    return WarehousePortalResponse(
+        booking=summary,
+        documents=documents_for_booking(store, booking.id),
+        events=events_for_booking(store, booking.id),
+    )
+
+
+def warehouse_portal(store: Store, token: str) -> WarehousePortalResponse:
+    link = warehouse_link_by_token(store, token)
+    link.last_used_at = now_utc()
+    store.warehouse_links[link.id] = link
+    booking = store.bookings[link.booking_id]
+    return _warehouse_portal_response(store, booking)
+
+
+def warehouse_receipt_update(store: Store, token: str, request: WarehouseReceiptUpdate) -> WarehousePortalResponse:
+    link = warehouse_link_by_token(store, token)
+    booking = store.bookings[link.booking_id]
+    if booking.delivery_mode == DeliveryMode.ship_hoppa_pickup:
+        raise PermissionError("This shipment is on Ship Hoppa pickup. The warehouse portal is not used for it.")
+    record_warehouse_measurement(
+        store,
+        booking.id,
+        request.actual_cbm,
+        request.actual_weight_kg,
+        actor_id="warehouse-portal",
+    )
+    create_shipment_event(
+        store,
+        booking.id,
+        ShipmentEventCreate(
+            stage=ShipmentEventStage.warehouse_received,
+            label="Cargo received at warehouse",
+            occurred_at=now_utc(),
+            source_type=SourceType.warehouse_event,
+            source_name="Warehouse portal",
+            confidence=SourceConfidence.confirmed,
+            notes=request.notes,
+        ),
+    )
+    create_audit_event(
+        store,
+        ActorRole.system,
+        "warehouse-portal",
+        "warehouse_receipt_confirmed",
+        "booking",
+        booking.id,
+        f"Warehouse confirmed receipt: {request.actual_cbm:.2f} CBM / {request.actual_weight_kg:.0f} kg.",
+    )
+    link.last_used_at = now_utc()
+    store.warehouse_links[link.id] = link
+    booking = store.bookings[booking.id]
+    return _warehouse_portal_response(store, booking)
 
 
 def sailing_search(store: Store) -> List[SailingSearchResult]:

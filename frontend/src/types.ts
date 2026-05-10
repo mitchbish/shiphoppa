@@ -626,6 +626,48 @@ export interface BrokerPortalResponse {
   events: ShipmentEvent[]
 }
 
+export interface WarehouseAccessLink {
+  id: string
+  booking_id: string
+  token: string
+  active: boolean
+  expires_at: string | null
+  last_used_at: string | null
+  created_at: string
+}
+
+export interface WarehouseBookingSummary {
+  id: string
+  importer_company_name: string | null
+  supplier_country: string
+  supplier_city: string
+  cargo_description: string | null
+  cargo_category: CargoCategory
+  cbm_estimate: number
+  weight_kg_estimate: number
+  number_of_packages: number | null
+  cargo_ready_date_latest: string
+  delivery_mode: DeliveryMode
+  warehouse_receipt_cutoff: string | null
+  warehouse_name: string | null
+  cbm_actual: number | null
+  weight_kg_actual: number | null
+  received_at_warehouse: string | null
+  status: string
+}
+
+export interface WarehouseReceiptUpdate {
+  actual_cbm: number
+  actual_weight_kg: number
+  notes?: string | null
+}
+
+export interface WarehousePortalResponse {
+  booking: WarehouseBookingSummary
+  documents: ShipmentDocument[]
+  events: ShipmentEvent[]
+}
+
 export interface ImportProject {
   id: string
   title: string

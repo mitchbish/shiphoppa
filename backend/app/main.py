@@ -106,6 +106,10 @@ from .models import (
     BrokerClearanceUpdate,
     BrokerLinkCreate,
     BrokerPortalResponse,
+    WarehouseAccessLink,
+    WarehouseLinkCreate,
+    WarehousePortalResponse,
+    WarehouseReceiptUpdate,
 )
 from .customs import HSCodeSuggestion, best_suggestion, suggest_hs_code
 from .invoices import ParsedInvoice, extract_invoice_from_pdf, extract_invoice_from_text
@@ -153,6 +157,10 @@ from .operations import (
     broker_link_by_token,
     broker_portal,
     create_broker_link,
+    create_warehouse_link,
+    warehouse_link_by_token,
+    warehouse_portal,
+    warehouse_receipt_update,
     update_account_integration,
     update_account_profile,
     update_customs_profile,
@@ -229,6 +237,7 @@ def reset_store_for_tests() -> None:
     store.shipment_events.clear()
     store.supplier_links.clear()
     store.broker_links.clear()
+    store.warehouse_links.clear()
     store.invoices.clear()
     store.payment_records.clear()
     store.release_holds.clear()
@@ -959,6 +968,41 @@ def broker_document(token: str, payload: DocumentUploadRequest) -> ShipmentDocum
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     return persist_result(upload_document(store, link.booking_id, payload, ActorRole.system, "broker-portal"))
+
+
+@app.post("/warehouse-links", response_model=WarehouseAccessLink, status_code=201)
+def warehouse_link(payload: WarehouseLinkCreate, _principal: Principal = Depends(require_admin)) -> WarehouseAccessLink:
+    try:
+        return persist_result(create_warehouse_link(store, payload.booking_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/warehouse/{token}", response_model=WarehousePortalResponse)
+def get_warehouse_portal(token: str) -> WarehousePortalResponse:
+    try:
+        return warehouse_portal(store, token)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post("/warehouse/{token}/receipt", response_model=WarehousePortalResponse)
+def warehouse_receipt(token: str, payload: WarehouseReceiptUpdate) -> WarehousePortalResponse:
+    try:
+        return persist_result(warehouse_receipt_update(store, token, payload))
+    except PermissionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post("/warehouse/{token}/documents", response_model=ShipmentDocument, status_code=201)
+def warehouse_document(token: str, payload: DocumentUploadRequest) -> ShipmentDocument:
+    try:
+        link = warehouse_link_by_token(store, token)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return persist_result(upload_document(store, link.booking_id, payload, ActorRole.system, "warehouse-portal"))
 
 
 @app.get("/bookings/{booking_id}/invoice", response_model=Invoice)

@@ -1727,6 +1727,52 @@ class BrokerAccessLink(BaseModel):
     created_at: datetime
 
 
+class WarehouseLinkCreate(BaseModel):
+    booking_id: str
+
+
+class WarehouseReceiptUpdate(BaseModel):
+    actual_cbm: float = Field(..., gt=0)
+    actual_weight_kg: float = Field(..., gt=0)
+    notes: Optional[str] = None
+
+
+class WarehouseBookingSummary(BaseModel):
+    id: str
+    importer_company_name: Optional[str] = None
+    supplier_country: str
+    supplier_city: str
+    cargo_description: Optional[str] = None
+    cargo_category: CargoCategory
+    cbm_estimate: float
+    weight_kg_estimate: float
+    number_of_packages: Optional[int] = None
+    cargo_ready_date_latest: date
+    delivery_mode: DeliveryMode
+    warehouse_receipt_cutoff: Optional[date] = None
+    warehouse_name: Optional[str] = None
+    cbm_actual: Optional[float] = None
+    weight_kg_actual: Optional[float] = None
+    received_at_warehouse: Optional[datetime] = None
+    status: BookingStatus
+
+
+class WarehousePortalResponse(BaseModel):
+    booking: WarehouseBookingSummary
+    documents: List[ShipmentDocument]
+    events: List[ShipmentEvent]
+
+
+class WarehouseAccessLink(BaseModel):
+    id: str
+    booking_id: str
+    token: str
+    active: bool = True
+    expires_at: Optional[datetime] = None
+    last_used_at: Optional[datetime] = None
+    created_at: datetime
+
+
 class ReleaseStatusResponse(BaseModel):
     booking_id: str
     release_status: ReleaseStatus

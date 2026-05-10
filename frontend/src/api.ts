@@ -9,6 +9,9 @@ import type {
   BrokerAccessLink,
   BrokerClearanceUpdate,
   BrokerPortalResponse,
+  WarehouseAccessLink,
+  WarehousePortalResponse,
+  WarehouseReceiptUpdate,
   CarrierOption,
   Container,
   ConfirmBookingResponse,
@@ -53,6 +56,7 @@ function tokenFor(path: string, method: string) {
     path.startsWith('/documents') ||
     path.startsWith('/supplier-links') ||
     path.startsWith('/broker-links') ||
+    path.startsWith('/warehouse-links') ||
     path.startsWith('/invoices') ||
     path.startsWith('/release-holds') ||
     path.startsWith('/automation') ||
@@ -277,6 +281,41 @@ export function uploadBrokerDocument(
   notes?: string,
 ) {
   return request<ShipmentDocument>(`/broker/${token}/documents`, {
+    method: 'POST',
+    body: JSON.stringify({
+      document_type: documentType,
+      file_name: fileName,
+      mime_type: 'application/pdf',
+      notes: notes ?? null,
+    }),
+  })
+}
+
+export function createWarehouseLink(bookingId: string) {
+  return request<WarehouseAccessLink>('/warehouse-links', {
+    method: 'POST',
+    body: JSON.stringify({ booking_id: bookingId }),
+  })
+}
+
+export function getWarehousePortal(token: string) {
+  return request<WarehousePortalResponse>(`/warehouse/${token}`)
+}
+
+export function submitWarehouseReceipt(token: string, payload: WarehouseReceiptUpdate) {
+  return request<WarehousePortalResponse>(`/warehouse/${token}/receipt`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function uploadWarehouseDocument(
+  token: string,
+  documentType: DocumentType,
+  fileName: string,
+  notes?: string,
+) {
+  return request<ShipmentDocument>(`/warehouse/${token}/documents`, {
     method: 'POST',
     body: JSON.stringify({
       document_type: documentType,
