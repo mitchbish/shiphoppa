@@ -28,8 +28,12 @@ import {
   addEvent,
   approveDocument,
   bookDeliveryPlan,
+  createBrokerLink,
   createSupplierLink,
   commitContainer,
+  getBrokerPortal,
+  submitBrokerClearance,
+  uploadBrokerDocument,
   confirmBooking,
   createBooking,
   createPurchaseOrder,
@@ -106,6 +110,10 @@ import type {
   Booking,
   BookingPayload,
   BookingChecklistResponse,
+  BrokerAccessLink,
+  BrokerClearanceUpdate,
+  BrokerPortalResponse,
+  BrokerSubmittableStatus,
   CargoCategory,
   CarrierOption,
   Container,
@@ -148,7 +156,7 @@ type View =
   | 'customs'
   | 'delivery'
   | 'admin'
-type WorkspaceMode = 'customer' | 'admin-login' | 'admin'
+type WorkspaceMode = 'customer' | 'admin-login' | 'admin' | 'broker-portal'
 type AdminView = 'overview' | 'containers' | 'exceptions' | 'documents' | 'tracking' | 'payments' | 'customs' | 'automation' | 'audit'
 type TrackingStage = ShipmentEvent['stage']
 type MapPoint = { lat: number; lng: number }
@@ -2339,7 +2347,14 @@ function supplierLocationInputValue(form: BookingPayload) {
   return [form.supplier_city, form.supplier_province, form.supplier_country].filter(Boolean).join(', ')
 }
 
+function brokerTokenFromPath(): string | null {
+  const pathname = globalThis.location?.pathname ?? ''
+  const match = pathname.match(/^\/broker\/([^/]+)\/?$/)
+  return match ? match[1] : null
+}
+
 function initialWorkspaceMode(): WorkspaceMode {
+  if (brokerTokenFromPath()) return 'broker-portal'
   return globalThis.location?.pathname === '/admin' ? 'admin-login' : 'customer'
 }
 
@@ -2348,6 +2363,340 @@ function setBrowserPath(path: string) {
     globalThis.history?.pushState({}, '', path)
   }
 }
+
+function BrokerPortalView({ token }: { token: string }) {
+  const [portal, setPortal] = useState<BrokerPortalResponse | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const [statusChoice, setStatusChoice] = useState<BrokerSubmittableStatus>('submitted')
+  const [entryNumber, setEntryNumber] = useState('')
+  const [dutyPaid, setDutyPaid] = useState('')
+  const [gstPaid, setGstPaid] = useState('')
+  const [notes, setNotes] = useState('')
+  const [docFile, setDocFile] = useState('')
+  const [docType, setDocType] = useState<DocumentType>('house_bill')
+  const [docNotes, setDocNotes] = useState('')
+  const [docSubmitting, setDocSubmitting] = useState(false)
+  const [statusMessage, setStatusMessage] = useState<string | null>(null)
+  const [docMessage, setDocMessage] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    getBrokerPortal(token)
+      .then((data) => {
+        if (cancelled) return
+        setPortal(data)
+        setStatusChoice(
+          data.customs.customs_status === 'cleared' || data.customs.customs_status === 'queried' || data.customs.customs_status === 'submitted'
+            ? (data.customs.customs_status as BrokerSubmittableStatus)
+            : 'submitted',
+        )
+        setEntryNumber(data.customs.customs_entry_number ?? '')
+        setNotes(data.customs.broker_notes ?? '')
+        setDutyPaid(data.customs.duty_paid_usd != null ? String(data.customs.duty_paid_usd) : '')
+        setGstPaid(data.customs.gst_paid_usd != null ? String(data.customs.gst_paid_usd) : '')
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setLoadError(err instanceof Error ? err.message : 'Could not load broker portal')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [token])
+
+  async function refreshPortal() {
+    const data = await getBrokerPortal(token)
+    setPortal(data)
+    return data
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!portal) return
+    if (statusChoice === 'queried' && !notes.trim()) {
+      setStatusMessage('A note explaining the query is required when status is queried.')
+      return
+    }
+    setSubmitting(true)
+    setStatusMessage(null)
+    try {
+      const latest = await refreshPortal()
+      if (latest.customs.updated_at !== portal.customs.updated_at) {
+        setStatusMessage('The customs profile changed since you opened this page. Re-check the latest values, then submit again.')
+        setSubmitting(false)
+        return
+      }
+      const payload: BrokerClearanceUpdate = {
+        customs_status: statusChoice,
+        customs_entry_number: entryNumber.trim() || null,
+        duty_paid_usd: dutyPaid ? Number(dutyPaid) : null,
+        gst_paid_usd: gstPaid ? Number(gstPaid) : null,
+        broker_notes: notes.trim() || null,
+      }
+      const updated = await submitBrokerClearance(token, payload)
+      setPortal(updated)
+      setStatusMessage(`Customs status set to ${statusChoice.replace('_', ' ')}.`)
+    } catch (err) {
+      setStatusMessage(err instanceof Error ? err.message : 'Could not save clearance update.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleDocUpload(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!docFile.trim()) {
+      setDocMessage('A file name is required before uploading.')
+      return
+    }
+    setDocSubmitting(true)
+    setDocMessage(null)
+    try {
+      await uploadBrokerDocument(token, docType, docFile.trim(), docNotes.trim() || undefined)
+      const refreshed = await refreshPortal()
+      setPortal(refreshed)
+      setDocMessage(`${docFile} attached to the shipment.`)
+      setDocFile('')
+      setDocNotes('')
+    } catch (err) {
+      setDocMessage(err instanceof Error ? err.message : 'Could not upload the document.')
+    } finally {
+      setDocSubmitting(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="app-shell broker-portal-shell">
+        <header className="topbar">
+          <Logo />
+          <span className="eyebrow">Broker workspace</span>
+        </header>
+        <main className="broker-portal-main">
+          <p>Loading shipment.</p>
+        </main>
+      </div>
+    )
+  }
+
+  if (loadError || !portal) {
+    return (
+      <div className="app-shell broker-portal-shell">
+        <header className="topbar">
+          <Logo />
+          <span className="eyebrow">Broker workspace</span>
+        </header>
+        <main className="broker-portal-main">
+          <div className="notice error">{loadError ?? 'Broker link not found.'}</div>
+        </main>
+      </div>
+    )
+  }
+
+  const { booking, customs, holds, documents, events } = portal
+
+  return (
+    <div className="app-shell broker-portal-shell">
+      <header className="topbar broker-portal-topbar">
+        <Logo />
+        <span className="eyebrow">Broker workspace</span>
+      </header>
+      <main className="broker-portal-main">
+        <section className="broker-portal-card">
+          <p className="eyebrow">Shipment</p>
+          <h1>{booking.id}</h1>
+          <p className="broker-portal-subtitle">
+            {booking.importer_company_name ?? 'Importer'} into {booking.delivery_city}, {booking.delivery_country}.
+            Cargo from {booking.supplier_country}, ready by {booking.cargo_ready_date_latest}.
+          </p>
+          <div className="broker-portal-grid">
+            <div>
+              <p className="broker-portal-label">Importer</p>
+              <p>{booking.importer_company_name ?? 'Not on file'}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Importer ABN / tax ID</p>
+              <p>{booking.importer_abn ?? 'Not on file. Ask the importer.'}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">HS code</p>
+              <p>{customs.hs_code ?? 'Not yet classified.'}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Goods value</p>
+              <p>
+                {customs.currency} {customs.goods_value_usd.toLocaleString()}
+              </p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Incoterm</p>
+              <p>{customs.incoterm}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Customs status</p>
+              <p>{customs.customs_status.replace('_', ' ')}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Duty estimate</p>
+              <p>USD {customs.duty_estimate_usd.toLocaleString()}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">GST estimate</p>
+              <p>USD {customs.gst_estimate_usd.toLocaleString()}</p>
+            </div>
+          </div>
+          {customs.biosecurity_flags.length > 0 && (
+            <p className="notice">
+              <ShieldCheck size={16} /> Biosecurity flags: {customs.biosecurity_flags.join(', ')}
+            </p>
+          )}
+        </section>
+
+        <section className="broker-portal-card">
+          <h2>Submit clearance update</h2>
+          <form onSubmit={handleSubmit} className="broker-portal-form">
+            <label>
+              <span>Status</span>
+              <select
+                value={statusChoice}
+                onChange={(event) => setStatusChoice(event.target.value as BrokerSubmittableStatus)}
+              >
+                <option value="submitted">Submitted to customs</option>
+                <option value="queried">Queried by customs</option>
+                <option value="cleared">Cleared</option>
+              </select>
+            </label>
+            <label>
+              <span>Customs entry number</span>
+              <input
+                value={entryNumber}
+                onChange={(event) => setEntryNumber(event.target.value)}
+                placeholder="e.g. E-123456"
+              />
+            </label>
+            <label>
+              <span>Duty paid (USD)</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={dutyPaid}
+                onChange={(event) => setDutyPaid(event.target.value)}
+              />
+            </label>
+            <label>
+              <span>GST paid (USD)</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={gstPaid}
+                onChange={(event) => setGstPaid(event.target.value)}
+              />
+            </label>
+            <label className="broker-portal-textarea">
+              <span>Broker notes {statusChoice === 'queried' && '(required for queries)'}</span>
+              <textarea
+                value={notes}
+                onChange={(event) => setNotes(event.target.value)}
+                rows={3}
+              />
+            </label>
+            <button className="primary-action" type="submit" disabled={submitting}>
+              {submitting ? <Loader2 size={16} className="spin" /> : <Check size={16} />}
+              {submitting ? 'Saving' : 'Submit update'}
+            </button>
+          </form>
+          {statusMessage && <div className="notice">{statusMessage}</div>}
+        </section>
+
+        <section className="broker-portal-card">
+          <h2>Attach customs document</h2>
+          <form onSubmit={handleDocUpload} className="broker-portal-form">
+            <label>
+              <span>Document type</span>
+              <select value={docType} onChange={(event) => setDocType(event.target.value as DocumentType)}>
+                <option value="house_bill">House bill of lading</option>
+                <option value="commercial_invoice">Commercial invoice</option>
+                <option value="packing_list">Packing list</option>
+                <option value="arrival_notice">Arrival notice</option>
+                <option value="delivery_order">Delivery order</option>
+              </select>
+            </label>
+            <label>
+              <span>File name</span>
+              <input
+                value={docFile}
+                onChange={(event) => setDocFile(event.target.value)}
+                placeholder="e.g. customs-decl-1234.pdf"
+              />
+            </label>
+            <label className="broker-portal-textarea">
+              <span>Notes</span>
+              <textarea value={docNotes} onChange={(event) => setDocNotes(event.target.value)} rows={2} />
+            </label>
+            <button className="secondary-action" type="submit" disabled={docSubmitting}>
+              {docSubmitting ? <Loader2 size={16} className="spin" /> : <FileText size={16} />}
+              {docSubmitting ? 'Attaching' : 'Attach document'}
+            </button>
+          </form>
+          {docMessage && <div className="notice">{docMessage}</div>}
+        </section>
+
+        <section className="broker-portal-card">
+          <h2>Active holds</h2>
+          {holds.length === 0 ? (
+            <p>No release holds. Shipment can move when customs is cleared.</p>
+          ) : (
+            <ul className="broker-portal-list">
+              {holds.map((hold) => (
+                <li key={hold.id}>
+                  <strong>{hold.hold_type.replace('_', ' ')}</strong>: {hold.reason}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="broker-portal-card">
+          <h2>Recent documents</h2>
+          {documents.length === 0 ? (
+            <p>No documents attached yet.</p>
+          ) : (
+            <ul className="broker-portal-list">
+              {documents.slice(0, 8).map((doc) => (
+                <li key={doc.id}>
+                  {doc.file_name} <span className="muted">({doc.document_type.replace('_', ' ')})</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="broker-portal-card">
+          <h2>Recent events</h2>
+          {events.length === 0 ? (
+            <p>No events recorded yet.</p>
+          ) : (
+            <ul className="broker-portal-list">
+              {events.slice(0, 8).map((event) => (
+                <li key={event.id}>
+                  <strong>{event.label}</strong> <span className="muted">({event.stage.replace('_', ' ')})</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </main>
+    </div>
+  )
+}
+
 
 function App() {
   const [view, setView] = useState<View>('book')
@@ -2402,6 +2751,8 @@ function App() {
   const [projectWorkspace, setProjectWorkspace] = useState<ImportProjectWorkspaceResponse | null>(null)
   const [supplierLink, setSupplierLink] = useState<SupplierAccessLink | null>(null)
   const [supplierPortal, setSupplierPortal] = useState<SupplierPortalResponse | null>(null)
+  const [brokerLink, setBrokerLink] = useState<BrokerAccessLink | null>(null)
+  const [brokerInviteMessage, setBrokerInviteMessage] = useState<string | null>(null)
   const [sourceMessageDraft, setSourceMessageDraft] = useState({
     from_address: 'sales@supplier.example',
     subject: 'Supplier pro forma and production update',
@@ -2477,6 +2828,10 @@ function App() {
 
   useEffect(() => {
     function syncWorkspaceToPath() {
+      if (brokerTokenFromPath()) {
+        setWorkspaceMode('broker-portal')
+        return
+      }
       if (globalThis.location?.pathname === '/admin') {
         setWorkspaceMode((current) => (current === 'admin' ? current : 'admin-login'))
         return
@@ -3149,6 +3504,34 @@ function App() {
     }
   }
 
+  async function handleInviteBroker() {
+    if (!activeBooking) return
+    setLoading(true)
+    setError(null)
+    setBrokerInviteMessage(null)
+    try {
+      const link = await createBrokerLink(activeBooking.id)
+      setBrokerLink(link)
+      const url = `${globalThis.location?.origin ?? ''}/broker/${link.token}`
+      let copied = false
+      try {
+        await globalThis.navigator?.clipboard?.writeText(url)
+        copied = true
+      } catch {
+        copied = false
+      }
+      setBrokerInviteMessage(
+        copied
+          ? 'Broker link copied to clipboard. Send it to your customs broker.'
+          : 'Broker link ready. Copy the URL below and send it to your customs broker.',
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create broker link')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   async function handleSupplierUpload() {
     if (!supplierLink || !activeBooking) return
     setLoading(true)
@@ -3793,6 +4176,13 @@ function App() {
     view,
     visibleSailing,
   ])
+
+  if (workspaceMode === 'broker-portal') {
+    const brokerToken = brokerTokenFromPath()
+    if (brokerToken) {
+      return <BrokerPortalView token={brokerToken} />
+    }
+  }
 
   if (workspaceMode === 'admin-login') {
     return (
@@ -6908,6 +7298,36 @@ function App() {
                         </span>
                       </div>
                     </article>
+                  </div>
+
+                  <div className="broker-invite-block">
+                    <div>
+                      <strong>Bring your customs broker into the workspace</strong>
+                      <p>
+                        Send a self-serve link your broker can open without creating an account. They will see the goods,
+                        importer ABN, holds, and documents, and can submit clearance status updates back to this shipment.
+                      </p>
+                    </div>
+                    <button
+                      className="primary-action small"
+                      type="button"
+                      onClick={handleInviteBroker}
+                      disabled={loading || !activeBooking}
+                    >
+                      <UserRound size={16} />
+                      Invite broker
+                    </button>
+                    {brokerInviteMessage && <p className="muted">{brokerInviteMessage}</p>}
+                    {brokerLink && (
+                      <label className="broker-invite-url">
+                        <span>Broker link</span>
+                        <input
+                          readOnly
+                          value={`${globalThis.location?.origin ?? ''}/broker/${brokerLink.token}`}
+                          onFocus={(event) => event.target.select()}
+                        />
+                      </label>
+                    )}
                   </div>
 
                   <div className="customs-plain-note">

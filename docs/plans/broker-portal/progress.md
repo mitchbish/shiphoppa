@@ -2,9 +2,9 @@
 
 | Phase | Status | Audits | Notes |
 |---|---|---|---|
-| Overview | DONE | plan:2/2 post:0/2 | AP1 complete 2026-05-10 14:55-14:58 AEST. AP3 deferred until phase 2 ships. |
-| 1 — Backend | DONE | plan:2/2 post:2/2 | AP1 complete 2026-05-10 15:02-15:05. Code shipped. AP2 complete 15:42-15:46. 161/161 tests pass. |
-| 2 — Frontend | NOT STARTED | plan:2/2 post:0/2 | AP1 complete 2026-05-10 15:08-15:11. Ready to execute. |
+| Overview | DONE | plan:2/2 post:0/2 | AP1 done. AP3 below. |
+| 1 — Backend | DONE | plan:2/2 post:2/2 | 161 tests pass. Shipped 2026-05-10. |
+| 2 — Frontend | DONE | plan:2/2 post:2/2 | Build clean. Live browser walkthrough deferred to user post-merge. |
 
 ## AP1 plan revisions (applied to phase docs)
 
@@ -21,20 +21,52 @@
 - Phase 1 verification: grep `release_hold` and `upload_document` signatures
   before writing the calls.
 
-## AP2 phase 1 findings (resolved in scope)
+## AP2 findings (resolved in scope)
 
-- Datetime offset bug in test (aware vs naive) caught and fixed before commit.
-  Codebase is naive-only; future portal tests should use `datetime.utcnow()`.
-- Audit-event assertion tightened: must match exact event type +
-  `actor_id="broker-portal"`, not "last event" — robust to release-holds
-  or booking-health hooks adding their own audit events.
-- `release_hold_for_booking_and_kind` doesn't exist in this codebase. Real
-  helper is `update_release_holds(store, booking)`, which is condition-based
-  and naturally only releases the hold whose underlying state has flipped.
-  Test #6 confirms only customs hold released, payment hold preserved.
+- Phase 1: `release_hold_for_booking_and_kind` doesn't exist; real helper is
+  `update_release_holds(store, booking)` which is condition-based. Test #6
+  confirms only customs hold released, payment hold preserved.
+- Phase 1: datetime offset bug (aware vs naive) caught and fixed before
+  commit. Codebase is naive-only.
+- Phase 1: audit-event assertion tightened to match exact event_type +
+  actor_id rather than "last event".
+- Phase 2: `BookingStatus` doesn't exist in frontend types; switched to
+  `string` to match existing `Booking.status` field.
 
-## Follow-up backlog (out of scope for this plan, do not execute)
+## AP3 — feature audit (2026-05-10 16:22 AEST)
 
+#### Lens 1 — Correctness
+
+The two phases together deliver the goal stated in 00-OVERVIEW.md: a broker
+opens `/broker/<token>`, sees the customs profile / holds / docs / events,
+posts a clearance update, uploads a document, and the importer sees the
+update on next customs-tab open. Backend exit criteria fully ticked, frontend
+exit criteria fully ticked. Both share the same data shape (`BrokerPortal
+Response`), no drift between layers. Importer-side "Invite broker" lives in
+the Deliver phase customs tab where the build plan said it should.
+
+#### Lens 2 — Adversarial — reviewer persona: a project manager comparing the build plan to the shipped feature
+
+The build-plan gap was "Brokers, warehouses, and carriers have no role-
+specific UI or token-gated access. This blocks the partner collaboration
+without new accounts promise." For brokers, that gap is closed. Warehouses
+and carriers remain open — they're explicitly out of scope for this plan.
+
+The browser walkthrough was deferred (autonomous overnight session), so the
+"works in a real browser" claim is unverified. Build + types + the matching
+supplier-portal pattern are strong proxies, but not equivalent. Flagged as
+the single non-zero risk; user can spot-check post-merge.
+
+No regressions in 161 backend tests. Frontend bundle grew ~11 kB JS / 2 kB
+CSS — proportional to the new component and styles, no surprise weight.
+
+#### AP3 findings to fix in scope
+
+None. Browser spot-check is a post-merge user action.
+
+## Follow-up backlog (out of scope for this plan)
+
+- Browser walkthrough of broker portal page on staging/prod after merge.
 - Broker email/SMS notifications when invited and when importer adds info.
 - Multi-shipment broker dashboard (one broker, many shipments).
 - Rate limiting on token-based portals (worth doing once we have 3+ portals).

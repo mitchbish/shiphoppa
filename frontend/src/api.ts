@@ -6,6 +6,9 @@ import type {
   Booking,
   BookingPayload,
   BookingChecklistResponse,
+  BrokerAccessLink,
+  BrokerClearanceUpdate,
+  BrokerPortalResponse,
   CarrierOption,
   Container,
   ConfirmBookingResponse,
@@ -49,6 +52,7 @@ function tokenFor(path: string, method: string) {
     path.startsWith('/audit-events') ||
     path.startsWith('/documents') ||
     path.startsWith('/supplier-links') ||
+    path.startsWith('/broker-links') ||
     path.startsWith('/invoices') ||
     path.startsWith('/release-holds') ||
     path.startsWith('/automation') ||
@@ -244,6 +248,41 @@ export function uploadSupplierDocument(token: string, documentType: DocumentType
       file_name: `supplier-${documentType}.pdf`,
       mime_type: 'application/pdf',
       notes: 'Demo supplier upload',
+    }),
+  })
+}
+
+export function createBrokerLink(bookingId: string) {
+  return request<BrokerAccessLink>('/broker-links', {
+    method: 'POST',
+    body: JSON.stringify({ booking_id: bookingId }),
+  })
+}
+
+export function getBrokerPortal(token: string) {
+  return request<BrokerPortalResponse>(`/broker/${token}`)
+}
+
+export function submitBrokerClearance(token: string, payload: BrokerClearanceUpdate) {
+  return request<BrokerPortalResponse>(`/broker/${token}/clearance`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function uploadBrokerDocument(
+  token: string,
+  documentType: DocumentType,
+  fileName: string,
+  notes?: string,
+) {
+  return request<ShipmentDocument>(`/broker/${token}/documents`, {
+    method: 'POST',
+    body: JSON.stringify({
+      document_type: documentType,
+      file_name: fileName,
+      mime_type: 'application/pdf',
+      notes: notes ?? null,
     }),
   })
 }

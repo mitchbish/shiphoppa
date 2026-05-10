@@ -559,7 +559,71 @@ export interface CustomsProfile {
   gst_estimate_usd: number
   brokerage_fee_usd: number
   landed_cost_estimate_usd: number
+  customs_entry_number: string | null
+  duty_paid_usd: number | null
+  gst_paid_usd: number | null
+  broker_notes: string | null
   updated_at: string
+}
+
+export interface BrokerAccessLink {
+  id: string
+  booking_id: string
+  token: string
+  active: boolean
+  expires_at: string | null
+  last_used_at: string | null
+  created_at: string
+}
+
+export interface BrokerBookingSummary {
+  id: string
+  importer_company_name: string | null
+  importer_abn: string | null
+  supplier_country: string
+  delivery_country: string
+  delivery_city: string
+  cargo_description: string | null
+  cargo_category: CargoCategory
+  cbm_estimate: number
+  weight_kg_estimate: number
+  cargo_ready_date_latest: string
+  status: string
+}
+
+export interface BrokerCustomsSummary {
+  incoterm: string
+  goods_value_usd: number
+  currency: string
+  hs_code: string | null
+  biosecurity_flags: string[]
+  customs_status: CustomsStatus
+  duty_estimate_usd: number
+  gst_estimate_usd: number
+  landed_cost_estimate_usd: number
+  customs_entry_number: string | null
+  duty_paid_usd: number | null
+  gst_paid_usd: number | null
+  broker_notes: string | null
+  updated_at: string
+}
+
+export type BrokerSubmittableStatus = 'submitted' | 'queried' | 'cleared'
+
+export interface BrokerClearanceUpdate {
+  customs_status: BrokerSubmittableStatus
+  customs_entry_number?: string | null
+  duty_paid_usd?: number | null
+  gst_paid_usd?: number | null
+  broker_notes?: string | null
+}
+
+export interface BrokerPortalResponse {
+  booking: BrokerBookingSummary
+  customs: BrokerCustomsSummary
+  holds: ReleaseHold[]
+  documents: ShipmentDocument[]
+  events: ShipmentEvent[]
 }
 
 export interface ImportProject {
