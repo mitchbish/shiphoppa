@@ -8,6 +8,7 @@ from .models import (
     BrokerAccessLink,
     WarehouseAccessLink,
     CarrierAccessLink,
+    TruckerAccessLink,
     AuditEvent,
     AdminTask,
     ApprovalRequest,
@@ -69,6 +70,7 @@ class Store:
         self.broker_links: Dict[str, BrokerAccessLink] = {}
         self.warehouse_links: Dict[str, WarehouseAccessLink] = {}
         self.carrier_links: Dict[str, CarrierAccessLink] = {}
+        self.trucker_links: Dict[str, TruckerAccessLink] = {}
         self.invoices: Dict[str, Invoice] = {}
         self.payment_records: Dict[str, PaymentRecord] = {}
         self.release_holds: Dict[str, ReleaseHold] = {}

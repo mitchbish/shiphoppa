@@ -127,6 +127,10 @@ from .models import (
     CarrierEtaUpdate,
     CarrierEventUpdate,
     CarrierPortalResponse,
+    TruckerAccessLink,
+    TruckerBookingSummary,
+    TruckerPortalResponse,
+    TruckerStatusUpdate,
 )
 from .store import Store
 
@@ -3690,6 +3694,125 @@ def carrier_event_update(store: Store, token: str, request: CarrierEventUpdate) 
     link.last_used_at = now_utc()
     store.carrier_links[link.id] = link
     return _carrier_portal_response(store, booking)
+
+
+TRUCKER_ALLOWED_EVENT_STAGES = frozenset({
+    ShipmentEventStage.pickup_scheduled,
+    ShipmentEventStage.picked_up,
+    ShipmentEventStage.delivered,
+})
+
+TRUCKER_STAGE_LABELS = {
+    ShipmentEventStage.pickup_scheduled: "Pickup scheduled",
+    ShipmentEventStage.picked_up: "Cargo picked up from port",
+    ShipmentEventStage.delivered: "Delivered to importer warehouse",
+}
+
+
+def create_trucker_link(store: Store, booking_id: str) -> TruckerAccessLink:
+    if booking_id not in store.bookings:
+        raise ValueError("Booking not found")
+    for link in store.trucker_links.values():
+        if link.booking_id == booking_id and link.active:
+            return link
+    link = TruckerAccessLink(
+        id=store.next_id("TRK"),
+        booking_id=booking_id,
+        token=secrets.token_urlsafe(24),
+        expires_at=now_utc() + timedelta(days=45),
+        created_at=now_utc(),
+    )
+    store.trucker_links[link.id] = link
+    create_audit_event(store, ActorRole.admin, "ops", "trucker_link_created", "booking", booking_id, f"Trucker link created for {booking_id}.")
+    return link
+
+
+def trucker_link_by_token(store: Store, token: str) -> TruckerAccessLink:
+    for link in store.trucker_links.values():
+        if link.token == token and link.active:
+            if link.expires_at and link.expires_at < now_utc():
+                raise ValueError("Trucker link has expired")
+            return link
+    raise ValueError("Trucker link not found")
+
+
+def _trucker_portal_response(store: Store, booking: Booking) -> TruckerPortalResponse:
+    importer = store.importers.get(booking.importer_id)
+    plan = ensure_delivery_plan(store, booking)
+    release = release_status_for_booking(store, booking.id)
+    summary = TruckerBookingSummary(
+        id=booking.id,
+        importer_company_name=importer.company_name if importer else None,
+        delivery_method=plan.delivery_method,
+        destination_address=plan.destination_address,
+        destination_contact_name=plan.destination_contact_name,
+        destination_contact_phone=plan.destination_contact_phone,
+        delivery_window_start=plan.delivery_window_start,
+        delivery_window_end=plan.delivery_window_end,
+        equipment_required=list(plan.equipment_required),
+        cargo_description=booking.cargo_description,
+        cargo_category=booking.cargo_category,
+        cbm_estimate=booking.cbm_estimate,
+        weight_kg_estimate=booking.weight_kg_estimate,
+        delivery_status=plan.status,
+        booking_status=booking.status,
+    )
+    return TruckerPortalResponse(
+        booking=summary,
+        release_status=release.release_status,
+        can_deliver=release.can_release,
+        holds=release.holds,
+        documents=documents_for_booking(store, booking.id),
+        events=events_for_booking(store, booking.id),
+    )
+
+
+def trucker_portal(store: Store, token: str) -> TruckerPortalResponse:
+    link = trucker_link_by_token(store, token)
+    link.last_used_at = now_utc()
+    store.trucker_links[link.id] = link
+    booking = store.bookings[link.booking_id]
+    return _trucker_portal_response(store, booking)
+
+
+def trucker_status_update(store: Store, token: str, request: TruckerStatusUpdate) -> TruckerPortalResponse:
+    if request.stage not in TRUCKER_ALLOWED_EVENT_STAGES:
+        raise ValueError("Trucker may only submit pickup_scheduled, picked_up, or delivered events.")
+    link = trucker_link_by_token(store, token)
+    booking = store.bookings[link.booking_id]
+    if request.stage == ShipmentEventStage.delivered:
+        release = release_status_for_booking(store, booking.id)
+        if not release.can_release:
+            hold_summary = ", ".join(hold.hold_type.value for hold in release.holds) or "release blocked"
+            raise PermissionError(f"Cannot mark delivered while release is blocked: {hold_summary}.")
+        plan = ensure_delivery_plan(store, booking)
+        mark_delivery_delivered(store, plan.id, "trucker-portal")
+    create_shipment_event(
+        store,
+        booking.id,
+        ShipmentEventCreate(
+            stage=request.stage,
+            label=TRUCKER_STAGE_LABELS.get(request.stage, request.stage.value),
+            occurred_at=now_utc(),
+            source_type=SourceType.forwarder_confirmation,
+            source_name="Trucker portal",
+            confidence=SourceConfidence.confirmed,
+            notes=request.notes,
+        ),
+    )
+    create_audit_event(
+        store,
+        ActorRole.system,
+        "trucker-portal",
+        "trucker_status_update",
+        "booking",
+        booking.id,
+        f"Trucker reported {request.stage.value}.",
+    )
+    link.last_used_at = now_utc()
+    store.trucker_links[link.id] = link
+    booking = store.bookings[booking.id]
+    return _trucker_portal_response(store, booking)
 
 
 def sailing_search(store: Store) -> List[SailingSearchResult]:

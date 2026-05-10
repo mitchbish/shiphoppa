@@ -1898,6 +1898,52 @@ class CarrierAccessLink(BaseModel):
     created_at: datetime
 
 
+class TruckerLinkCreate(BaseModel):
+    booking_id: str
+
+
+class TruckerStatusUpdate(BaseModel):
+    stage: ShipmentEventStage
+    notes: Optional[str] = None
+
+
+class TruckerBookingSummary(BaseModel):
+    id: str
+    importer_company_name: Optional[str] = None
+    delivery_method: DeliveryPlanMethod
+    destination_address: str
+    destination_contact_name: str
+    destination_contact_phone: Optional[str] = None
+    delivery_window_start: Optional[date] = None
+    delivery_window_end: Optional[date] = None
+    equipment_required: List[str]
+    cargo_description: Optional[str] = None
+    cargo_category: CargoCategory
+    cbm_estimate: float
+    weight_kg_estimate: float
+    delivery_status: DeliveryPlanStatus
+    booking_status: BookingStatus
+
+
+class TruckerPortalResponse(BaseModel):
+    booking: TruckerBookingSummary
+    release_status: ReleaseStatus
+    can_deliver: bool
+    holds: List[ReleaseHold]
+    documents: List[ShipmentDocument]
+    events: List[ShipmentEvent]
+
+
+class TruckerAccessLink(BaseModel):
+    id: str
+    booking_id: str
+    token: str
+    active: bool = True
+    expires_at: Optional[datetime] = None
+    last_used_at: Optional[datetime] = None
+    created_at: datetime
+
+
 class ReleaseStatusResponse(BaseModel):
     booking_id: str
     release_status: ReleaseStatus

@@ -115,6 +115,10 @@ from .models import (
     CarrierEtaUpdate,
     CarrierEventUpdate,
     CarrierPortalResponse,
+    TruckerAccessLink,
+    TruckerLinkCreate,
+    TruckerPortalResponse,
+    TruckerStatusUpdate,
     InboundEmailWebhook,
     SourceMessageType,
     ImportProjectCreate,
@@ -177,6 +181,10 @@ from .operations import (
     carrier_portal,
     carrier_eta_update,
     carrier_event_update,
+    create_trucker_link,
+    trucker_link_by_token,
+    trucker_portal,
+    trucker_status_update,
     create_import_project,
     update_import_project,
     clone_import_project,
@@ -260,6 +268,7 @@ def reset_store_for_tests() -> None:
     store.broker_links.clear()
     store.warehouse_links.clear()
     store.carrier_links.clear()
+    store.trucker_links.clear()
     store.invoices.clear()
     store.payment_records.clear()
     store.release_holds.clear()
@@ -1243,6 +1252,43 @@ def carrier_document(token: str, payload: DocumentUploadRequest) -> ShipmentDocu
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     return persist_result(upload_document(store, link.booking_id, payload, ActorRole.system, "carrier-portal"))
+
+
+@app.post("/trucker-links", response_model=TruckerAccessLink, status_code=201)
+def trucker_link(payload: TruckerLinkCreate, _principal: Principal = Depends(require_admin)) -> TruckerAccessLink:
+    try:
+        return persist_result(create_trucker_link(store, payload.booking_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/trucker/{token}", response_model=TruckerPortalResponse)
+def get_trucker_portal(token: str) -> TruckerPortalResponse:
+    try:
+        return trucker_portal(store, token)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post("/trucker/{token}/status", response_model=TruckerPortalResponse)
+def trucker_status(token: str, payload: TruckerStatusUpdate) -> TruckerPortalResponse:
+    try:
+        return persist_result(trucker_status_update(store, token, payload))
+    except PermissionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 400 if "may only" in message else 404
+        raise HTTPException(status_code=status_code, detail=message)
+
+
+@app.post("/trucker/{token}/pod", response_model=ShipmentDocument, status_code=201)
+def trucker_pod(token: str, payload: DocumentUploadRequest) -> ShipmentDocument:
+    try:
+        link = trucker_link_by_token(store, token)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return persist_result(upload_document(store, link.booking_id, payload, ActorRole.system, "trucker-portal"))
 
 
 @app.get("/bookings/{booking_id}/invoice", response_model=Invoice)
