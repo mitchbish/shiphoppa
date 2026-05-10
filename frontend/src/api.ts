@@ -897,3 +897,7 @@ export function getShipments() {
 export function getShipmentWorkspace(bookingId: string) {
   return request<ShipmentWorkspace>(`/shipments/${bookingId}/workspace`)
 }
+
+export function getSupplierPortalPreview(bookingId: string) {
+  return request<SupplierPortalResponse>(`/bookings/${bookingId}/supplier-preview`)
+}

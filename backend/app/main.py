@@ -177,6 +177,7 @@ from .operations import (
     ingest_source_message,
     queue_outbound_message,
     supplier_portal,
+    supplier_portal_preview,
     supplier_ready,
     supplier_link_by_token,
     broker_clearance_update,
@@ -1251,6 +1252,17 @@ def supplier_link(payload: SupplierLinkCreate, _principal: Principal = Depends(r
     if payload.booking_id not in store.bookings:
         raise HTTPException(status_code=404, detail="Booking not found")
     return persist_result(create_supplier_link(store, payload.booking_id))
+
+
+@app.get("/bookings/{booking_id}/supplier-preview", response_model=SupplierPortalResponse)
+def supplier_portal_preview_endpoint(
+    booking_id: str,
+    principal: Principal = Depends(require_importer),
+) -> SupplierPortalResponse:
+    try:
+        return persist_result(supplier_portal_preview(store, booking_id, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 @app.get("/supplier/{token}", response_model=SupplierPortalResponse)

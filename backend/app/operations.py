@@ -3458,11 +3458,7 @@ def supplier_instructions_for_booking(store: Store, booking: Booking) -> str:
     )
 
 
-def supplier_portal(store: Store, token: str) -> SupplierPortalResponse:
-    link = supplier_link_by_token(store, token)
-    link.last_used_at = now_utc()
-    store.supplier_links[link.id] = link
-    booking = store.bookings[link.booking_id]
+def build_supplier_portal_response(store: Store, booking: Booking) -> SupplierPortalResponse:
     ensure_booking_workspace(store, booking)
     summary = SupplierBookingSummary(
         id=booking.id,
@@ -3489,6 +3485,32 @@ def supplier_portal(store: Store, token: str) -> SupplierPortalResponse:
         checklist=checklist_for_booking(store, booking.id),
         events=events_for_booking(store, booking.id),
     )
+
+
+def supplier_portal(store: Store, token: str) -> SupplierPortalResponse:
+    link = supplier_link_by_token(store, token)
+    link.last_used_at = now_utc()
+    store.supplier_links[link.id] = link
+    booking = store.bookings[link.booking_id]
+    return build_supplier_portal_response(store, booking)
+
+
+def supplier_portal_preview(store: Store, booking_id: str, actor_id: str) -> SupplierPortalResponse:
+    if booking_id not in store.bookings:
+        raise ValueError("Booking not found")
+    booking = store.bookings[booking_id]
+    response = build_supplier_portal_response(store, booking)
+    create_audit_event(
+        store,
+        ActorRole.admin,
+        actor_id,
+        "supplier_portal_previewed",
+        "booking",
+        booking_id,
+        f"Importer or admin previewed supplier portal for booking {booking_id}.",
+        {"actor": actor_id},
+    )
+    return response
 
 
 def supplier_link_by_token(store: Store, token: str) -> SupplierAccessLink:
