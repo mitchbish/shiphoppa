@@ -3822,6 +3822,86 @@ function App() {
                   </div>
                 )}
               </section>
+
+              <section className="panel admin-panel full">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">Automation queue</p>
+                    <h2>{adminTasks.length ? `${adminTasks.length} open admin tasks` : 'No open admin tasks'}</h2>
+                  </div>
+                  <button
+                    className="secondary-action"
+                    type="button"
+                    onClick={() => {
+                      getAdminTasks({ status: 'open' }).then(setAdminTasks).catch(() => {})
+                      getAdminTaskSummary().then(setAdminTaskSummary).catch(() => {})
+                    }}
+                  >
+                    <RefreshCw size={17} />
+                    Refresh
+                  </button>
+                </div>
+                {adminTaskSummary && (
+                  <div className="admin-function-summary">
+                    <DetailTile icon={<ClipboardCheck size={18} />} label="Open" value={`${adminTaskSummary.total_open}`} />
+                    <DetailTile icon={<PackageCheck size={18} />} label="Resolved" value={`${adminTaskSummary.total_done}`} />
+                    <DetailTile icon={<FileText size={18} />} label="Waived" value={`${adminTaskSummary.total_waived}`} />
+                  </div>
+                )}
+                {adminTasks.length > 0 ? (
+                  <div className="ops-grid">
+                    {adminTasks.map((task) => (
+                      <div className="ops-card" key={task.id}>
+                        <strong>{task.title}</strong>
+                        <span>{task.task_type.replace(/_/g, ' ')}</span>
+                        <span style={{ fontSize: '0.85em', opacity: 0.7 }}>Booking: {task.booking_id}</span>
+                        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                          <button
+                            className="secondary-action small"
+                            type="button"
+                            onClick={async () => {
+                              await resolveAdminTask(task.id)
+                              const tasks = await getAdminTasks({ status: 'open' })
+                              setAdminTasks(tasks)
+                              const summary = await getAdminTaskSummary()
+                              setAdminTaskSummary(summary)
+                            }}
+                          >
+                            Resolve
+                          </button>
+                          <button
+                            className="secondary-action small"
+                            type="button"
+                            onClick={async () => {
+                              await dismissAdminTask(task.id)
+                              const tasks = await getAdminTasks({ status: 'open' })
+                              setAdminTasks(tasks)
+                              const summary = await getAdminTaskSummary()
+                              setAdminTaskSummary(summary)
+                            }}
+                          >
+                            Waive
+                          </button>
+                          <button
+                            className="secondary-action small"
+                            type="button"
+                            onClick={() => {
+                              void openOpsBooking(task.booking_id)
+                            }}
+                          >
+                            Open shipment
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty-state">
+                    <ClipboardCheck size={42} />
+                    <p>The automation queue is clear.</p>
+                  </div>
+                )}
+              </section>
             </div>
           )}
 
