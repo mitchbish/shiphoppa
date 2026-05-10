@@ -1,0 +1,766 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hoppa Ship — Full container rates. Without filling a full container.</title>
+<meta name="description" content="Hoppa MCL lets Australian importers share shipping containers from China at real FCL rates. 50–70% less than LCL. No hidden fees. Sunshine Coast pickup.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --navy-deep:#0B172B;
+  --navy:#0F1D32;
+  --navy-mid:#1B2E4A;
+  --navy-soft:#2A4A6B;
+  --orange:#D4622B;
+  --orange-deep:#9C3D12;
+  --orange-soft:#FEE8D6;
+  --cream:#F6EFE2;
+  --paper:#F7F4EE;
+  --paper-2:#EFEAE0;
+  --line:#E4DCC9;
+  --ink:#0F1D32;
+  --ink-2:#3A4A62;
+  --ink-3:#6B7891;
+  --ok:#2F7D5B;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font-family:"Inter",system-ui,sans-serif;
+  background:var(--paper);
+  color:var(--ink);
+  -webkit-font-smoothing:antialiased;
+  font-size:17px;
+  line-height:1.55;
+}
+.display,h1,h2,h3,h4{font-family:"Bricolage Grotesque","Inter",sans-serif;font-weight:700;letter-spacing:-0.02em;line-height:1.02;color:var(--navy);margin:0}
+.mono{font-family:"JetBrains Mono",ui-monospace,monospace;font-feature-settings:"tnum"}
+a{color:inherit}
+.wrap{max-width:1280px;margin:0 auto;padding:0 32px}
+.eyebrow{font-family:"JetBrains Mono",monospace;font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:var(--orange-deep);font-weight:500}
+.eyebrow.on-dark{color:var(--orange)}
+.btn{display:inline-flex;align-items:center;gap:10px;padding:16px 22px;border-radius:6px;font-weight:600;font-size:16px;text-decoration:none;border:1px solid transparent;cursor:pointer;transition:transform .12s ease, background .15s ease}
+.btn:hover{transform:translateY(-1px)}
+.btn-primary{background:var(--orange);color:white}
+.btn-primary:hover{background:var(--orange-deep)}
+.btn-ghost{background:transparent;color:var(--navy);border-color:var(--navy);}
+.btn-ghost.on-dark{color:white;border-color:rgba(255,255,255,.4)}
+.btn-ghost.on-dark:hover{border-color:white;background:rgba(255,255,255,.06)}
+.btn .arr{display:inline-block;transition:transform .15s}
+.btn:hover .arr{transform:translateX(3px)}
+
+/* ---------- NAV ---------- */
+.nav{position:sticky;top:0;z-index:50;background:rgba(247,244,238,.92);backdrop-filter:saturate(140%) blur(8px);border-bottom:1px solid var(--line)}
+.nav-inner{display:flex;align-items:center;justify-content:space-between;height:72px}
+.logo{display:flex;align-items:center;gap:10px;text-decoration:none}
+.logo-mark{width:40px;height:40px;display:grid;place-items:center;background:var(--orange-soft);border-radius:8px;color:var(--orange-deep);font-family:"Bricolage Grotesque";font-weight:800;font-size:22px}
+.logo-mark svg{width:28px;height:28px}
+.logo-text{font-family:"Bricolage Grotesque";font-size:26px;font-weight:800;letter-spacing:-0.04em;color:var(--navy);line-height:1}
+.logo-text .ship{color:var(--orange);font-weight:500;margin-left:2px}
+.nav-links{display:flex;gap:28px;align-items:center}
+.nav-links a{text-decoration:none;color:var(--ink-2);font-size:15px;font-weight:500}
+.nav-links a:hover{color:var(--orange-deep)}
+.nav-cta{display:flex;align-items:center;gap:14px}
+.nav-cta .ph{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink-2)}
+.nav-cta .ph b{color:var(--navy)}
+.btn-sm{padding:11px 16px;font-size:14px}
+
+/* ---------- HERO ---------- */
+.hero{padding:88px 0 80px;position:relative;overflow:hidden}
+.hero-grid{display:grid;grid-template-columns:1.15fr 1fr;gap:64px;align-items:center}
+h1.lede{font-size:84px;letter-spacing:-0.035em}
+h1.lede .accent{color:var(--orange);font-style:italic;font-weight:500}
+.sub{margin-top:28px;font-size:20px;color:var(--ink-2);max-width:560px;line-height:1.5}
+.cta-row{display:flex;gap:14px;margin-top:36px;flex-wrap:wrap}
+.hero-stats{display:flex;gap:40px;margin-top:56px;border-top:1px solid var(--line);padding-top:28px}
+.hero-stats .stat .n{font-family:"Bricolage Grotesque";font-size:36px;font-weight:700;color:var(--navy);letter-spacing:-0.03em;line-height:1}
+.hero-stats .stat .l{font-size:13px;color:var(--ink-3);margin-top:6px;text-transform:uppercase;letter-spacing:0.08em}
+.hero-stats .stat .n .u{color:var(--orange);font-size:24px;vertical-align:top;margin-left:2px}
+
+/* hero illustration: container split visual */
+.hero-art{position:relative;height:520px;border-radius:14px;background:var(--cream);overflow:hidden;border:1px solid var(--line)}
+.hero-art .cargo-card{
+  position:absolute;background:white;border:1px solid var(--line);border-radius:10px;padding:14px 16px;
+  box-shadow:0 12px 30px -16px rgba(11,23,43,.18);
+  display:flex;gap:12px;align-items:center;
+}
+.hero-art .swatch{width:36px;height:36px;border-radius:6px;flex:0 0 auto;display:grid;place-items:center;color:white;font-family:"Bricolage Grotesque";font-weight:700}
+.hero-art .meta{font-size:13px}
+.hero-art .meta .who{font-weight:600;color:var(--navy);font-size:14px}
+.hero-art .meta .what{color:var(--ink-3);font-family:"JetBrains Mono",monospace;font-size:11px;margin-top:2px}
+.card-1{top:60px;left:32px;}
+.card-2{top:160px;right:28px;}
+.card-3{bottom:170px;left:60px;}
+.card-4{bottom:60px;right:48px;}
+
+.container-svg{position:absolute;inset:auto 0 0 0;display:flex;justify-content:center;padding-bottom:24px;pointer-events:none}
+.dotline{position:absolute;border:2px dashed rgba(212,98,43,.4);border-radius:8px}
+
+.hero-tag{position:absolute;top:24px;right:24px;background:var(--navy);color:white;padding:8px 12px;border-radius:999px;font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:0.1em;text-transform:uppercase}
+.hero-tag .dot{width:7px;height:7px;background:#4ade80;border-radius:50%;display:inline-block;margin-right:8px;vertical-align:middle;box-shadow:0 0 0 4px rgba(74,222,128,.18)}
+
+/* ---------- LOGO STRIP / TRUST ---------- */
+.trust-bar{padding:28px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--paper-2)}
+.trust-inner{display:flex;align-items:center;gap:48px;flex-wrap:wrap;justify-content:space-between}
+.trust-inner .item{display:flex;gap:10px;align-items:center;color:var(--ink-2);font-size:14px}
+.trust-inner .item svg{width:18px;height:18px;color:var(--orange)}
+.trust-label{font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:var(--ink-3)}
+
+/* ---------- SECTION SHELL ---------- */
+section.s{padding:120px 0}
+section.s.dark{background:var(--navy);color:white}
+section.s.dark h2,section.s.dark h3,section.s.dark h4{color:white}
+section.s.cream{background:var(--cream)}
+.section-head{display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:end;margin-bottom:64px}
+.section-head h2{font-size:60px}
+.section-head p{font-size:18px;color:var(--ink-2);max-width:480px;margin:0}
+section.dark .section-head p{color:rgba(255,255,255,.7)}
+
+/* ---------- HOW IT WORKS ---------- */
+.steps{display:grid;grid-template-columns:repeat(5,1fr);gap:0;border-top:1px solid rgba(255,255,255,.12)}
+.step{padding:36px 28px 36px 0;border-right:1px solid rgba(255,255,255,.12);position:relative}
+.step:last-child{border-right:none;padding-right:0}
+.step:nth-child(n+2){padding-left:28px}
+.step .num{font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--orange);letter-spacing:0.1em;margin-bottom:24px}
+.step h3{font-size:22px;margin-bottom:14px;letter-spacing:-0.02em}
+.step p{font-size:14.5px;color:rgba(255,255,255,.7);line-height:1.55;margin:0}
+.step .icon{width:40px;height:40px;border-radius:8px;background:rgba(212,98,43,.18);color:var(--orange);display:grid;place-items:center;margin-bottom:20px}
+.step .icon svg{width:22px;height:22px}
+
+/* ---------- COMPARISON ---------- */
+.compare-wrap{position:relative}
+.compare{display:grid;grid-template-columns:1.1fr 1fr 1fr 1fr;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:white}
+.compare > div{padding:24px 24px;border-bottom:1px solid var(--line)}
+.compare .col-head{padding:32px 24px;background:var(--paper-2)}
+.compare .col-head.hoppa{background:var(--navy);color:white;position:relative}
+.compare .col-head.hoppa::after{content:"RECOMMENDED";position:absolute;top:14px;right:14px;background:var(--orange);color:white;font-family:"JetBrains Mono",monospace;font-size:10px;padding:4px 8px;border-radius:4px;letter-spacing:0.1em}
+.compare .col-head h4{font-size:14px;font-family:"JetBrains Mono",monospace;font-weight:500;color:var(--ink-3);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px}
+.compare .col-head.hoppa h4{color:rgba(255,255,255,.6)}
+.compare .col-head .price{font-family:"Bricolage Grotesque";font-size:32px;font-weight:700;letter-spacing:-0.025em;color:var(--navy)}
+.compare .col-head.hoppa .price{color:white}
+.compare .col-head .price .u{color:var(--orange);font-size:20px}
+.compare .col-head .sub{font-size:13px;color:var(--ink-3);margin-top:6px}
+.compare .col-head.hoppa .sub{color:rgba(255,255,255,.6)}
+.compare .row-label{font-weight:600;color:var(--navy);font-size:14px;background:var(--paper)}
+.compare .cell{font-size:15px;color:var(--ink-2);background:white}
+.compare .cell.hoppa{background:#0F1D32;color:white;border-bottom-color:rgba(255,255,255,.12)}
+.compare .cell .x{color:#b14a3a;font-weight:600}
+.compare .cell .y{color:var(--ok);font-weight:600}
+.compare .cell .y.acc{color:#7ad9a8}
+.compare .cell .meta{display:block;color:var(--ink-3);font-size:13px;margin-top:4px}
+.compare .cell.hoppa .meta{color:rgba(255,255,255,.55)}
+.compare > div:nth-last-child(-n+4){border-bottom:none}
+
+/* calculator */
+.calc{margin-top:40px;background:white;border:1px solid var(--line);border-radius:14px;padding:36px;display:grid;grid-template-columns:1fr 1.2fr;gap:48px;align-items:center}
+.calc h3{font-size:28px;margin-bottom:8px}
+.calc p.calc-desc{color:var(--ink-2);font-size:15px;margin:0 0 24px}
+.calc .input-row{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+.calc label{font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--ink-3);letter-spacing:0.1em;text-transform:uppercase;display:block;margin-bottom:8px}
+.cbm-slider{appearance:none;width:100%;height:6px;border-radius:99px;background:var(--paper-2);outline:none}
+.cbm-slider::-webkit-slider-thumb{appearance:none;width:22px;height:22px;border-radius:50%;background:var(--orange);cursor:pointer;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.15)}
+.cbm-value{font-family:"Bricolage Grotesque";font-size:48px;font-weight:700;letter-spacing:-0.025em;color:var(--navy);line-height:1}
+.cbm-value .unit{font-size:18px;color:var(--ink-3);font-weight:500;margin-left:4px;font-family:"Inter"}
+.calc-result{background:var(--cream);border-radius:10px;padding:24px;display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.calc-result .res{padding:16px 0}
+.calc-result .res:first-child{border-right:1px solid rgba(15,29,50,.1);padding-right:20px}
+.calc-result .res .l{font-size:12px;font-family:"JetBrains Mono",monospace;color:var(--ink-3);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px}
+.calc-result .res .v{font-family:"Bricolage Grotesque";font-size:32px;font-weight:700;letter-spacing:-0.025em;color:var(--navy)}
+.calc-result .res.win .v{color:var(--orange-deep)}
+.calc-result .res .sml{font-size:12px;color:var(--ink-3);margin-top:6px}
+.savings-badge{display:inline-block;background:var(--orange);color:white;font-family:"JetBrains Mono",monospace;font-size:11px;padding:4px 8px;border-radius:4px;letter-spacing:0.1em;margin-top:8px}
+
+/* ---------- CARGO ---------- */
+.cargo-grid{display:grid;grid-template-columns:1.2fr 1fr;gap:64px;align-items:start}
+.cargo-list{display:grid;grid-template-columns:1fr 1fr;gap:0;border-top:1px solid var(--line)}
+.cargo-list .row{padding:18px 0;border-bottom:1px solid var(--line);display:flex;gap:14px;align-items:center;font-size:16px;color:var(--navy);font-weight:500}
+.cargo-list .row .check{width:22px;height:22px;border-radius:50%;background:var(--orange-soft);color:var(--orange-deep);display:grid;place-items:center;flex:0 0 auto}
+.cargo-list .row .check svg{width:12px;height:12px}
+.cargo-excl{padding:28px;background:var(--paper-2);border-radius:12px;border:1px solid var(--line)}
+.cargo-excl h4{font-size:16px;font-family:"Inter";font-weight:600;letter-spacing:0;margin-bottom:14px;text-transform:uppercase;font-size:13px;font-family:"JetBrains Mono",monospace;color:var(--orange-deep);letter-spacing:0.1em}
+.cargo-excl ul{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:10px}
+.cargo-excl li{display:flex;gap:10px;color:var(--ink-2);font-size:14.5px}
+.cargo-excl li::before{content:"✕";color:#b14a3a;font-weight:700;width:16px;flex:0 0 auto}
+
+/* ---------- FOUNDER ---------- */
+.founder{display:grid;grid-template-columns:1fr 1.4fr;gap:64px;align-items:center}
+.founder-img{aspect-ratio:4/5;border-radius:14px;background:repeating-linear-gradient(135deg,#234266 0 12px,#1B2E4A 12px 24px);position:relative;overflow:hidden}
+.founder-img .lbl{position:absolute;left:18px;bottom:18px;font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:0.14em;color:rgba(255,255,255,.65);text-transform:uppercase}
+.founder-img .frame{position:absolute;inset:18px;border:1px solid rgba(255,255,255,.18);border-radius:6px}
+.founder blockquote{font-family:"Bricolage Grotesque";font-weight:500;font-size:34px;line-height:1.2;color:white;letter-spacing:-0.02em;margin:0 0 28px;text-wrap:balance}
+.founder blockquote .qmark{color:var(--orange);font-style:italic}
+.founder .signoff{display:flex;gap:14px;align-items:center;margin-top:14px}
+.founder .signoff .av{width:52px;height:52px;border-radius:50%;background:var(--orange-soft);color:var(--orange-deep);display:grid;place-items:center;font-family:"Bricolage Grotesque";font-weight:700;font-size:20px}
+.founder .signoff .who{color:white;font-weight:600;font-size:16px}
+.founder .signoff .who small{display:block;color:rgba(255,255,255,.6);font-weight:400;font-size:13px;margin-top:2px}
+.trust-pills{display:flex;flex-wrap:wrap;gap:8px;margin-top:32px}
+.trust-pills .pill{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);color:rgba(255,255,255,.85);padding:8px 14px;border-radius:99px;font-size:13px;font-weight:500}
+.trust-pills .pill svg{width:14px;height:14px;color:var(--orange);vertical-align:-2px;margin-right:6px}
+
+/* ---------- FAQ ---------- */
+.faq-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:0 64px}
+details.faq{border-bottom:1px solid var(--line);padding:24px 0}
+details.faq summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:24px;font-size:19px;font-weight:600;color:var(--navy);font-family:"Bricolage Grotesque";letter-spacing:-0.01em}
+details.faq summary::-webkit-details-marker{display:none}
+details.faq summary .pls{width:28px;height:28px;border-radius:50%;background:var(--cream);display:grid;place-items:center;flex:0 0 auto;transition:transform .2s, background .2s;color:var(--orange-deep);font-size:18px;font-weight:600}
+details.faq[open] summary .pls{transform:rotate(45deg);background:var(--orange);color:white}
+details.faq p{color:var(--ink-2);font-size:15.5px;line-height:1.6;margin:14px 0 0;max-width:560px}
+
+/* ---------- CTA / CONTACT ---------- */
+.cta-block{background:var(--navy-deep);border-radius:16px;padding:64px;display:grid;grid-template-columns:1fr 1fr;gap:64px;color:white;position:relative;overflow:hidden}
+.cta-block::before{content:"";position:absolute;right:-100px;top:-100px;width:380px;height:380px;border-radius:50%;background:radial-gradient(circle,rgba(212,98,43,.4),transparent 60%)}
+.cta-block h2{font-size:48px;color:white;letter-spacing:-0.03em}
+.cta-block p{color:rgba(255,255,255,.75);font-size:17px;margin-top:18px;max-width:460px}
+.contact-form{background:white;border-radius:12px;padding:32px;color:var(--ink);position:relative;z-index:1}
+.contact-form .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.field{margin-bottom:14px}
+.field label{display:block;font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--ink-3);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px}
+.field input,.field select,.field textarea{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:6px;font-family:inherit;font-size:15px;background:var(--paper);color:var(--navy)}
+.field input:focus,.field textarea:focus,.field select:focus{outline:none;border-color:var(--orange);background:white}
+.field textarea{min-height:90px;resize:vertical}
+.contact-meta{display:flex;flex-direction:column;gap:18px;margin-top:36px}
+.contact-meta .item{display:flex;gap:14px;align-items:flex-start}
+.contact-meta .item .i{width:40px;height:40px;border-radius:8px;background:rgba(212,98,43,.16);color:var(--orange);display:grid;place-items:center;flex:0 0 auto}
+.contact-meta .item .i svg{width:20px;height:20px}
+.contact-meta .item .l{font-size:12px;font-family:"JetBrains Mono",monospace;color:rgba(255,255,255,.55);text-transform:uppercase;letter-spacing:0.1em}
+.contact-meta .item .v{color:white;font-weight:600;font-size:16px;margin-top:2px}
+
+/* ---------- FOOTER ---------- */
+footer{background:var(--navy-deep);color:rgba(255,255,255,.7);padding:64px 0 36px}
+.foot-grid{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:48px;margin-bottom:48px}
+.foot-grid h5{font-family:"JetBrains Mono",monospace;font-size:11px;color:rgba(255,255,255,.5);letter-spacing:0.14em;text-transform:uppercase;margin-bottom:18px;font-weight:500}
+.foot-grid ul{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:10px}
+.foot-grid a{color:rgba(255,255,255,.75);text-decoration:none;font-size:14.5px}
+.foot-grid a:hover{color:var(--orange)}
+.foot-blurb{font-size:14.5px;max-width:340px;line-height:1.55}
+.foot-bottom{display:flex;justify-content:space-between;align-items:center;padding-top:24px;border-top:1px solid rgba(255,255,255,.1);font-size:13px;color:rgba(255,255,255,.5);flex-wrap:wrap;gap:16px}
+.foot-bottom .tm{font-family:"JetBrains Mono",monospace}
+
+/* big route ribbon */
+.route-ribbon{padding:24px 0;background:var(--orange);color:white;overflow:hidden;position:relative}
+.route-ribbon .track{display:flex;gap:64px;animation:scroll 40s linear infinite;font-family:"Bricolage Grotesque";font-weight:700;font-size:22px;letter-spacing:-0.01em;white-space:nowrap}
+.route-ribbon .track span svg{width:18px;height:18px;vertical-align:-2px;margin:0 16px}
+@keyframes scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+/* responsive */
+@media (max-width:980px){
+  .hero-grid,.cargo-grid,.founder,.cta-block,.faq-grid,.calc{grid-template-columns:1fr}
+  h1.lede{font-size:54px}
+  .section-head{grid-template-columns:1fr;gap:20px}
+  .section-head h2{font-size:40px}
+  .steps{grid-template-columns:1fr 1fr}
+  .step{border-right:none;border-bottom:1px solid rgba(255,255,255,.12);padding:28px 0!important}
+  .compare{grid-template-columns:1fr}
+  .compare .col-head{padding:20px}
+  .nav-links,.nav-cta .ph{display:none}
+  .hero-art{height:380px}
+  .cta-block{padding:36px}
+  .cargo-list{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<!-- ===================== NAV ===================== -->
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="logo" href="#">
+      <span class="logo-mark" aria-hidden="true">
+        <!-- abstract kangaroo + leap arc -->
+        <svg viewBox="0 0 32 32" fill="none">
+          <path d="M5 25 C 8 20 11 18 14 18 L 17 14 C 18 12 20 11 22 12 L 25 13 L 23 17 L 21 17 L 22 22 L 24 25 L 21 25 L 19 22 L 17 24 L 19 26 L 16 26 L 14 24 L 11 26 L 8 26 Z" fill="currentColor"/>
+        </svg>
+      </span>
+      <span class="logo-text">hoppa<span class="ship">ship</span></span>
+    </a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="#how">How it works</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#cargo">What we ship</a>
+      <a href="#founder">About</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <div class="nav-cta">
+      <span class="ph">Sunshine Coast · <b>+61 7 5XXX XXXX</b></span>
+      <a href="#contact" class="btn btn-primary btn-sm">Get a quote <span class="arr">→</span></a>
+    </div>
+  </div>
+</header>
+
+<!-- ===================== HERO ===================== -->
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <div class="eyebrow">MCL · Marketplace Container Load</div>
+      <h1 class="lede" style="margin-top:18px">Full container rates. <span class="accent">Without filling</span> a full container.</h1>
+      <p class="sub">Hoppa lets independent Australian importers share a shipping container from China at the real FCL price, split fairly. No consolidator markup. No CFS fees. No surprises. <b style="color:var(--navy)">50–70% less than LCL.</b></p>
+      <div class="cta-row">
+        <a href="#contact" class="btn btn-primary">Book container space <span class="arr">→</span></a>
+        <a href="#how" class="btn btn-ghost">See how it works</a>
+      </div>
+      <div class="hero-stats">
+        <div class="stat"><div class="n">16–22<span class="u">days</span></div><div class="l">Shenzhen → Brisbane</div></div>
+        <div class="stat"><div class="n">$55–90<span class="u">/cbm</span></div><div class="l">Real per-CBM cost</div></div>
+        <div class="stat"><div class="n">3<span class="u">touches</span></div><div class="l">vs 6+ for LCL</div></div>
+      </div>
+    </div>
+
+    <!-- HERO ART: container fill diagram -->
+    <div class="hero-art" aria-hidden="true">
+      <div class="hero-tag"><span class="dot"></span>Container HOPPA-2406-BNE · 73% filled</div>
+
+      <div class="cargo-card card-1">
+        <div class="swatch" style="background:#D4622B">SS</div>
+        <div class="meta"><div class="who">Stone &amp; Surfaces Co</div><div class="what">12.4 cbm · marble slabs</div></div>
+      </div>
+      <div class="cargo-card card-2">
+        <div class="swatch" style="background:#1B2E4A">BV</div>
+        <div class="meta"><div class="who">Bayside Vanities</div><div class="what">6.1 cbm · bath fittings</div></div>
+      </div>
+      <div class="cargo-card card-3">
+        <div class="swatch" style="background:#2F7D5B">TY</div>
+        <div class="meta"><div class="who">Tile Yard QLD</div><div class="what">8.8 cbm · porcelain tiles</div></div>
+      </div>
+      <div class="cargo-card card-4">
+        <div class="swatch" style="background:#9C3D12">+2</div>
+        <div class="meta"><div class="who">Two more importers</div><div class="what">6.2 cbm available</div></div>
+      </div>
+
+      <!-- container outline at bottom -->
+      <div class="container-svg">
+        <svg viewBox="0 0 460 80" width="92%" height="80">
+          <rect x="2" y="6" width="456" height="68" rx="4" fill="#0F1D32" stroke="#0F1D32"/>
+          <g stroke="rgba(255,255,255,.18)" stroke-width="1">
+            <line x1="40" y1="6" x2="40" y2="74"/><line x1="80" y1="6" x2="80" y2="74"/>
+            <line x1="120" y1="6" x2="120" y2="74"/><line x1="160" y1="6" x2="160" y2="74"/>
+            <line x1="200" y1="6" x2="200" y2="74"/><line x1="240" y1="6" x2="240" y2="74"/>
+            <line x1="280" y1="6" x2="280" y2="74"/><line x1="320" y1="6" x2="320" y2="74"/>
+            <line x1="360" y1="6" x2="360" y2="74"/><line x1="400" y1="6" x2="400" y2="74"/>
+          </g>
+          <!-- fill bar -->
+          <rect x="8" y="14" width="320" height="52" fill="#D4622B" opacity="0.92"/>
+          <rect x="8" y="14" width="120" height="52" fill="#1B2E4A" opacity="0.5"/>
+          <rect x="128" y="14" width="80" height="52" fill="#2F7D5B" opacity="0.7"/>
+          <text x="232" y="46" fill="white" font-family="JetBrains Mono" font-size="11" letter-spacing="1">73% FILLED · 6.2 CBM LEFT</text>
+          <!-- ISO marks -->
+          <text x="14" y="78" fill="rgba(255,255,255,.4)" font-family="JetBrains Mono" font-size="8">40' HC · ISO 1496</text>
+          <text x="380" y="78" fill="rgba(255,255,255,.4)" font-family="JetBrains Mono" font-size="8">HOPPA / 2406</text>
+        </svg>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== TRUST BAR ===================== -->
+<div class="trust-bar">
+  <div class="wrap trust-inner">
+    <span class="trust-label">Built for Aussie importers</span>
+    <div class="item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 L3 7 v6 c0 5 4 8 9 9 5-1 9-4 9-9 V7 z"/></svg> Cargo liability insured</div>
+    <div class="item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12 l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg> Licensed customs broker</div>
+    <div class="item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12 h18 M12 3 v18"/></svg> ABN 00 000 000 000</div>
+    <div class="item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="10" r="3"/><path d="M12 2 c-4 0-7 3-7 7 0 5 7 13 7 13 s7-8 7-13 c0-4-3-7-7-7z"/></svg> Sunshine Coast warehouse</div>
+  </div>
+</div>
+
+<!-- ===================== ROUTE RIBBON ===================== -->
+<div class="route-ribbon" aria-hidden="true">
+  <div class="track">
+    <span>SHENZHEN <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m-6-6 6 6-6 6"/></svg> BRISBANE</span>
+    <span>GUANGZHOU <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m-6-6 6 6-6 6"/></svg> SUNSHINE COAST</span>
+    <span>SHANGHAI <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m-6-6 6 6-6 6"/></svg> SYDNEY <span style="opacity:.6;font-weight:500;font-size:14px">· soon</span></span>
+    <span>SHANGHAI <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m-6-6 6 6-6 6"/></svg> MELBOURNE <span style="opacity:.6;font-weight:500;font-size:14px">· soon</span></span>
+    <!-- duplicate for loop -->
+    <span>SHENZHEN <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m-6-6 6 6-6 6"/></svg> BRISBANE</span>
+    <span>GUANGZHOU <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m-6-6 6 6-6 6"/></svg> SUNSHINE COAST</span>
+    <span>SHANGHAI <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m-6-6 6 6-6 6"/></svg> SYDNEY · soon</span>
+    <span>SHANGHAI <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m-6-6 6 6-6 6"/></svg> MELBOURNE · soon</span>
+  </div>
+</div>
+
+<!-- ===================== HOW IT WORKS ===================== -->
+<section class="s dark" id="how">
+  <div class="wrap">
+    <div class="section-head">
+      <div>
+        <div class="eyebrow on-dark">How Hoppa works</div>
+        <h2 style="margin-top:14px">Five steps. One container. Yours and a few mates'.</h2>
+      </div>
+      <p>Book your share online, send your cargo to our Guangdong warehouse, and pick it up locally on the Sunshine Coast. No CFS warehouses. No consolidator delays. No surprises on landing.</p>
+    </div>
+
+    <div class="steps">
+      <div class="step">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v5"/></svg></div>
+        <div class="num">STEP 01</div>
+        <h3>Book your space</h3>
+        <p>Enter your CBM, weight, and supplier details. See the real container cost and your exact share. Pay upfront, your spot is locked.</p>
+      </div>
+      <div class="step">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/></svg></div>
+        <div class="num">STEP 02</div>
+        <h3>Supplier delivers</h3>
+        <p>Your supplier ships to our Guangdong receiving warehouse using your booking ref. We photograph, weigh and confirm receipt the day it arrives.</p>
+      </div>
+      <div class="step">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="8" width="20" height="10" rx="1"/><path d="M6 8V5h12v3M2 14h20"/></svg></div>
+        <div class="num">STEP 03</div>
+        <h3>We fill, we ship</h3>
+        <p>Your goods load alongside other vetted importers. The container ships FCL direct to Brisbane — typically 16–22 days at sea.</p>
+      </div>
+      <div class="step">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
+        <div class="num">STEP 04</div>
+        <h3>Cleared on arrival</h3>
+        <p>Our broker partner pre-lodges entries before berthing. The container clears as a single FCL — no CFS holds, no per-line delays.</p>
+      </div>
+      <div class="step">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l4 4 14-14"/><path d="M3 12V5h7"/></svg></div>
+        <div class="num">STEP 05</div>
+        <h3>Local pickup</h3>
+        <p>Container is trucked to our Sunshine Coast yard. Pick up your goods locally — no Brisbane port runs, no CFS bookings.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== PRICING / COMPARISON ===================== -->
+<section class="s" id="pricing">
+  <div class="wrap">
+    <div class="section-head">
+      <div>
+        <div class="eyebrow">The numbers</div>
+        <h2 style="margin-top:14px">LCL looks cheap. <em style="font-style:normal;color:var(--orange)">Until the invoice lands.</em></h2>
+      </div>
+      <p>Below is a real comparison for 8&nbsp;CBM of dense cargo — tiles, stone, fittings — Shenzhen to Brisbane on a 40ft High Cube. Headline LCL rates leave out the CFS, doc, handling and weight surcharges that make up most of the bill.</p>
+    </div>
+
+    <div class="compare-wrap">
+      <div class="compare">
+        <div class="col-head"><h4>Cost line</h4><div class="price" style="font-size:14px;color:var(--ink-3);font-family:'JetBrains Mono'">8 CBM · DENSE · SZX→BNE</div></div>
+        <div class="col-head"><h4>FCL · go alone</h4><div class="price">$2,500<span class="u">–3,500</span></div><div class="sub">Whole 40' HC, you eat the empty space</div></div>
+        <div class="col-head"><h4>LCL · the usual</h4><div class="price">$1,480<span class="u">+</span></div><div class="sub">Headline ~$185/cbm + everything else</div></div>
+        <div class="col-head hoppa"><h4>Hoppa MCL</h4><div class="price">$670</div><div class="sub">$520 share + $150 flat fee</div></div>
+
+        <div class="row-label">Per-CBM cost</div>
+        <div class="cell">$310–440 <span class="meta">overpaying ~5×</span></div>
+        <div class="cell">$160–250 <span class="meta">true landed cost</span></div>
+        <div class="cell hoppa"><span class="y acc">$55–90</span><span class="meta">pro-rata of real container price</span></div>
+
+        <div class="row-label">Hidden fees</div>
+        <div class="cell">None — you pay everything</div>
+        <div class="cell"><span class="x">CFS, doc, handling, weight</span></div>
+        <div class="cell hoppa"><span class="y acc">None.</span> Flat platform fee, line item</div>
+
+        <div class="row-label">Transit time</div>
+        <div class="cell">16–22 days</div>
+        <div class="cell"><span class="x">25–35 days</span></div>
+        <div class="cell hoppa"><span class="y acc">16–22 days</span></div>
+
+        <div class="row-label">Cargo handling</div>
+        <div class="cell">3 touches</div>
+        <div class="cell"><span class="x">6+ touches</span></div>
+        <div class="cell hoppa"><span class="y acc">3 touches</span></div>
+
+        <div class="row-label">Pickup</div>
+        <div class="cell">Brisbane port</div>
+        <div class="cell">Brisbane CFS</div>
+        <div class="cell hoppa"><span class="y acc">Sunshine Coast</span></div>
+
+        <div class="row-label">Pricing</div>
+        <div class="cell">Transparent</div>
+        <div class="cell"><span class="x">Opaque</span></div>
+        <div class="cell hoppa"><span class="y acc">Transparent</span></div>
+      </div>
+
+      <!-- ============== CALCULATOR ============== -->
+      <div class="calc">
+        <div>
+          <div class="eyebrow">Quick estimator</div>
+          <h3 style="margin-top:10px">Drag to see your save.</h3>
+          <p class="calc-desc">Rough estimate based on dense cargo, Shenzhen → Brisbane, 40ft HC at the mid-range rate. Final quote depends on weight, supplier location and timing.</p>
+          <div class="input-row" style="margin-top:8px">
+            <div style="flex:1">
+              <label for="cbm">Your cargo volume</label>
+              <input id="cbm" class="cbm-slider" type="range" min="1" max="30" step="0.5" value="8">
+            </div>
+            <div class="cbm-value" id="cbmVal">8.0<span class="unit">cbm</span></div>
+          </div>
+          <a href="#contact" class="btn btn-primary" style="margin-top:8px">Get an exact quote <span class="arr">→</span></a>
+        </div>
+        <div class="calc-result">
+          <div class="res">
+            <div class="l">LCL — typical landed</div>
+            <div class="v" id="lclVal">$1,480</div>
+            <div class="sml">@ $185 USD/cbm true cost</div>
+          </div>
+          <div class="res win">
+            <div class="l">Hoppa MCL</div>
+            <div class="v" id="mclVal">$670</div>
+            <div class="sml">$65/cbm share + $150 flat</div>
+            <span class="savings-badge" id="saveBadge">SAVE $810 · 55%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== CARGO ===================== -->
+<section class="s cream" id="cargo">
+  <div class="wrap">
+    <div class="section-head">
+      <div>
+        <div class="eyebrow">What we ship</div>
+        <h2 style="margin-top:14px">Built for tradies, builders, retailers&nbsp;— not florists.</h2>
+      </div>
+      <p>We focus on dense, low-risk building and homewares cargo so containers move fast through biosecurity. If your goods are on the list, you're in. If they're not, we'll tell you upfront.</p>
+    </div>
+
+    <div class="cargo-grid">
+      <div class="cargo-list">
+        <div class="row"><span class="check"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 6 L5 9 L10 3"/></svg></span> Tiles, stone, marble, porcelain</div>
+        <div class="row"><span class="check"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 6 L5 9 L10 3"/></svg></span> Bathroom vanities &amp; tapware</div>
+        <div class="row"><span class="check"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 6 L5 9 L10 3"/></svg></span> Kitchen benchtops &amp; surfaces</div>
+        <div class="row"><span class="check"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 6 L5 9 L10 3"/></svg></span> Furniture &amp; homewares</div>
+        <div class="row"><span class="check"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 6 L5 9 L10 3"/></svg></span> Lighting &amp; electrical fittings</div>
+        <div class="row"><span class="check"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 6 L5 9 L10 3"/></svg></span> Hardware &amp; building supplies</div>
+        <div class="row"><span class="check"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 6 L5 9 L10 3"/></svg></span> Garden &amp; outdoor (non-living)</div>
+        <div class="row"><span class="check"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 6 L5 9 L10 3"/></svg></span> Glass, mirrors, splashbacks</div>
+      </div>
+
+      <div class="cargo-excl">
+        <h4>Sorry, no go</h4>
+        <ul>
+          <li>Food, perishables or anything edible</li>
+          <li>Hazardous, flammable or pressurised goods</li>
+          <li>Live plants or animals</li>
+          <li>Unprocessed timber (must be ISPM 15 compliant)</li>
+          <li>Anything restricted or quarantined under DAFF</li>
+        </ul>
+        <p style="font-size:13.5px;color:var(--ink-2);margin:18px 0 0">Not sure if your cargo qualifies? <a href="#contact" style="color:var(--orange-deep);font-weight:600">Send us a photo</a> and we'll let you know within the day.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== FOUNDER ===================== -->
+<section class="s dark" id="founder">
+  <div class="wrap">
+    <div class="founder">
+      <div class="founder-img" aria-label="Photo placeholder: founder on warehouse floor with stone slabs">
+        <div class="frame"></div>
+        <div class="lbl">[ photo · founder + stone container at SC warehouse ]</div>
+      </div>
+      <div>
+        <div class="eyebrow on-dark">Built by an importer, not a tech bro</div>
+        <blockquote style="margin-top:18px">
+          <span class="qmark">"</span>I was already shipping a full 40-footer of stone every month. Half the time it left half-empty. So I started letting mates fill the gaps. Then their mates. Hoppa is just that, with a website and a customs broker bolted on.<span class="qmark">"</span>
+        </blockquote>
+        <div class="signoff">
+          <div class="av">JT</div>
+          <div class="who">The founder<small>Stone &amp; surfaces importer · Sunshine Coast</small></div>
+        </div>
+
+        <div class="trust-pills">
+          <span class="pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9 12 l2 2 4-4"/></svg>Founder cargo on every container</span>
+          <span class="pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M12 3v18"/></svg>Australian-owned · ABN registered</span>
+          <span class="pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 L3 7 v6 c0 5 4 8 9 9 5-1 9-4 9-9 V7 z"/></svg>Cargo liability insured</span>
+          <span class="pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>Vetted co-shippers only</span>
+          <span class="pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>Building &amp; homewares only</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== FAQ ===================== -->
+<section class="s" id="faq">
+  <div class="wrap">
+    <div class="section-head">
+      <div>
+        <div class="eyebrow">Common questions</div>
+        <h2 style="margin-top:14px">Straight answers, no logistics jargon.</h2>
+      </div>
+      <p>If you've shipped LCL before, most of these will hit a nerve. If you haven't, this is what your freight forwarder isn't telling you.</p>
+    </div>
+
+    <div class="faq-grid">
+      <div>
+        <details class="faq" open>
+          <summary>How is this different from LCL?<span class="pls">+</span></summary>
+          <p>You pay your pro-rata share of the actual FCL container price plus a flat platform fee. There's no consolidator margin, no CFS warehouse fees at either end, and no weight surcharges for dense cargo. The same container you'd be on in LCL costs us the same — we just don't mark it up six different ways.</p>
+        </details>
+        <details class="faq">
+          <summary>What does MCL mean?<span class="pls">+</span></summary>
+          <p>Marketplace Container Load — a shipping category we created. The container ships FCL (because at the ocean level every container is a full container) but the space is sold to multiple importers through the marketplace, all paying their fair share.</p>
+        </details>
+        <details class="faq">
+          <summary>How do I know my goods are safe?<span class="pls">+</span></summary>
+          <p>Every container is loaded by our own warehouse team in Guangdong. We only accept building, homewares and hardware cargo — no food, no hazardous goods, nothing that could trigger a biosecurity hold and delay everyone. Cargo liability insurance is built in.</p>
+        </details>
+        <details class="faq">
+          <summary>What if the container doesn't fill?<span class="pls">+</span></summary>
+          <p>The founder's own stone cargo is the anchor load on every container. If marketplace bookings are light, the container still ships on schedule because his stuff is on it. Your booking is never held hostage to other importers showing up.</p>
+        </details>
+        <details class="faq">
+          <summary>How long does shipping take?<span class="pls">+</span></summary>
+          <p>16–22 days at sea Shenzhen or Guangzhou to Brisbane, plus 1–2 days for customs and trucking to our Sunshine Coast yard. So roughly 18–25 days door-to-door, vs 28–40 days for typical LCL.</p>
+        </details>
+      </div>
+      <div>
+        <details class="faq">
+          <summary>Do I need my own customs broker?<span class="pls">+</span></summary>
+          <p>No. Our partner broker handles the entry as part of the service — the container clears as a single FCL with one entry covering all importers. If you'd rather use your own broker, you can; we'll provide them with the docs they need.</p>
+        </details>
+        <details class="faq">
+          <summary>What are the payment terms?<span class="pls">+</span></summary>
+          <p>Upfront at booking. Once you pay, your CBM is locked into a specific container by date. Bank transfer (AUD) or card. No deposits, no progress payments, no surprise invoices on landing.</p>
+        </details>
+        <details class="faq">
+          <summary>Which routes do you cover?<span class="pls">+</span></summary>
+          <p>Right now: Shenzhen and Guangzhou into Brisbane, weekly. Shanghai into Sydney and Melbourne is launching late 2026. Need a different lane? Tell us and we'll let you know if it's on the roadmap.</p>
+        </details>
+        <details class="faq">
+          <summary>What's the minimum shipment size?<span class="pls">+</span></summary>
+          <p>1 CBM. There's no hard minimum but the flat $150 platform fee makes more sense at 3+ CBM — under that, the per-CBM math is still better than LCL but the win shrinks.</p>
+        </details>
+        <details class="faq">
+          <summary>What happens if my supplier is late?<span class="pls">+</span></summary>
+          <p>Each container has a cut-off date. If your goods miss it, we'll roll your booking onto the next container at no extra fee — usually 5–7 days later. We'll flag it as soon as we see your supplier slipping.</p>
+        </details>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== CONTACT / CTA ===================== -->
+<section class="s" id="contact" style="padding-top:0">
+  <div class="wrap">
+    <div class="cta-block">
+      <div>
+        <div class="eyebrow on-dark">Get on the next container</div>
+        <h2 style="margin-top:14px">Tell us what you're shipping. We'll quote within the day.</h2>
+        <p>Most quotes come back within a few hours. If your cargo qualifies, you'll see your exact share, the container date, and a link to lock the booking. No drawn-out sales process.</p>
+
+        <div class="contact-meta">
+          <div class="item">
+            <span class="i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.5 13.5a8 8 0 1 1-3-3l3 3z"/><path d="M9 11.5a3.5 3.5 0 1 0 4-4"/></svg></span>
+            <div><div class="l">WhatsApp · primary</div><div class="v">+61 4XX XXX XXX</div></div>
+          </div>
+          <div class="item">
+            <span class="i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="m22 7-10 6L2 7"/></svg></span>
+            <div><div class="l">Email</div><div class="v">hello@hoppaship.com.au</div></div>
+          </div>
+          <div class="item">
+            <span class="i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="10" r="3"/><path d="M12 2 c-4 0-7 3-7 7 0 5 7 13 7 13 s7-8 7-13 c0-4-3-7-7-7z"/></svg></span>
+            <div><div class="l">Warehouse</div><div class="v">Sunshine Coast, QLD</div></div>
+          </div>
+        </div>
+      </div>
+
+      <form class="contact-form" onsubmit="event.preventDefault(); this.querySelector('button').textContent='Sent — we\\'ll be in touch ✓'; this.querySelector('button').disabled=true;">
+        <h3 style="font-size:24px;margin-bottom:6px">Quick quote</h3>
+        <p style="color:var(--ink-2);font-size:14px;margin:0 0 22px">Takes 60 seconds. We reply within the day.</p>
+        <div class="grid">
+          <div class="field"><label>Your name</label><input required placeholder="Jamie Mortlock"></div>
+          <div class="field"><label>Phone</label><input required placeholder="+61 4XX XXX XXX"></div>
+        </div>
+        <div class="field"><label>Email</label><input required type="email" placeholder="jamie@business.com.au"></div>
+        <div class="grid">
+          <div class="field"><label>Estimated CBM</label><input type="number" min="1" step="0.5" placeholder="8"></div>
+          <div class="field"><label>Supplier in</label>
+            <select>
+              <option>Shenzhen / Guangzhou</option>
+              <option>Foshan</option>
+              <option>Xiamen</option>
+              <option>Shanghai (waitlist)</option>
+              <option>Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="field"><label>What are you importing?</label><textarea placeholder="e.g. 4 pallets porcelain tiles + 2 vanities"></textarea></div>
+        <button class="btn btn-primary" style="width:100%;justify-content:center" type="submit">Send for a quote <span class="arr">→</span></button>
+      </form>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== FOOTER ===================== -->
+<footer>
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <a class="logo" href="#" style="margin-bottom:18px">
+          <span class="logo-mark" style="background:rgba(212,98,43,.18)">
+            <svg viewBox="0 0 32 32" fill="none">
+              <path d="M5 25 C 8 20 11 18 14 18 L 17 14 C 18 12 20 11 22 12 L 25 13 L 23 17 L 21 17 L 22 22 L 24 25 L 21 25 L 19 22 L 17 24 L 19 26 L 16 26 L 14 24 L 11 26 L 8 26 Z" fill="currentColor"/>
+            </svg>
+          </span>
+          <span class="logo-text" style="color:white">hoppa<span class="ship">ship</span></span>
+        </a>
+        <p class="foot-blurb">Marketplace Container Load freight from China to Australia. Built on the Sunshine Coast by importers, for importers.</p>
+      </div>
+      <div>
+        <h5>Product</h5>
+        <ul>
+          <li><a href="#how">How it works</a></li>
+          <li><a href="#pricing">Pricing</a></li>
+          <li><a href="#cargo">What we ship</a></li>
+          <li><a href="#contact">Get a quote</a></li>
+        </ul>
+      </div>
+      <div>
+        <h5>Company</h5>
+        <ul>
+          <li><a href="#founder">About</a></li>
+          <li><a href="#faq">FAQ</a></li>
+          <li><a href="#contact">Contact</a></li>
+          <li><a href="#">Roadmap</a></li>
+        </ul>
+      </div>
+      <div>
+        <h5>Legal</h5>
+        <ul>
+          <li><a href="#">Terms of service</a></li>
+          <li><a href="#">Privacy policy</a></li>
+          <li><a href="#">Cargo liability</a></li>
+          <li><a href="#">Biosecurity policy</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>© 2026 Hoppa Ship Pty Ltd · ABN 00 000 000 000</span>
+      <span class="tm">MCL™ is a trademark of Hoppa Ship Pty Ltd.</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+// quote calculator
+(function(){
+  const cbm = document.getElementById('cbm');
+  const cbmVal = document.getElementById('cbmVal');
+  const lclVal = document.getElementById('lclVal');
+  const mclVal = document.getElementById('mclVal');
+  const badge = document.getElementById('saveBadge');
+  const fmt = n => '$'+Math.round(n).toLocaleString();
+  function update(){
+    const v = parseFloat(cbm.value);
+    cbmVal.firstChild.nodeValue = v.toFixed(1);
+    const lcl = v * 185;
+    const mcl = v * 65 + 150;
+    const save = lcl - mcl;
+    const pct = Math.round((save/lcl)*100);
+    lclVal.textContent = fmt(lcl);
+    mclVal.textContent = fmt(mcl);
+    badge.textContent = `SAVE ${fmt(save)} · ${pct}%`;
+  }
+  cbm.addEventListener('input', update);
+  update();
+})();
+</script>
+</body>
+</html>

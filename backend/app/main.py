@@ -1,0 +1,957 @@
+import os
+from datetime import date
+from typing import Callable, List, Optional, TypeVar
+
+from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+
+from .algorithms import (
+    CATEGORY_DENSITY_DEFAULTS,
+    commit_container,
+    confirm_booking,
+    rank_carrier_options,
+    release_reasons,
+    run_release_checks,
+    submit_booking,
+)
+from .auth import Principal, require_admin, require_importer
+from .automation import (
+    AutomationResult,
+    ExtractedFact,
+    MissingDataItem,
+    ShipmentLifecycleState,
+    apply_extracted_facts,
+    check_stale_shipments,
+    derive_lifecycle_state,
+    detect_missing_data,
+    next_action_for_state,
+    run_automation_for_booking,
+    run_extraction_for_message,
+    run_full_automation_cycle,
+    try_advance_booking_status,
+)
+from .models import (
+    AccountIntegration,
+    AccountIntegrationProvider,
+    AccountIntegrationUpdate,
+    AccountProfile,
+    AccountProfileUpdate,
+    AdminTask,
+    AdminTaskStatus,
+    ApprovalDecisionRequest,
+    ApprovalRequest,
+    ApprovalStatus,
+    AuditEvent,
+    ActorRole,
+    Booking,
+    BookingChecklistResponse,
+    BookingCreate,
+    CarrierOption,
+    CommitContainerRequest,
+    ConfirmBookingResponse,
+    Container,
+    CustomsProfile,
+    CustomsProfileUpdate,
+    DashboardSummary,
+    DeliveryPlan,
+    DeliveryPlanUpdate,
+    DocumentDecisionRequest,
+    DocumentStatus,
+    DocumentUploadRequest,
+    ImportProject,
+    ImportProjectWorkspaceResponse,
+    Invoice,
+    Lane,
+    MatchResult,
+    Notification,
+    OutboundMessage,
+    OutboundMessageCreate,
+    ProductionMilestone,
+    ProductionMilestoneCompleteRequest,
+    PurchaseOrder,
+    PurchaseOrderCreate,
+    ReleaseHold,
+    ReleaseCheckResult,
+    ReleaseStatusResponse,
+    SailingSearchResult,
+    SEOOpportunity,
+    SEOOpportunityCreate,
+    SentinelErrorDefinition,
+    ShipmentDocument,
+    ShipmentEvent,
+    ShipmentEventCreate,
+    SourceMessage,
+    SourceMessageCreate,
+    SupplierDiscoveryRun,
+    SupplierAccessLink,
+    SupplierLead,
+    SupplierLinkCreate,
+    SupplierPayMarkPaidRequest,
+    SupplierPayQuote,
+    SupplierPayRequest,
+    SupplierPayRequestCreate,
+    SupplierPortalResponse,
+    SupplierReadyRequest,
+    SystemHealthResponse,
+)
+from .operations import (
+    checklist_for_booking,
+    complete_production_milestone,
+    create_shipment_event,
+    create_supplier_link,
+    create_purchase_order,
+    create_supplier_pay_request,
+    decide_document,
+    decide_approval_request,
+    ensure_account_integrations,
+    ensure_account_profile,
+    ensure_customs_profile,
+    ensure_delivery_plan,
+    ensure_invoice,
+    events_for_booking,
+    mark_invoice_paid,
+    mark_supplier_pay_paid_outside_app,
+    mark_delivery_delivered,
+    release_status_for_booking,
+    sailing_search,
+    create_seo_opportunity,
+    create_supplier_discovery_run_from_opportunity,
+    ensure_import_project_for_booking,
+    import_project_workspace,
+    ingest_source_message,
+    queue_outbound_message,
+    supplier_portal,
+    supplier_ready,
+    supplier_link_by_token,
+    update_account_integration,
+    update_account_profile,
+    update_customs_profile,
+    update_delivery_plan,
+    upload_document,
+    waive_release_hold,
+    book_delivery_plan,
+)
+from .persistence import load_store_snapshot, save_store_snapshot, snapshot_enabled
+from .sentinel import sentinel_error_definitions, system_health
+from .seed import seed_data
+from .store import Store
+
+
+app = FastAPI(title="Ship Hoppa MCL Platform", version="0.1.0")
+
+
+def allowed_origins() -> List[str]:
+    configured_origins = os.getenv("SHIP_HOPPA_ALLOWED_ORIGINS")
+    if configured_origins:
+        return [origin.strip().rstrip("/") for origin in configured_origins.split(",") if origin.strip()]
+    return ["http://localhost:5173", "http://127.0.0.1:5173"]
+
+
+def allowed_origin_regex() -> Optional[str]:
+    return os.getenv("SHIP_HOPPA_ALLOWED_ORIGIN_REGEX") or None
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins(),
+    allow_origin_regex=allowed_origin_regex(),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+def boot_store() -> Store:
+    booted_store = Store()
+    if snapshot_enabled() and load_store_snapshot(booted_store):
+        return booted_store
+    seed_data(booted_store)
+    if snapshot_enabled():
+        save_store_snapshot(booted_store)
+    return booted_store
+
+
+store = boot_store()
+T = TypeVar("T")
+
+
+def persist_store() -> None:
+    if snapshot_enabled():
+        save_store_snapshot(store)
+
+
+def persist_result(result: T) -> T:
+    persist_store()
+    return result
+
+
+def reset_store_for_tests() -> None:
+    store.lanes.clear()
+    store.importers.clear()
+    store.account_profiles.clear()
+    store.account_integrations.clear()
+    store.bookings.clear()
+    store.containers.clear()
+    store.carrier_services.clear()
+    store.sailing_options.clear()
+    store.warehouses.clear()
+    store.document_requirements.clear()
+    store.shipment_documents.clear()
+    store.shipment_events.clear()
+    store.supplier_links.clear()
+    store.invoices.clear()
+    store.payment_records.clear()
+    store.release_holds.clear()
+    store.customs_profiles.clear()
+    store.delivery_plans.clear()
+    store.admin_tasks.clear()
+    store.purchase_orders.clear()
+    store.production_milestones.clear()
+    store.quality_inspections.clear()
+    store.supplier_pay_requests.clear()
+    store.supplier_pay_quotes.clear()
+    store.import_projects.clear()
+    store.import_project_steps.clear()
+    store.import_project_versions.clear()
+    store.import_project_snapshots.clear()
+    store.import_project_events.clear()
+    store.import_project_files.clear()
+    store.source_messages.clear()
+    store.automation_runs.clear()
+    store.approval_requests.clear()
+    store.outbound_messages.clear()
+    store.seo_opportunities.clear()
+    store.supplier_discovery_runs.clear()
+    store.supplier_leads.clear()
+    store.growth_attribution_events.clear()
+    store.notifications.clear()
+    store.audit_events.clear()
+    store.idempotency_records.clear()
+    store._counters.clear()
+    seed_data(store)
+
+
+def idempotent(scope: str, key: Optional[str], producer: Callable[[], T]) -> T:
+    if not key:
+        return producer()
+    scoped_key = f"{scope}:{key}"
+    if scoped_key in store.idempotency_records:
+        return store.idempotency_records[scoped_key]
+    result = producer()
+    store.idempotency_records[scoped_key] = result
+    return result
+
+
+@app.get("/health")
+def health() -> dict:
+    return {"ok": True, "service": "ship-hoppa-api", "snapshot_persistence": snapshot_enabled()}
+
+
+@app.get("/system/health", response_model=SystemHealthResponse)
+def get_system_health(_principal: Principal = Depends(require_admin)) -> SystemHealthResponse:
+    return system_health(store)
+
+
+@app.get("/sentinel/error-codes", response_model=List[SentinelErrorDefinition])
+def sentinel_error_codes(_principal: Principal = Depends(require_admin)) -> List[SentinelErrorDefinition]:
+    return sentinel_error_definitions()
+
+
+@app.get("/summary", response_model=DashboardSummary)
+def summary(_principal: Principal = Depends(require_admin)) -> DashboardSummary:
+    open_revenue = sum((booking.total_cost_usd or 0) for booking in store.bookings.values())
+    outstanding = sum((booking.total_cost_usd or 0) for booking in store.bookings.values() if not booking.paid)
+    notifications = sorted(store.notifications.values(), key=lambda item: item.created_at, reverse=True)[:8]
+    audit_events = sorted(store.audit_events.values(), key=lambda item: item.created_at, reverse=True)[:10]
+    return DashboardSummary(
+        lanes=len(store.lanes),
+        bookings=len(store.bookings),
+        containers=len(store.containers),
+        committed_containers=sum(1 for container in store.containers.values() if container.status == "committed"),
+        import_projects=len(store.import_projects),
+        source_messages=len(store.source_messages),
+        supplier_leads=len(store.supplier_leads),
+        open_approvals=sum(1 for approval in store.approval_requests.values() if approval.status == "pending"),
+        open_revenue_usd=round(open_revenue, 2),
+        outstanding_payments_usd=round(outstanding, 2),
+        notifications=notifications,
+        audit_events=audit_events,
+        category_density_defaults={key.value: value for key, value in CATEGORY_DENSITY_DEFAULTS.items()},
+    )
+
+
+@app.get("/lanes", response_model=List[Lane])
+def lanes(_principal: Principal = Depends(require_importer)) -> List[Lane]:
+    return list(store.lanes.values())
+
+
+@app.get("/account/profile", response_model=AccountProfile)
+def account_profile(principal: Principal = Depends(require_importer)) -> AccountProfile:
+    return persist_result(ensure_account_profile(store, principal.actor_id))
+
+
+@app.put("/account/profile", response_model=AccountProfile)
+def put_account_profile(
+    payload: AccountProfileUpdate,
+    principal: Principal = Depends(require_importer),
+) -> AccountProfile:
+    return persist_result(update_account_profile(store, principal.actor_id, payload))
+
+
+@app.get("/account/integrations", response_model=List[AccountIntegration])
+def account_integrations(principal: Principal = Depends(require_importer)) -> List[AccountIntegration]:
+    return persist_result(ensure_account_integrations(store, principal.actor_id))
+
+
+@app.put("/account/integrations/{provider}", response_model=AccountIntegration)
+def put_account_integration(
+    provider: AccountIntegrationProvider,
+    payload: AccountIntegrationUpdate,
+    principal: Principal = Depends(require_importer),
+) -> AccountIntegration:
+    try:
+        return persist_result(update_account_integration(store, principal.actor_id, provider, payload))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/containers", response_model=List[Container])
+def containers(_principal: Principal = Depends(require_admin)) -> List[Container]:
+    return sorted(store.containers.values(), key=lambda item: item.target_sailing_date)
+
+
+@app.get("/bookings", response_model=List[Booking])
+def bookings(_principal: Principal = Depends(require_admin)) -> List[Booking]:
+    return sorted(store.bookings.values(), key=lambda item: item.created_at, reverse=True)
+
+
+@app.get("/import-projects", response_model=List[ImportProject])
+def import_projects(_principal: Principal = Depends(require_importer)) -> List[ImportProject]:
+    return sorted(store.import_projects.values(), key=lambda item: item.updated_at, reverse=True)
+
+
+@app.get("/import-projects/{project_id}", response_model=ImportProjectWorkspaceResponse)
+def get_import_project(project_id: str, _principal: Principal = Depends(require_importer)) -> ImportProjectWorkspaceResponse:
+    if project_id not in store.import_projects:
+        raise HTTPException(status_code=404, detail="Import project not found")
+    return ImportProjectWorkspaceResponse(**import_project_workspace(store, project_id))
+
+
+@app.get("/bookings/{booking_id}/import-project", response_model=ImportProjectWorkspaceResponse)
+def booking_import_project(booking_id: str, _principal: Principal = Depends(require_importer)) -> ImportProjectWorkspaceResponse:
+    if booking_id not in store.bookings:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    project = ensure_import_project_for_booking(store, store.bookings[booking_id])
+    return persist_result(ImportProjectWorkspaceResponse(**import_project_workspace(store, project.id)))
+
+
+@app.get("/notifications", response_model=List[Notification])
+def notifications(_principal: Principal = Depends(require_admin)) -> List[Notification]:
+    return sorted(store.notifications.values(), key=lambda item: item.created_at, reverse=True)
+
+
+@app.get("/audit-events", response_model=List[AuditEvent])
+def audit_events(_principal: Principal = Depends(require_admin)) -> List[AuditEvent]:
+    return sorted(store.audit_events.values(), key=lambda item: item.created_at, reverse=True)
+
+
+@app.get("/source-messages", response_model=List[SourceMessage])
+def source_messages(_principal: Principal = Depends(require_admin)) -> List[SourceMessage]:
+    return sorted(store.source_messages.values(), key=lambda item: item.received_at, reverse=True)
+
+
+@app.get("/outbound-messages", response_model=List[OutboundMessage])
+def outbound_messages(_principal: Principal = Depends(require_admin)) -> List[OutboundMessage]:
+    return sorted(store.outbound_messages.values(), key=lambda item: item.created_at, reverse=True)
+
+
+@app.post("/outbound-messages", response_model=OutboundMessage, status_code=201)
+def post_outbound_message(
+    payload: OutboundMessageCreate,
+    principal: Principal = Depends(require_admin),
+) -> OutboundMessage:
+    try:
+        return persist_result(queue_outbound_message(store, payload, principal.role, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+
+@app.post("/source-messages", response_model=SourceMessage, status_code=201)
+def create_source_message(
+    payload: SourceMessageCreate,
+    principal: Principal = Depends(require_importer),
+) -> SourceMessage:
+    return persist_result(ingest_source_message(store, payload, principal.role, principal.actor_id))
+
+
+@app.get("/approvals", response_model=List[ApprovalRequest])
+def approvals(_principal: Principal = Depends(require_importer)) -> List[ApprovalRequest]:
+    return sorted(store.approval_requests.values(), key=lambda item: item.created_at, reverse=True)
+
+
+@app.post("/approvals/{approval_id}/approve", response_model=ApprovalRequest)
+def approve_request(
+    approval_id: str,
+    payload: ApprovalDecisionRequest = ApprovalDecisionRequest(reason="Approved"),
+    principal: Principal = Depends(require_importer),
+) -> ApprovalRequest:
+    try:
+        return persist_result(
+            decide_approval_request(
+                store,
+                approval_id,
+                ApprovalStatus.approved,
+                payload.reason or "Approved",
+                payload.decided_by or principal.actor_id,
+            )
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post("/approvals/{approval_id}/reject", response_model=ApprovalRequest)
+def reject_request(
+    approval_id: str,
+    payload: ApprovalDecisionRequest = ApprovalDecisionRequest(reason="Rejected"),
+    principal: Principal = Depends(require_importer),
+) -> ApprovalRequest:
+    try:
+        return persist_result(
+            decide_approval_request(
+                store,
+                approval_id,
+                ApprovalStatus.rejected,
+                payload.reason or "Rejected",
+                payload.decided_by or principal.actor_id,
+            )
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/purchase-orders", response_model=List[PurchaseOrder])
+def purchase_orders(_principal: Principal = Depends(require_importer)) -> List[PurchaseOrder]:
+    return sorted(store.purchase_orders.values(), key=lambda item: item.created_at, reverse=True)
+
+
+@app.post("/purchase-orders", response_model=PurchaseOrder, status_code=201)
+def post_purchase_order(
+    payload: PurchaseOrderCreate,
+    principal: Principal = Depends(require_importer),
+) -> PurchaseOrder:
+    try:
+        return persist_result(create_purchase_order(store, payload, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/purchase-orders/{purchase_order_id}", response_model=PurchaseOrder)
+def get_purchase_order(purchase_order_id: str, _principal: Principal = Depends(require_importer)) -> PurchaseOrder:
+    if purchase_order_id not in store.purchase_orders:
+        raise HTTPException(status_code=404, detail="Purchase order not found")
+    return store.purchase_orders[purchase_order_id]
+
+
+@app.get("/purchase-orders/{purchase_order_id}/milestones", response_model=List[ProductionMilestone])
+def purchase_order_milestones(
+    purchase_order_id: str,
+    _principal: Principal = Depends(require_importer),
+) -> List[ProductionMilestone]:
+    if purchase_order_id not in store.purchase_orders:
+        raise HTTPException(status_code=404, detail="Purchase order not found")
+    return sorted(
+        [
+            milestone
+            for milestone in store.production_milestones.values()
+            if milestone.purchase_order_id == purchase_order_id
+        ],
+        key=lambda item: ((item.due_date or date.max), item.created_at),
+    )
+
+
+@app.post("/production-milestones/{milestone_id}/complete", response_model=ProductionMilestone)
+def complete_milestone(
+    milestone_id: str,
+    payload: ProductionMilestoneCompleteRequest = ProductionMilestoneCompleteRequest(),
+    principal: Principal = Depends(require_importer),
+) -> ProductionMilestone:
+    try:
+        return persist_result(complete_production_milestone(store, milestone_id, payload, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/supplier-pay-requests", response_model=List[SupplierPayRequest])
+def supplier_pay_requests(_principal: Principal = Depends(require_importer)) -> List[SupplierPayRequest]:
+    return sorted(store.supplier_pay_requests.values(), key=lambda item: item.created_at, reverse=True)
+
+
+@app.post(
+    "/purchase-orders/{purchase_order_id}/supplier-pay-requests",
+    response_model=SupplierPayRequest,
+    status_code=201,
+)
+def post_supplier_pay_request(
+    purchase_order_id: str,
+    payload: SupplierPayRequestCreate,
+    principal: Principal = Depends(require_importer),
+) -> SupplierPayRequest:
+    try:
+        return persist_result(create_supplier_pay_request(store, purchase_order_id, payload, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/supplier-pay-requests/{supplier_pay_request_id}/quotes", response_model=List[SupplierPayQuote])
+def supplier_pay_quotes(
+    supplier_pay_request_id: str,
+    _principal: Principal = Depends(require_importer),
+) -> List[SupplierPayQuote]:
+    if supplier_pay_request_id not in store.supplier_pay_requests:
+        raise HTTPException(status_code=404, detail="Supplier Pay request not found")
+    return sorted(
+        [
+            quote
+            for quote in store.supplier_pay_quotes.values()
+            if quote.supplier_pay_request_id == supplier_pay_request_id
+        ],
+        key=lambda item: item.estimated_total,
+    )
+
+
+@app.post("/supplier-pay-requests/{supplier_pay_request_id}/mark-paid", response_model=SupplierPayRequest)
+def supplier_pay_mark_paid(
+    supplier_pay_request_id: str,
+    payload: SupplierPayMarkPaidRequest = SupplierPayMarkPaidRequest(),
+    principal: Principal = Depends(require_importer),
+) -> SupplierPayRequest:
+    try:
+        return persist_result(mark_supplier_pay_paid_outside_app(store, supplier_pay_request_id, payload, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post("/bookings", response_model=MatchResult, status_code=201)
+def create_booking(
+    payload: BookingCreate,
+    idempotency_key: Optional[str] = Header(default=None),
+    principal: Principal = Depends(require_importer),
+) -> MatchResult:
+    if payload.cargo_ready_date_latest < payload.cargo_ready_date_earliest:
+        raise HTTPException(status_code=422, detail="Latest ready date must be after earliest ready date.")
+    result = idempotent(
+        "create-booking",
+        idempotency_key,
+        lambda: submit_booking(store, payload, actor_role=principal.role, actor_id=principal.actor_id),
+    )
+    return persist_result(result)
+
+
+@app.post("/bookings/{booking_id}/confirm", response_model=ConfirmBookingResponse)
+def confirm(
+    booking_id: str,
+    idempotency_key: Optional[str] = Header(default=None),
+    _principal: Principal = Depends(require_importer),
+) -> ConfirmBookingResponse:
+    if booking_id not in store.bookings:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    try:
+        return persist_result(idempotent("confirm-booking", idempotency_key, lambda: confirm_booking(store, booking_id)))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+
+@app.get("/containers/{container_id}/carrier-options", response_model=List[CarrierOption])
+def carrier_options(container_id: str, _principal: Principal = Depends(require_admin)) -> List[CarrierOption]:
+    if container_id not in store.containers:
+        raise HTTPException(status_code=404, detail="Container not found")
+    return rank_carrier_options(store, container_id)[:3]
+
+
+@app.get("/containers/{container_id}/release-reasons", response_model=List[str])
+def get_release_reasons(container_id: str, _principal: Principal = Depends(require_admin)) -> List[str]:
+    if container_id not in store.containers:
+        raise HTTPException(status_code=404, detail="Container not found")
+    return release_reasons(store, store.containers[container_id])
+
+
+@app.post("/containers/{container_id}/commit", response_model=ReleaseCheckResult)
+def commit(
+    container_id: str,
+    payload: CommitContainerRequest = CommitContainerRequest(),
+    idempotency_key: Optional[str] = Header(default=None),
+    _principal: Principal = Depends(require_admin),
+) -> ReleaseCheckResult:
+    if container_id not in store.containers:
+        raise HTTPException(status_code=404, detail="Container not found")
+    result = idempotent("commit-container", idempotency_key, lambda: commit_container(store, container_id, payload))
+    if not result.released:
+        raise HTTPException(status_code=409, detail=result.reasons)
+    return persist_result(result)
+
+
+@app.post("/ops/release-checks", response_model=List[ReleaseCheckResult])
+def release_checks(_principal: Principal = Depends(require_admin)) -> List[ReleaseCheckResult]:
+    return persist_result(run_release_checks(store))
+
+
+@app.get("/bookings/{booking_id}/checklist", response_model=BookingChecklistResponse)
+def booking_checklist(booking_id: str, _principal: Principal = Depends(require_importer)) -> BookingChecklistResponse:
+    if booking_id not in store.bookings:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return checklist_for_booking(store, booking_id)
+
+
+@app.post("/bookings/{booking_id}/documents", response_model=ShipmentDocument, status_code=201)
+def upload_booking_document(
+    booking_id: str,
+    payload: DocumentUploadRequest,
+    principal: Principal = Depends(require_importer),
+) -> ShipmentDocument:
+    if booking_id not in store.bookings:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return persist_result(upload_document(store, booking_id, payload, principal.role, principal.actor_id))
+
+
+@app.post("/documents/{document_id}/approve", response_model=ShipmentDocument)
+def approve_document(
+    document_id: str,
+    payload: DocumentDecisionRequest = DocumentDecisionRequest(),
+    _principal: Principal = Depends(require_admin),
+) -> ShipmentDocument:
+    if document_id not in store.shipment_documents:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return persist_result(decide_document(store, document_id, DocumentStatus.approved, payload, "ops"))
+
+
+@app.post("/documents/{document_id}/reject", response_model=ShipmentDocument)
+def reject_document(
+    document_id: str,
+    payload: DocumentDecisionRequest = DocumentDecisionRequest(),
+    _principal: Principal = Depends(require_admin),
+) -> ShipmentDocument:
+    if document_id not in store.shipment_documents:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return persist_result(decide_document(store, document_id, DocumentStatus.rejected, payload, "ops"))
+
+
+@app.get("/bookings/{booking_id}/events", response_model=List[ShipmentEvent])
+def booking_events(booking_id: str, _principal: Principal = Depends(require_importer)) -> List[ShipmentEvent]:
+    if booking_id not in store.bookings:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return events_for_booking(store, booking_id)
+
+
+@app.post("/bookings/{booking_id}/events", response_model=ShipmentEvent, status_code=201)
+def add_booking_event(
+    booking_id: str,
+    payload: ShipmentEventCreate,
+    _principal: Principal = Depends(require_admin),
+) -> ShipmentEvent:
+    if booking_id not in store.bookings:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return persist_result(create_shipment_event(store, booking_id, payload))
+
+
+@app.get("/sailings", response_model=List[SailingSearchResult])
+def sailings(_principal: Principal = Depends(require_importer)) -> List[SailingSearchResult]:
+    return sailing_search(store)
+
+
+@app.get("/growth/seo-opportunities", response_model=List[SEOOpportunity])
+def seo_opportunities(_principal: Principal = Depends(require_admin)) -> List[SEOOpportunity]:
+    return sorted(store.seo_opportunities.values(), key=lambda item: item.created_at, reverse=True)
+
+
+@app.post("/growth/seo-opportunities", response_model=SEOOpportunity, status_code=201)
+def post_seo_opportunity(
+    payload: SEOOpportunityCreate,
+    principal: Principal = Depends(require_admin),
+) -> SEOOpportunity:
+    return persist_result(create_seo_opportunity(store, payload, principal.actor_id))
+
+
+@app.post("/growth/seo-opportunities/{opportunity_id}/discovery-runs", response_model=SupplierDiscoveryRun, status_code=201)
+def post_supplier_discovery_run(
+    opportunity_id: str,
+    _principal: Principal = Depends(require_admin),
+) -> SupplierDiscoveryRun:
+    if opportunity_id not in store.seo_opportunities:
+        raise HTTPException(status_code=404, detail="SEO opportunity not found")
+    return persist_result(create_supplier_discovery_run_from_opportunity(store, store.seo_opportunities[opportunity_id]))
+
+
+@app.get("/growth/supplier-discovery-runs", response_model=List[SupplierDiscoveryRun])
+def supplier_discovery_runs(_principal: Principal = Depends(require_admin)) -> List[SupplierDiscoveryRun]:
+    return sorted(store.supplier_discovery_runs.values(), key=lambda item: item.created_at, reverse=True)
+
+
+@app.get("/growth/supplier-leads", response_model=List[SupplierLead])
+def supplier_leads(_principal: Principal = Depends(require_admin)) -> List[SupplierLead]:
+    return sorted(store.supplier_leads.values(), key=lambda item: item.created_at, reverse=True)
+
+
+@app.post("/supplier-links", response_model=SupplierAccessLink, status_code=201)
+def supplier_link(payload: SupplierLinkCreate, _principal: Principal = Depends(require_admin)) -> SupplierAccessLink:
+    if payload.booking_id not in store.bookings:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return persist_result(create_supplier_link(store, payload.booking_id))
+
+
+@app.get("/supplier/{token}", response_model=SupplierPortalResponse)
+def get_supplier_portal(token: str) -> SupplierPortalResponse:
+    try:
+        return supplier_portal(store, token)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post("/supplier/{token}/ready", response_model=SupplierPortalResponse)
+def supplier_ready_update(token: str, payload: SupplierReadyRequest) -> SupplierPortalResponse:
+    try:
+        return persist_result(supplier_ready(store, token, payload))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post("/supplier/{token}/documents", response_model=ShipmentDocument, status_code=201)
+def supplier_document(token: str, payload: DocumentUploadRequest) -> ShipmentDocument:
+    try:
+        link = supplier_link_by_token(store, token)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return persist_result(upload_document(store, link.booking_id, payload, ActorRole.system, "supplier-portal"))
+
+
+@app.get("/bookings/{booking_id}/invoice", response_model=Invoice)
+def booking_invoice(booking_id: str, _principal: Principal = Depends(require_importer)) -> Invoice:
+    if booking_id not in store.bookings:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return persist_result(ensure_invoice(store, store.bookings[booking_id]))
+
+
+@app.post("/invoices/{invoice_id}/mark-paid", response_model=Invoice)
+def invoice_mark_paid(invoice_id: str, _principal: Principal = Depends(require_admin)) -> Invoice:
+    if invoice_id not in store.invoices:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    return persist_result(mark_invoice_paid(store, invoice_id, "ops"))
+
+
+@app.get("/bookings/{booking_id}/release-status", response_model=ReleaseStatusResponse)
+def booking_release_status(booking_id: str, _principal: Principal = Depends(require_importer)) -> ReleaseStatusResponse:
+    if booking_id not in store.bookings:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return release_status_for_booking(store, booking_id)
+
+
+@app.post("/release-holds/{hold_id}/waive", response_model=ReleaseHold)
+def waive_hold(
+    hold_id: str,
+    payload: DocumentDecisionRequest = DocumentDecisionRequest(reason="Admin override"),
+    _principal: Principal = Depends(require_admin),
+) -> ReleaseHold:
+    if hold_id not in store.release_holds:
+        raise HTTPException(status_code=404, detail="Release hold not found")
+    return persist_result(waive_release_hold(store, hold_id, payload.reason or "Admin override", "ops"))
+
+
+@app.get("/bookings/{booking_id}/customs-profile", response_model=CustomsProfile)
+def booking_customs_profile(booking_id: str, _principal: Principal = Depends(require_importer)) -> CustomsProfile:
+    if booking_id not in store.bookings:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return persist_result(ensure_customs_profile(store, store.bookings[booking_id]))
+
+
+@app.put("/bookings/{booking_id}/customs-profile", response_model=CustomsProfile)
+def put_customs_profile(
+    booking_id: str,
+    payload: CustomsProfileUpdate,
+    _principal: Principal = Depends(require_admin),
+) -> CustomsProfile:
+    if booking_id not in store.bookings:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return persist_result(update_customs_profile(store, booking_id, payload))
+
+
+@app.get("/bookings/{booking_id}/delivery-plan", response_model=DeliveryPlan)
+def booking_delivery_plan(booking_id: str, _principal: Principal = Depends(require_importer)) -> DeliveryPlan:
+    if booking_id not in store.bookings:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return persist_result(ensure_delivery_plan(store, store.bookings[booking_id]))
+
+
+@app.put("/bookings/{booking_id}/delivery-plan", response_model=DeliveryPlan)
+def put_delivery_plan(
+    booking_id: str,
+    payload: DeliveryPlanUpdate,
+    principal: Principal = Depends(require_importer),
+) -> DeliveryPlan:
+    try:
+        return persist_result(update_delivery_plan(store, booking_id, payload, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post("/delivery-plans/{delivery_plan_id}/book", response_model=DeliveryPlan)
+def delivery_plan_book(delivery_plan_id: str, principal: Principal = Depends(require_importer)) -> DeliveryPlan:
+    try:
+        return persist_result(book_delivery_plan(store, delivery_plan_id, principal.actor_id))
+    except ValueError as exc:
+        status_code = 409 if "cannot be booked" in str(exc) else 404
+        raise HTTPException(status_code=status_code, detail=str(exc))
+
+
+@app.post("/delivery-plans/{delivery_plan_id}/mark-delivered", response_model=DeliveryPlan)
+def delivery_plan_delivered(delivery_plan_id: str, principal: Principal = Depends(require_importer)) -> DeliveryPlan:
+    try:
+        return persist_result(mark_delivery_delivered(store, delivery_plan_id, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+# --- Automation Engine endpoints ---
+
+
+@app.get("/automation/shipment-state/{booking_id}")
+def get_shipment_state(booking_id: str, _principal: Principal = Depends(require_admin)) -> dict:
+    booking = store.bookings.get(booking_id)
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    state = derive_lifecycle_state(store, booking)
+    return {
+        "booking_id": booking_id,
+        "lifecycle_state": state.value,
+        "next_action": next_action_for_state(state),
+    }
+
+
+@app.get("/automation/missing-data/{booking_id}", response_model=List[MissingDataItem])
+def get_missing_data(booking_id: str, _principal: Principal = Depends(require_admin)) -> List[MissingDataItem]:
+    booking = store.bookings.get(booking_id)
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return detect_missing_data(store, booking)
+
+
+@app.post("/automation/run/{booking_id}", response_model=AutomationResult)
+def run_booking_automation(booking_id: str, _principal: Principal = Depends(require_admin)) -> AutomationResult:
+    booking = store.bookings.get(booking_id)
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    result = run_automation_for_booking(store, booking)
+    persist_store()
+    return result
+
+
+@app.post("/automation/run-all")
+def run_all_automation(_principal: Principal = Depends(require_admin)) -> dict:
+    results = run_full_automation_cycle(store)
+    persist_store()
+    return {
+        "shipments_processed": len(results),
+        "total_chase_messages": sum(r.chase_messages_queued for r in results.values()),
+        "total_missing_items": sum(len(r.missing_data) for r in results.values()),
+        "states": {bid: r.lifecycle_state.value for bid, r in results.items()},
+    }
+
+
+@app.post("/automation/extract/{message_id}", response_model=List[ExtractedFact])
+def extract_message_facts(message_id: str, _principal: Principal = Depends(require_admin)) -> List[ExtractedFact]:
+    message = store.source_messages.get(message_id)
+    if not message:
+        raise HTTPException(status_code=404, detail="Source message not found")
+    facts = run_extraction_for_message(store, message)
+    persist_store()
+    return facts
+
+
+@app.post("/automation/apply-facts/{booking_id}")
+def apply_facts_to_booking(booking_id: str, facts: List[ExtractedFact], _principal: Principal = Depends(require_admin)) -> dict:
+    booking = store.bookings.get(booking_id)
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    applied, needs_review = apply_extracted_facts(store, booking, facts)
+    persist_store()
+    return {
+        "applied_count": len(applied),
+        "needs_review_count": len(needs_review),
+        "applied_fields": [f.field for f in applied],
+        "review_fields": [f.field for f in needs_review],
+    }
+
+
+@app.post("/automation/advance-status/{booking_id}")
+def advance_booking_status_endpoint(
+    booking_id: str, _principal: Principal = Depends(require_admin)
+) -> dict:
+    booking = store.bookings.get(booking_id)
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    old_status = booking.status.value
+    advanced = try_advance_booking_status(store, booking)
+    return {
+        "advanced": advanced,
+        "old_status": old_status,
+        "new_status": booking.status.value,
+    }
+
+
+@app.get("/automation/stale-checks")
+def stale_shipment_checks(_principal: Principal = Depends(require_admin)) -> List[dict]:
+    return check_stale_shipments(store)
+
+
+# --- Admin Task Queue ---
+
+
+@app.get("/admin-tasks", response_model=List[AdminTask])
+def list_admin_tasks(
+    status: Optional[str] = None,
+    booking_id: Optional[str] = None,
+    _principal: Principal = Depends(require_admin),
+) -> List[AdminTask]:
+    tasks = list(store.admin_tasks.values())
+    if status:
+        tasks = [t for t in tasks if t.status.value == status]
+    if booking_id:
+        tasks = [t for t in tasks if t.booking_id == booking_id]
+    return sorted(tasks, key=lambda t: t.created_at, reverse=True)
+
+
+@app.post("/admin-tasks/{task_id}/resolve")
+def resolve_admin_task(
+    task_id: str, _principal: Principal = Depends(require_admin)
+) -> AdminTask:
+    task = store.admin_tasks.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Admin task not found")
+    task.status = AdminTaskStatus.done
+    from datetime import datetime
+    task.updated_at = datetime.utcnow()
+    return task
+
+
+@app.post("/admin-tasks/{task_id}/dismiss")
+def dismiss_admin_task(
+    task_id: str, _principal: Principal = Depends(require_admin)
+) -> AdminTask:
+    task = store.admin_tasks.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Admin task not found")
+    task.status = AdminTaskStatus.waived
+    from datetime import datetime
+    task.updated_at = datetime.utcnow()
+    return task
+
+
+@app.get("/admin-tasks/summary")
+def admin_task_summary(_principal: Principal = Depends(require_admin)) -> dict:
+    tasks = list(store.admin_tasks.values())
+    open_tasks = [t for t in tasks if t.status == AdminTaskStatus.open]
+    by_type: dict = {}
+    for task in open_tasks:
+        by_type[task.task_type] = by_type.get(task.task_type, 0) + 1
+    return {
+        "total_open": len(open_tasks),
+        "total_done": sum(1 for t in tasks if t.status == AdminTaskStatus.done),
+        "total_waived": sum(1 for t in tasks if t.status == AdminTaskStatus.waived),
+        "by_type": by_type,
+    }

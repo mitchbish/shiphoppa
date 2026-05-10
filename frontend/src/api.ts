@@ -1,0 +1,458 @@
+import type {
+  AccountIntegration,
+  AccountIntegrationProvider,
+  AccountIntegrationStatus,
+  AccountProfile,
+  Booking,
+  BookingPayload,
+  BookingChecklistResponse,
+  CarrierOption,
+  Container,
+  ConfirmBookingResponse,
+  CustomsProfile,
+  DocumentType,
+  DashboardSummary,
+  DeliveryPlan,
+  Invoice,
+  ImportProjectWorkspaceResponse,
+  MatchResult,
+  ProductionMilestone,
+  PurchaseOrder,
+  ReleaseCheckResult,
+  ReleaseStatusResponse,
+  SailingSearchResult,
+  SourceMessage,
+  SourceMessageType,
+  ShipmentDocument,
+  ShipmentEvent,
+  ShipmentEventStage,
+  SupplierAccessLink,
+  SupplierPayRequest,
+  SupplierPortalResponse,
+} from './types'
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.DEV ? 'http://localhost:8000' : '')
+const IMPORTER_TOKEN = import.meta.env.VITE_IMPORTER_TOKEN ?? (import.meta.env.DEV ? 'shiphoppa-importer-dev' : '')
+const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN ?? (import.meta.env.DEV ? 'shiphoppa-admin-dev' : '')
+
+function tokenFor(path: string, method: string) {
+  if (
+    path === '/summary' ||
+    path === '/bookings' && method === 'GET' ||
+    path.startsWith('/containers') ||
+    path.startsWith('/ops') ||
+    path.startsWith('/notifications') ||
+    path.startsWith('/audit-events') ||
+    path.startsWith('/documents') ||
+    path.startsWith('/supplier-links') ||
+    path.startsWith('/invoices') ||
+    path.startsWith('/release-holds') ||
+    path.startsWith('/automation') ||
+    path.startsWith('/admin-tasks') ||
+    (path.includes('/events') && method !== 'GET') ||
+    (path.includes('/customs-profile') && method !== 'GET')
+  ) {
+    return ADMIN_TOKEN
+  }
+  return IMPORTER_TOKEN
+}
+
+function idempotencyKey() {
+  return globalThis.crypto?.randomUUID?.() ?? `key-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const method = init?.method ?? 'GET'
+  const token = tokenFor(path, method)
+  if (!API_BASE_URL || !token) {
+    throw new Error('Ship Hoppa is missing its API deployment settings.')
+  }
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}`,
+  }
+  if (method !== 'GET') {
+    headers['Idempotency-Key'] = idempotencyKey()
+  }
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    headers: {
+      ...headers,
+      ...init?.headers,
+    },
+    ...init,
+  })
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    const message = body?.detail ?? `${response.status} ${response.statusText}`
+    throw new Error(Array.isArray(message) ? message.join(', ') : message)
+  }
+
+  return response.json() as Promise<T>
+}
+
+export function getSummary() {
+  return request<DashboardSummary>('/summary')
+}
+
+export function getContainers() {
+  return request<Container[]>('/containers')
+}
+
+export function getBookings() {
+  return request<Booking[]>('/bookings')
+}
+
+export function getAccountProfile() {
+  return request<AccountProfile>('/account/profile')
+}
+
+export function updateAccountProfile(payload: Partial<AccountProfile>) {
+  return request<AccountProfile>('/account/profile', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function getAccountIntegrations() {
+  return request<AccountIntegration[]>('/account/integrations')
+}
+
+export function updateAccountIntegration(
+  provider: AccountIntegrationProvider,
+  payload: { status?: AccountIntegrationStatus; notes?: string; last_verified_at?: string },
+) {
+  return request<AccountIntegration>(`/account/integrations/${provider}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function createBooking(payload: BookingPayload) {
+  return request<MatchResult>('/bookings', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function confirmBooking(bookingId: string) {
+  return request<ConfirmBookingResponse>(`/bookings/${bookingId}/confirm`, {
+    method: 'POST',
+  })
+}
+
+export function getCarrierOptions(containerId: string) {
+  return request<CarrierOption[]>(`/containers/${containerId}/carrier-options`)
+}
+
+export function commitContainer(containerId: string, option?: CarrierOption) {
+  return request<ReleaseCheckResult>(`/containers/${containerId}/commit`, {
+    method: 'POST',
+    body: JSON.stringify({
+      sailing_option_id: option?.sailing_option_id,
+      carrier_service_id: option?.service_id,
+      sailing_date: option?.sailing_date,
+    }),
+  })
+}
+
+export function runReleaseChecks() {
+  return request<ReleaseCheckResult[]>('/ops/release-checks', {
+    method: 'POST',
+  })
+}
+
+export function getChecklist(bookingId: string) {
+  return request<BookingChecklistResponse>(`/bookings/${bookingId}/checklist`)
+}
+
+export function uploadDocument(bookingId: string, documentType: DocumentType, fileName?: string) {
+  return request<ShipmentDocument>(`/bookings/${bookingId}/documents`, {
+    method: 'POST',
+    body: JSON.stringify({
+      document_type: documentType,
+      file_name: fileName ?? `${documentType}.pdf`,
+      mime_type: 'application/pdf',
+      notes: 'Demo upload from Ship Hoppa workspace',
+    }),
+  })
+}
+
+export function approveDocument(documentId: string) {
+  return request<ShipmentDocument>(`/documents/${documentId}/approve`, {
+    method: 'POST',
+    body: JSON.stringify({ reason: 'Approved in operations console' }),
+  })
+}
+
+export function rejectDocument(documentId: string) {
+  return request<ShipmentDocument>(`/documents/${documentId}/reject`, {
+    method: 'POST',
+    body: JSON.stringify({ reason: 'Needs replacement' }),
+  })
+}
+
+export function getEvents(bookingId: string) {
+  return request<ShipmentEvent[]>(`/bookings/${bookingId}/events`)
+}
+
+export function addEvent(bookingId: string, stage: ShipmentEventStage, label: string) {
+  return request<ShipmentEvent>(`/bookings/${bookingId}/events`, {
+    method: 'POST',
+    body: JSON.stringify({
+      stage,
+      label,
+      occurred_at: new Date().toISOString(),
+      source_type: 'manual_admin',
+      source_name: 'Ship Hoppa ops',
+      confidence: 'verified',
+    }),
+  })
+}
+
+export function getSailings() {
+  return request<SailingSearchResult[]>('/sailings')
+}
+
+export function createSupplierLink(bookingId: string) {
+  return request<SupplierAccessLink>('/supplier-links', {
+    method: 'POST',
+    body: JSON.stringify({ booking_id: bookingId }),
+  })
+}
+
+export function getSupplierPortal(token: string) {
+  return request<SupplierPortalResponse>(`/supplier/${token}`)
+}
+
+export function supplierReady(token: string, readyDate: string) {
+  return request<SupplierPortalResponse>(`/supplier/${token}/ready`, {
+    method: 'POST',
+    body: JSON.stringify({ cargo_ready_date_latest: readyDate }),
+  })
+}
+
+export function uploadSupplierDocument(token: string, documentType: DocumentType) {
+  return request<ShipmentDocument>(`/supplier/${token}/documents`, {
+    method: 'POST',
+    body: JSON.stringify({
+      document_type: documentType,
+      file_name: `supplier-${documentType}.pdf`,
+      mime_type: 'application/pdf',
+      notes: 'Demo supplier upload',
+    }),
+  })
+}
+
+export function getInvoice(bookingId: string) {
+  return request<Invoice>(`/bookings/${bookingId}/invoice`)
+}
+
+export function markInvoicePaid(invoiceId: string) {
+  return request<Invoice>(`/invoices/${invoiceId}/mark-paid`, {
+    method: 'POST',
+  })
+}
+
+export function getReleaseStatus(bookingId: string) {
+  return request<ReleaseStatusResponse>(`/bookings/${bookingId}/release-status`)
+}
+
+export function waiveReleaseHold(holdId: string) {
+  return request<ReleaseStatusResponse | unknown>(`/release-holds/${holdId}/waive`, {
+    method: 'POST',
+    body: JSON.stringify({ reason: 'Waived by admin for demo' }),
+  })
+}
+
+export function getCustomsProfile(bookingId: string) {
+  return request<CustomsProfile>(`/bookings/${bookingId}/customs-profile`)
+}
+
+export function updateCustomsProfile(bookingId: string, payload: Partial<CustomsProfile>) {
+  return request<CustomsProfile>(`/bookings/${bookingId}/customs-profile`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function getDeliveryPlan(bookingId: string) {
+  return request<DeliveryPlan>(`/bookings/${bookingId}/delivery-plan`)
+}
+
+export function updateDeliveryPlan(bookingId: string, payload: Partial<DeliveryPlan>) {
+  return request<DeliveryPlan>(`/bookings/${bookingId}/delivery-plan`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function bookDeliveryPlan(deliveryPlanId: string) {
+  return request<DeliveryPlan>(`/delivery-plans/${deliveryPlanId}/book`, {
+    method: 'POST',
+  })
+}
+
+export function markDeliveryDelivered(deliveryPlanId: string) {
+  return request<DeliveryPlan>(`/delivery-plans/${deliveryPlanId}/mark-delivered`, {
+    method: 'POST',
+  })
+}
+
+export function getImportProjectWorkspace(bookingId: string) {
+  return request<ImportProjectWorkspaceResponse>(`/bookings/${bookingId}/import-project`)
+}
+
+export function createSourceMessage(payload: {
+  source_type?: SourceMessageType
+  from_address: string
+  to_addresses?: string[]
+  subject: string
+  body?: string
+  attachment_names?: string[]
+}) {
+  return request<SourceMessage>('/source-messages', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function createPurchaseOrder(payload: {
+  booking_id: string
+  order_reference: string
+  buyer_company_name: string
+  supplier_name: string
+  product_summary: string
+  goods_value: number
+  deposit_amount: number
+  balance_amount: number
+  production_due_date?: string
+  cargo_ready_target_date?: string
+  inspection_required?: boolean
+}) {
+  return request<PurchaseOrder>('/purchase-orders', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function completeProductionMilestone(milestoneId: string, notes?: string) {
+  return request<ProductionMilestone>(`/production-milestones/${milestoneId}/complete`, {
+    method: 'POST',
+    body: JSON.stringify({ notes: notes ?? 'Completed from the Ship Hoppa workflow.' }),
+  })
+}
+
+export function markSupplierPayPaid(supplierPayRequestId: string, notes?: string) {
+  return request<SupplierPayRequest>(`/supplier-pay-requests/${supplierPayRequestId}/mark-paid`, {
+    method: 'POST',
+    body: JSON.stringify({
+      paid_by: 'Importer',
+      notes: notes ?? 'Paid outside Ship Hoppa.',
+    }),
+  })
+}
+
+// --- Automation Engine ---
+
+export type ShipmentStateResponse = {
+  booking_id: string
+  lifecycle_state: string
+  next_action: string
+}
+
+export type MissingDataItem = {
+  field: string
+  label: string
+  responsible_party: string
+  urgency: string
+  chase_channel: string
+}
+
+export type AutomationRunResult = {
+  lifecycle_state: string
+  next_action_label: string
+  missing_data: MissingDataItem[]
+  chase_messages_queued: number
+  state_advanced: boolean
+  approvals_created: number
+  admin_tasks_created: number
+}
+
+export type AutomationRunAllResult = {
+  shipments_processed: number
+  total_chase_messages: number
+  total_missing_items: number
+  states: Record<string, string>
+}
+
+export type StaleCheckAlert = {
+  booking_id: string
+  alert: string
+  message: string
+  severity: string
+}
+
+export function getShipmentState(bookingId: string) {
+  return request<ShipmentStateResponse>(`/automation/shipment-state/${bookingId}`)
+}
+
+export function getMissingData(bookingId: string) {
+  return request<MissingDataItem[]>(`/automation/missing-data/${bookingId}`)
+}
+
+export function runBookingAutomation(bookingId: string) {
+  return request<AutomationRunResult>(`/automation/run/${bookingId}`, {
+    method: 'POST',
+  })
+}
+
+export function runAllAutomation() {
+  return request<AutomationRunAllResult>('/automation/run-all', {
+    method: 'POST',
+  })
+}
+
+export function getStaleChecks() {
+  return request<StaleCheckAlert[]>('/automation/stale-checks')
+}
+
+// --- Admin Tasks ---
+
+export type AdminTask = {
+  id: string
+  booking_id: string
+  task_type: string
+  title: string
+  status: 'open' | 'done' | 'waived'
+  due_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type AdminTaskSummary = {
+  total_open: number
+  total_done: number
+  total_waived: number
+  by_type: Record<string, number>
+}
+
+export function getAdminTasks(params?: { status?: string; booking_id?: string }) {
+  const query = new URLSearchParams()
+  if (params?.status) query.set('status', params.status)
+  if (params?.booking_id) query.set('booking_id', params.booking_id)
+  const qs = query.toString()
+  return request<AdminTask[]>(`/admin-tasks${qs ? '?' + qs : ''}`)
+}
+
+export function getAdminTaskSummary() {
+  return request<AdminTaskSummary>('/admin-tasks/summary')
+}
+
+export function resolveAdminTask(taskId: string) {
+  return request<AdminTask>(`/admin-tasks/${taskId}/resolve`, { method: 'POST' })
+}
+
+export function dismissAdminTask(taskId: string) {
+  return request<AdminTask>(`/admin-tasks/${taskId}/dismiss`, { method: 'POST' })
+}

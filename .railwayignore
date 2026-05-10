@@ -1,0 +1,16 @@
+.git/
+.DS_Store
+
+frontend/
+marketing/
+uploads/
+assets/
+
+/index.html
+/index v1.html
+/tweaks-panel.jsx
+
+backend/.venv/
+backend/.pytest_cache/
+backend/**/__pycache__/
+backend/storage/documents/
