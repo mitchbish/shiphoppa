@@ -27,6 +27,7 @@ from .models import (
     CargoCategory,
     ChecklistStatus,
     ContactMethod,
+    Container,
     CustomsBrokerPreference,
     CustomsProfile,
     CustomsProfileUpdate,
@@ -88,6 +89,8 @@ from .models import (
     ShipmentEvent,
     ShipmentEventCreate,
     ShipmentEventStage,
+    ShipmentSummary,
+    ShipmentWorkspace,
     SourceConfidence,
     SourceMessage,
     SourceMessageCreate,
@@ -4031,3 +4034,126 @@ def sailing_search(store: Store) -> List[SailingSearchResult]:
             )
         )
     return sorted(results, key=lambda item: item.etd)
+
+
+def shipment_summary_for_booking(store: Store, booking: Booking) -> ShipmentSummary:
+    events = events_for_booking(store, booking.id)
+    documents = documents_for_booking(store, booking.id)
+    pending_approvals = sum(
+        1
+        for approval in store.approval_requests.values()
+        if approval.related_booking_id == booking.id and approval.status == ApprovalStatus.pending
+    )
+    invoice = invoice_for_booking(store, booking.id)
+    last_event = events[-1] if events else None
+    return ShipmentSummary(
+        booking=booking,
+        pending_approvals_count=pending_approvals,
+        documents_count=len(documents),
+        events_count=len(events),
+        has_invoice=invoice is not None,
+        last_event_stage=last_event.stage if last_event else None,
+        last_event_at=last_event.occurred_at if last_event else None,
+    )
+
+
+def list_shipment_summaries(store: Store) -> List[ShipmentSummary]:
+    bookings = sorted(
+        store.bookings.values(),
+        key=lambda item: (item.created_at, item.id),
+        reverse=True,
+    )
+    return [shipment_summary_for_booking(store, booking) for booking in bookings]
+
+
+def shipment_workspace(store: Store, booking_id: str) -> ShipmentWorkspace:
+    booking = store.bookings[booking_id]
+    container = store.containers.get(booking.container_id) if booking.container_id else None
+    documents = documents_for_booking(store, booking.id)
+    events = events_for_booking(store, booking.id)
+    invoice = invoice_for_booking(store, booking.id)
+    customs = next(
+        (profile for profile in store.customs_profiles.values() if profile.booking_id == booking.id),
+        None,
+    )
+    release = release_status_for_booking(store, booking.id)
+    approvals = sorted(
+        [a for a in store.approval_requests.values() if a.related_booking_id == booking.id],
+        key=lambda a: a.created_at,
+        reverse=True,
+    )
+    pending_approvals_count = sum(1 for a in approvals if a.status == ApprovalStatus.pending)
+    project = import_project_for_booking(store, booking.id)
+    project_id = project.id if project else None
+    project_purchase_orders = sorted(
+        [
+            order
+            for order in store.purchase_orders.values()
+            if order.booking_id == booking.id or (project_id and order.import_project_id == project_id)
+        ],
+        key=lambda order: order.created_at,
+        reverse=True,
+    )
+    purchase_order_ids = {order.id for order in project_purchase_orders}
+    production_milestones = sorted(
+        [
+            milestone
+            for milestone in store.production_milestones.values()
+            if milestone.purchase_order_id in purchase_order_ids
+        ],
+        key=lambda milestone: ((milestone.due_date or date.max), milestone.created_at),
+    )
+    quality_inspections = sorted(
+        [
+            inspection
+            for inspection in store.quality_inspections.values()
+            if inspection.purchase_order_id in purchase_order_ids
+        ],
+        key=lambda inspection: inspection.created_at,
+        reverse=True,
+    )
+    pay_requests = sorted(
+        [
+            request
+            for request in store.supplier_pay_requests.values()
+            if request.booking_id == booking.id or (project_id and request.import_project_id == project_id)
+        ],
+        key=lambda request: request.created_at,
+        reverse=True,
+    )
+    pay_request_ids = {request.id for request in pay_requests}
+    pay_quotes = sorted(
+        [quote for quote in store.supplier_pay_quotes.values() if quote.supplier_pay_request_id in pay_request_ids],
+        key=lambda quote: quote.created_at,
+        reverse=True,
+    )
+    source_messages = sorted(
+        [
+            message
+            for message in store.source_messages.values()
+            if message.matched_shipment_id == booking.id
+            or (project_id and message.matched_import_project_id == project_id)
+        ],
+        key=lambda message: message.received_at,
+        reverse=True,
+    )
+    delivery_plan = delivery_plan_for_booking(store, booking.id)
+    return ShipmentWorkspace(
+        booking=booking,
+        container=container,
+        documents=documents,
+        events=events,
+        invoice=invoice,
+        customs_profile=customs,
+        release_status=release,
+        approvals=approvals,
+        pending_approvals_count=pending_approvals_count,
+        purchase_orders=project_purchase_orders,
+        production_milestones=production_milestones,
+        quality_inspections=quality_inspections,
+        supplier_pay_requests=pay_requests,
+        supplier_pay_quotes=pay_quotes,
+        source_messages=source_messages,
+        delivery_plan=delivery_plan,
+        import_project=project,
+    )

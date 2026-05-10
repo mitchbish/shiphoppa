@@ -40,6 +40,8 @@ import type {
   ShipmentDocument,
   ShipmentEvent,
   ShipmentEventStage,
+  ShipmentSummary,
+  ShipmentWorkspace,
   SupplierAccessLink,
   SupplierPayRequest,
   SupplierPortalResponse,
@@ -874,4 +876,14 @@ export function rejectApprovalRequest(approvalId: string, reason?: string) {
     method: 'POST',
     body: JSON.stringify({ reason: reason ?? 'Rejected' }),
   })
+}
+
+// --- Shipments aggregator ---
+
+export function getShipments() {
+  return request<ShipmentSummary[]>('/shipments')
+}
+
+export function getShipmentWorkspace(bookingId: string) {
+  return request<ShipmentWorkspace>(`/shipments/${bookingId}/workspace`)
 }

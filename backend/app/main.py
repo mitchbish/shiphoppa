@@ -97,6 +97,8 @@ from .models import (
     SupplierLinkCreate,
     SupplierPayMarkPaidRequest,
     SupplierPayQuote,
+    ShipmentSummary,
+    ShipmentWorkspace,
     SupplierPayRequest,
     SupplierPayRequestCreate,
     SupplierPortalResponse,
@@ -146,6 +148,7 @@ from .operations import (
     dispatch_outbound_message,
     landed_cost_summary,
     list_quality_inspections_for_booking,
+    list_shipment_summaries,
     list_space_opportunities_for_booking,
     record_quality_inspection_result,
     record_warehouse_measurement,
@@ -164,6 +167,7 @@ from .operations import (
     mark_delivery_delivered,
     release_status_for_booking,
     sailing_search,
+    shipment_workspace,
     create_seo_opportunity,
     create_supplier_discovery_run_from_opportunity,
     ensure_import_project_for_booking,
@@ -402,6 +406,21 @@ def containers(_principal: Principal = Depends(require_admin)) -> List[Container
 @app.get("/bookings", response_model=List[Booking])
 def bookings(_principal: Principal = Depends(require_admin)) -> List[Booking]:
     return sorted(store.bookings.values(), key=lambda item: item.created_at, reverse=True)
+
+
+@app.get("/shipments", response_model=List[ShipmentSummary])
+def shipments(_principal: Principal = Depends(require_importer)) -> List[ShipmentSummary]:
+    return list_shipment_summaries(store)
+
+
+@app.get("/shipments/{booking_id}/workspace", response_model=ShipmentWorkspace)
+def shipment_workspace_endpoint(
+    booking_id: str,
+    _principal: Principal = Depends(require_importer),
+) -> ShipmentWorkspace:
+    if booking_id not in store.bookings:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return shipment_workspace(store, booking_id)
 
 
 @app.get("/import-projects", response_model=List[ImportProject])

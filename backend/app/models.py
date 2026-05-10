@@ -2117,3 +2117,33 @@ class DashboardSummary(BaseModel):
     notifications: List[Notification]
     audit_events: List[AuditEvent]
     category_density_defaults: Dict[str, float]
+
+
+class ShipmentSummary(BaseModel):
+    booking: Booking
+    pending_approvals_count: int
+    documents_count: int
+    events_count: int
+    has_invoice: bool
+    last_event_stage: Optional[ShipmentEventStage] = None
+    last_event_at: Optional[datetime] = None
+
+
+class ShipmentWorkspace(BaseModel):
+    booking: Booking
+    container: Optional[Container] = None
+    documents: List[ShipmentDocument]
+    events: List[ShipmentEvent]
+    invoice: Optional[Invoice] = None
+    customs_profile: Optional[CustomsProfile] = None
+    release_status: ReleaseStatusResponse
+    approvals: List[ApprovalRequest]
+    pending_approvals_count: int
+    purchase_orders: List[PurchaseOrder]
+    production_milestones: List[ProductionMilestone]
+    quality_inspections: List[QualityInspection]
+    supplier_pay_requests: List[SupplierPayRequest]
+    supplier_pay_quotes: List[SupplierPayQuote]
+    source_messages: List[SourceMessage]
+    delivery_plan: Optional[DeliveryPlan] = None
+    import_project: Optional[ImportProject] = None

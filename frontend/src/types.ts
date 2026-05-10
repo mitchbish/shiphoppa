@@ -924,6 +924,36 @@ export interface ImportProjectWorkspaceResponse {
   approvals: ApprovalRequest[]
 }
 
+export interface ShipmentSummary {
+  booking: Booking
+  pending_approvals_count: number
+  documents_count: number
+  events_count: number
+  has_invoice: boolean
+  last_event_stage: ShipmentEventStage | null
+  last_event_at: string | null
+}
+
+export interface ShipmentWorkspace {
+  booking: Booking
+  container: Container | null
+  documents: ShipmentDocument[]
+  events: ShipmentEvent[]
+  invoice: Invoice | null
+  customs_profile: CustomsProfile | null
+  release_status: ReleaseStatusResponse
+  approvals: ApprovalRequest[]
+  pending_approvals_count: number
+  purchase_orders: PurchaseOrder[]
+  production_milestones: ProductionMilestone[]
+  quality_inspections: QualityInspection[]
+  supplier_pay_requests: SupplierPayRequest[]
+  supplier_pay_quotes: SupplierPayQuote[]
+  source_messages: SourceMessage[]
+  delivery_plan: DeliveryPlan | null
+  import_project: ImportProject | null
+}
+
 export interface BookingPayload {
   importer_company_name: string
   importer_contact_name: string

@@ -264,6 +264,8 @@ Each row references the section in
 | Supplier verification state machine | DONE 2026-05-11 | Supplier acquisition strategy (line 408-863), Compliance (line 412) | `backend/app/operations.py:update_supplier_lead_verification`, `PATCH /growth/supplier-leads/{id}/verification` | (no separate plan; ad-hoc commit) |
 | Growth attribution events + summary | DONE 2026-05-11 | Activation Metrics (line 393-407), Adoption loop (line 261-310) | `backend/app/operations.py:filter_growth_attribution_events..summarise_growth_attribution`, `/growth/attribution-events` GET/POST + `/growth/attribution-summary` | (no separate plan; ad-hoc commit) |
 | Purchase order clone | DONE 2026-05-11 | Step 2 Order Phase Production (line 117-119), repeat-order ergonomics | `backend/app/operations.py:clone_purchase_order`, `POST /purchase-orders/{id}/clone` | (no separate plan; ad-hoc commit) |
+| Shipments aggregator endpoints | DONE 2026-05-11 | Phase 1 Reframe around shipments (line 3513-3515) | `backend/app/operations.py:list_shipment_summaries..shipment_workspace`, `backend/app/main.py:shipments..shipment_workspace_endpoint` | `docs/plans/shipments-aggregator/` |
+| Cron-job.org wiring (was operator-blocked, unblocked) | DONE 2026-05-11 | Phase 5 Automation (line 174-181) | cron-job.org Job 7583175 hits `POST /automation/cron/run` every 15 minutes; `SHIP_HOPPA_CRON_TOKEN` rotated and matched between Railway and cron-job.org | (ops change, no code; verified HTTP 200 in cron-job.org history) |
 
 ### No-blocker, autonomous — NOT STARTED (the new chat picks from here)
 
@@ -272,7 +274,6 @@ existing code; sizing is a rough guess.
 
 | Feature | Plan ref | Adjacent code | Difficulty |
 |---|---|---|---|
-| **GET `/shipments` aggregator endpoints** — list of shipments + a workspace endpoint that bundles booking + container + documents + events + invoice + customs + release + approvals into one payload (cuts importer-side N requests to 1) | Phase 1 Reframe around shipments (line 3513-3515) | GET `/bookings` exists; reuse `events_for_booking`, `documents_for_booking`, `release_status_for_booking` | Small |
 | **Approval `request-review` endpoint** — escalate a pending approval to admin without approving or rejecting it | Phase 3 Approval queue (line 3583-3586) | GET `/approvals`, POST `/approvals/{id}/approve` and `/reject` exist | Small |
 | **Supplier portal preview** — admin/importer-side read-only "see what your supplier sees" view that doesn't need a token | Supplier-side wedge (line 260-286) | Supplier portal at `/supplier/{token}` exists | Small |
 | **Frontend admin tab for audit filtering** — wire the new query params on `/audit-events` to a real admin UI with input fields and a results table | Production-Grade audit standard (line 209-225) | Backend filtering ships, admin tab is thin | Small |
@@ -302,7 +303,6 @@ provides credentials.
 | Real US tariff connector | Customs source strategy (line 2077-2088), Launch Country Scope: US (line 197) | USITC HTS data feed or third-party API | Large |
 | Real sailing data feeds (CMA CGM, Maersk, MSC) | Phase 5+ contingency automation (around line 3644+) | Carrier API credentials, real-time event processing | Large |
 | Image-only PDF OCR for supplier invoices | Phase 2 (line 2531-2566) | Tesseract or external OCR; Dockerfile system dependency | Medium |
-| Cron-job.org wiring for `/automation/cron/run` | Phase 5 Automation (line 174-181) | Operator to configure cron-job.org with `SHIP_HOPPA_CRON_TOKEN` bearer | Tiny (operator action) |
 | `SHIP_HOPPA_INBOUND_EMAIL_TOKEN` + Resend Inbound DNS | Email ingestion spec (line 2006-2044) | Operator sets env var + configures Resend dashboard | Tiny (operator action) |
 
 ### Big bets — NOT STARTED, large scope
