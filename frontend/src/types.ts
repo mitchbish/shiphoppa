@@ -29,6 +29,7 @@ export type SourceType =
   | 'carrier_api'
   | 'visibility_provider'
   | 'warehouse_event'
+  | 'partner_update'
 
 export type SourceConfidence = 'estimated' | 'verified' | 'confirmed'
 
@@ -559,17 +560,223 @@ export interface CustomsProfile {
   gst_estimate_usd: number
   brokerage_fee_usd: number
   landed_cost_estimate_usd: number
+  customs_entry_number: string | null
+  duty_paid_usd: number | null
+  gst_paid_usd: number | null
+  broker_notes: string | null
   updated_at: string
+}
+
+export interface BrokerAccessLink {
+  id: string
+  booking_id: string
+  token: string
+  active: boolean
+  expires_at: string | null
+  last_used_at: string | null
+  created_at: string
+}
+
+export interface BrokerBookingSummary {
+  id: string
+  importer_company_name: string | null
+  importer_abn: string | null
+  supplier_country: string
+  delivery_country: string
+  delivery_city: string
+  cargo_description: string | null
+  cargo_category: CargoCategory
+  cbm_estimate: number
+  weight_kg_estimate: number
+  cargo_ready_date_latest: string
+  status: string
+}
+
+export interface BrokerCustomsSummary {
+  incoterm: string
+  goods_value_usd: number
+  currency: string
+  hs_code: string | null
+  biosecurity_flags: string[]
+  customs_status: CustomsStatus
+  duty_estimate_usd: number
+  gst_estimate_usd: number
+  landed_cost_estimate_usd: number
+  customs_entry_number: string | null
+  duty_paid_usd: number | null
+  gst_paid_usd: number | null
+  broker_notes: string | null
+  updated_at: string
+}
+
+export type BrokerSubmittableStatus = 'submitted' | 'queried' | 'cleared'
+
+export interface BrokerClearanceUpdate {
+  customs_status: BrokerSubmittableStatus
+  customs_entry_number?: string | null
+  duty_paid_usd?: number | null
+  gst_paid_usd?: number | null
+  broker_notes?: string | null
+}
+
+export interface BrokerPortalResponse {
+  booking: BrokerBookingSummary
+  customs: BrokerCustomsSummary
+  holds: ReleaseHold[]
+  documents: ShipmentDocument[]
+  events: ShipmentEvent[]
+}
+
+export interface WarehouseAccessLink {
+  id: string
+  booking_id: string
+  token: string
+  active: boolean
+  expires_at: string | null
+  last_used_at: string | null
+  created_at: string
+}
+
+export interface WarehouseBookingSummary {
+  id: string
+  importer_company_name: string | null
+  supplier_country: string
+  supplier_city: string
+  cargo_description: string | null
+  cargo_category: CargoCategory
+  cbm_estimate: number
+  weight_kg_estimate: number
+  number_of_packages: number | null
+  cargo_ready_date_latest: string
+  delivery_mode: DeliveryMode
+  warehouse_receipt_cutoff: string | null
+  warehouse_name: string | null
+  cbm_actual: number | null
+  weight_kg_actual: number | null
+  received_at_warehouse: string | null
+  status: string
+}
+
+export interface WarehouseReceiptUpdate {
+  actual_cbm: number
+  actual_weight_kg: number
+  notes?: string | null
+}
+
+export interface WarehousePortalResponse {
+  booking: WarehouseBookingSummary
+  documents: ShipmentDocument[]
+  events: ShipmentEvent[]
+}
+
+export interface CarrierAccessLink {
+  id: string
+  booking_id: string
+  token: string
+  active: boolean
+  expires_at: string | null
+  last_used_at: string | null
+  created_at: string
+}
+
+export type CarrierEventStage = 'loaded' | 'departed' | 'arrived'
+
+export interface CarrierBookingSummary {
+  id: string
+  importer_company_name: string | null
+  container_id: string | null
+  container_number: string | null
+  vessel_name: string | null
+  voyage_number: string | null
+  carrier_name: string | null
+  estimated_departure: string | null
+  estimated_arrival: string | null
+  baseline_estimated_arrival: string | null
+  target_sailing_date: string | null
+  carrier_cutoff_date: string | null
+  cargo_description: string | null
+  cargo_category: CargoCategory
+  cbm_estimate: number
+  weight_kg_estimate: number
+  status: string
+}
+
+export interface CarrierEtaUpdate {
+  estimated_arrival: string
+  note?: string | null
+}
+
+export interface CarrierEventUpdate {
+  stage: CarrierEventStage
+  label?: string | null
+  notes?: string | null
+}
+
+export interface CarrierPortalResponse {
+  booking: CarrierBookingSummary
+  documents: ShipmentDocument[]
+  events: ShipmentEvent[]
+}
+
+export interface TruckerAccessLink {
+  id: string
+  booking_id: string
+  token: string
+  active: boolean
+  expires_at: string | null
+  last_used_at: string | null
+  created_at: string
+}
+
+export type TruckerStage = 'pickup_scheduled' | 'picked_up' | 'delivered'
+
+export interface TruckerBookingSummary {
+  id: string
+  importer_company_name: string | null
+  delivery_method: DeliveryPlanMethod
+  destination_address: string
+  destination_contact_name: string
+  destination_contact_phone: string | null
+  delivery_window_start: string | null
+  delivery_window_end: string | null
+  equipment_required: string[]
+  cargo_description: string | null
+  cargo_category: CargoCategory
+  cbm_estimate: number
+  weight_kg_estimate: number
+  delivery_status: string
+  booking_status: string
+}
+
+export interface TruckerStatusUpdate {
+  stage: TruckerStage
+  notes?: string | null
+}
+
+export interface TruckerPortalResponse {
+  booking: TruckerBookingSummary
+  release_status: ReleaseStatus
+  can_deliver: boolean
+  holds: ReleaseHold[]
+  documents: ShipmentDocument[]
+  events: ShipmentEvent[]
 }
 
 export interface ImportProject {
   id: string
   title: string
+  description?: string | null
+  status?: string
   current_step: string
   next_action: string | null
+  blocked_reason?: string | null
   summary: string
   linked_purchase_order_ids: string[]
   linked_shipment_ids: string[]
+  created_at?: string
+  updated_at?: string
+  archived_at?: string | null
+  deleted_at?: string | null
 }
 
 export interface ImportProjectStepData {
@@ -595,6 +802,9 @@ export interface ApprovalRequest {
   created_at: string
   decided_at: string | null
   decided_by: string | null
+  review_requested_by: string | null
+  review_requested_at: string | null
+  review_requested_reason: string | null
 }
 
 export interface PurchaseOrder {
@@ -723,6 +933,480 @@ export interface ImportProjectWorkspaceResponse {
   source_messages: SourceMessage[]
   automation_runs: AutomationRun[]
   approvals: ApprovalRequest[]
+}
+
+export type PartnerType =
+  | 'supplier'
+  | 'courier'
+  | 'broker'
+  | 'forwarder'
+  | 'warehouse'
+  | 'destination_agent'
+  | 'trucker'
+  | 'inspection'
+  | 'customs'
+  | 'other'
+
+export type PartnerCommunicationChannel = 'email' | 'sms' | 'whatsapp' | 'wechat' | 'portal'
+
+export type PartnerCapabilityType =
+  | 'supplier_production'
+  | 'origin_pickup'
+  | 'inspection'
+  | 'warehouse_receipt'
+  | 'customs_brokerage'
+  | 'port_drayage'
+  | 'local_delivery'
+  | 'freight_forwarding'
+  | 'payment_support'
+
+export interface PartnerProfile {
+  id: string
+  partner_type: PartnerType
+  name: string
+  contact_email: string | null
+  contact_phone: string | null
+  organization_id: string | null
+  preferred_channel: PartnerCommunicationChannel
+  upload_permissions: string[]
+  notes: string | null
+  active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface PartnerCapability {
+  id: string
+  partner_id: string
+  capability_type: PartnerCapabilityType
+  service_regions: string[]
+  service_lanes: string[]
+  equipment: string[]
+  cutoff_rules: string | null
+  operating_hours: string | null
+  escalation_contacts: string[]
+  average_response_hours: number | null
+  average_completion_hours: number | null
+  failure_rate: number | null
+  cost_model: string | null
+  active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export type ContingencyIssueType =
+  | 'production_delay'
+  | 'cutoff_miss'
+  | 'sailing_change'
+  | 'eta_slip'
+  | 'customs_hold'
+  | 'biosecurity_risk'
+  | 'payment_delay'
+  | 'release_block'
+  | 'trucking_risk'
+  | 'spare_space_opportunity'
+
+export type ContingencyOptionType =
+  | 'approve_change'
+  | 'book_next_sailing'
+  | 'change_trucker'
+  | 'request_partner_update'
+  | 'pay_charge'
+  | 'split_shipment'
+  | 'hold_for_review'
+
+export type ContingencyRiskLevel = 'low' | 'medium' | 'high'
+
+export type ContingencyStatus = 'proposed' | 'approved' | 'rejected' | 'expired' | 'applied'
+
+export interface ContingencyOption {
+  id: string
+  booking_id: string
+  issue_type: ContingencyIssueType
+  option_type: ContingencyOptionType
+  plain_language_summary: string
+  cost_impact_usd: number | null
+  time_impact_days: number | null
+  risk_level: ContingencyRiskLevel
+  source_evidence: string | null
+  approval_request_id: string | null
+  status: ContingencyStatus
+  created_at: string
+  updated_at: string
+}
+
+export type DeliveryJobMode =
+  | 'courier'
+  | 'pallet_freight'
+  | 'local_truck'
+  | 'port_drayage'
+  | 'live_unload'
+  | 'warehouse_delivery'
+
+export type DeliveryJobStatus =
+  | 'booked'
+  | 'scheduled'
+  | 'picked_up'
+  | 'in_transit'
+  | 'delivered'
+  | 'cancelled'
+
+export interface DeliveryJob {
+  id: string
+  booking_id: string
+  mode: DeliveryJobMode
+  pickup_address: string | null
+  pickup_contact_name: string | null
+  pickup_window_start: string | null
+  pickup_window_end: string | null
+  delivery_address: string | null
+  delivery_contact_name: string | null
+  delivery_window_start: string | null
+  delivery_window_end: string | null
+  equipment_required: string[]
+  quote_amount_usd: number | null
+  currency: string
+  status: DeliveryJobStatus
+  pod_document_id: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DeliveryJobCreatePayload {
+  mode: DeliveryJobMode
+  pickup_address?: string
+  pickup_contact_name?: string
+  pickup_window_start?: string
+  pickup_window_end?: string
+  delivery_address?: string
+  delivery_contact_name?: string
+  delivery_window_start?: string
+  delivery_window_end?: string
+  equipment_required?: string[]
+  quote_amount_usd?: number
+  currency?: string
+  notes?: string
+}
+
+export interface DeliveryJobUpdatePayload extends Partial<DeliveryJobCreatePayload> {
+  status?: DeliveryJobStatus
+  pod_document_id?: string
+}
+
+export interface InsurancePolicy {
+  id: string
+  booking_id: string
+  insurance_required: boolean
+  waived_by: string | null
+  insured_value: number | null
+  currency: string
+  provider: string | null
+  policy_reference: string | null
+  premium_usd: number | null
+  coverage_notes: string | null
+  document_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type ClaimType = 'damage' | 'loss' | 'shortage' | 'delay' | 'other'
+
+export type ClaimStatus =
+  | 'draft'
+  | 'submitted'
+  | 'under_review'
+  | 'approved'
+  | 'rejected'
+  | 'paid'
+  | 'closed'
+
+export interface ClaimRecord {
+  id: string
+  booking_id: string
+  insurance_policy_id: string | null
+  claim_type: ClaimType
+  claim_status: ClaimStatus
+  claim_amount_usd: number
+  evidence_document_ids: string[]
+  photo_document_ids: string[]
+  survey_report_document_id: string | null
+  submitted_at: string | null
+  resolved_at: string | null
+  recovery_amount_usd: number | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type MarketplaceProvider =
+  | 'alibaba'
+  | 'direct_supplier'
+  | 'agent'
+  | 'trading_company'
+  | '1688'
+  | 'global_sources'
+  | 'made_in_china'
+  | 'other'
+
+export type MarketplaceSyncMethod =
+  | 'email_forward'
+  | 'document_upload'
+  | 'browser_extension'
+  | 'official_api'
+  | 'manual'
+
+export interface MarketplaceOrder {
+  id: string
+  booking_id: string | null
+  import_project_id: string | null
+  marketplace: MarketplaceProvider
+  external_order_id: string | null
+  trade_assurance_status: string | null
+  supplier_profile_url: string | null
+  product_url: string | null
+  order_url: string | null
+  buyer_account_reference: string | null
+  agreed_terms_snapshot: string | null
+  messages_snapshot_reference: string | null
+  payment_method: string | null
+  protection_notes: string | null
+  last_synced_at: string | null
+  sync_method: MarketplaceSyncMethod
+  created_at: string
+  updated_at: string
+}
+
+export type PaymentProofType =
+  | 'supplier_invoice'
+  | 'freight_invoice'
+  | 'duty_gst'
+  | 'customs_brokerage'
+  | 'destination_delivery'
+  | 'other'
+
+export type PaymentProofMethod = 'bank_transfer' | 'card' | 'wise' | 'ofx' | 'other'
+
+export type PaymentProofReconciliationStatus =
+  | 'pending_review'
+  | 'matched'
+  | 'variance'
+  | 'rejected'
+
+export interface PaymentProof {
+  id: string
+  booking_id: string
+  invoice_id: string | null
+  supplier_pay_request_id: string | null
+  payment_type: PaymentProofType
+  paid_amount: number
+  paid_currency: string
+  paid_at: string
+  paid_by: string
+  payment_method: PaymentProofMethod
+  reference_number: string | null
+  proof_document_id: string | null
+  bank_account_last_digits: string | null
+  reconciliation_status: PaymentProofReconciliationStatus
+  variance_amount: number | null
+  reviewed_by: string | null
+  reviewed_at: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface LandedCostActual {
+  id: string
+  booking_id: string
+  estimated_total_usd: number | null
+  actual_total_usd: number
+  currency: string
+  supplier_invoice_amount: number | null
+  fx_cost: number | null
+  international_freight: number | null
+  platform_fee: number | null
+  origin_pickup: number | null
+  inspection: number | null
+  warehouse_charges: number | null
+  customs_duty: number | null
+  gst: number | null
+  broker_fees: number | null
+  port_charges: number | null
+  destination_trucking: number | null
+  insurance: number | null
+  storage_demurrage_detention: number | null
+  adjustments: number | null
+  variance_amount_usd: number | null
+  variance_reason: string | null
+  finalised_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface SupplierProfileClaim {
+  id: string
+  lead_id: string
+  token: string
+  status: 'pending' | 'claimed' | 'expired'
+  expires_at: string
+  created_at: string
+  claimed_at: string | null
+  claimed_by_email: string | null
+  claimed_contact_name: string | null
+}
+
+export interface SupplierProfileClaimResponse {
+  claim: SupplierProfileClaim
+  lead: SupplierLead
+}
+
+export type SupplierVerificationStatus =
+  | 'unverified'
+  | 'pending_review'
+  | 'verified'
+  | 'restricted'
+  | 'rejected'
+
+export type SupplierOutreachStatus =
+  | 'discovered'
+  | 'enriched'
+  | 'scored'
+  | 'needs_human_review'
+  | 'approved_for_contact'
+  | 'contacted'
+  | 'replied'
+  | 'onboarded'
+  | 'referred_importer'
+  | 'do_not_contact'
+  | 'rejected'
+
+export type SupplierLeadSource =
+  | 'alibaba'
+  | 'made_in_china'
+  | 'global_sources'
+  | 'trade_show'
+  | 'supplier_website'
+  | 'partner_referral'
+  | 'importer_invite'
+  | 'supplier_referral'
+  | 'seo_engine'
+  | 'other'
+
+export interface SupplierLead {
+  id: string
+  company_name: string
+  country: string
+  city: string | null
+  product_categories: string[]
+  discovery_source: SupplierLeadSource
+  discovery_source_url: string
+  platform_profile_url: string | null
+  company_website: string | null
+  public_email: string | null
+  public_phone: string | null
+  public_wechat: string | null
+  preferred_language: string
+  exports_to_regions: string[]
+  bulky_goods_fit: boolean
+  lead_score: number
+  fit_reason: string
+  compliance_basis: string
+  outreach_status: SupplierOutreachStatus
+  do_not_contact: boolean
+  verification_status: SupplierVerificationStatus
+  verification_notes: string | null
+  verified_at: string | null
+  verified_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type GrowthAttributionEventType =
+  | 'lead_discovered'
+  | 'lead_enriched'
+  | 'lead_contacted'
+  | 'lead_replied'
+  | 'supplier_signed_up'
+  | 'buyer_invited'
+  | 'importer_claimed'
+  | 'shipment_created'
+  | 'invoice_issued'
+  | 'revenue_recognised'
+  | 'opt_out'
+  | 'complaint'
+
+export interface GrowthAttributionEvent {
+  id: string
+  event_type: GrowthAttributionEventType
+  supplier_lead_id: string | null
+  supplier_workspace_id: string | null
+  importer_organization_id: string | null
+  shipment_id: string | null
+  campaign_id: string | null
+  source: string
+  channel: string | null
+  template_key: string | null
+  category: string | null
+  region: string | null
+  value_usd: number | null
+  occurred_at: string
+}
+
+export interface GrowthAttributionSummaryRow {
+  group_key: string
+  event_count: number
+  total_value_usd: number
+  unique_supplier_leads: number
+  unique_shipments: number
+}
+
+export interface GrowthAttributionSummary {
+  group_by: string
+  rows: GrowthAttributionSummaryRow[]
+  total_events: number
+  total_value_usd: number
+}
+
+export interface SentinelSubscriber {
+  id: string
+  phone_number: string
+  label: string | null
+  status: 'pending' | 'active' | 'opted_out'
+  confirmation_token: string
+  created_at: string
+  confirmed_at: string | null
+  opted_out_at: string | null
+}
+
+export interface ShipmentSummary {
+  booking: Booking
+  pending_approvals_count: number
+  documents_count: number
+  events_count: number
+  has_invoice: boolean
+  last_event_stage: ShipmentEventStage | null
+  last_event_at: string | null
+}
+
+export interface ShipmentWorkspace {
+  booking: Booking
+  container: Container | null
+  documents: ShipmentDocument[]
+  events: ShipmentEvent[]
+  invoice: Invoice | null
+  customs_profile: CustomsProfile | null
+  release_status: ReleaseStatusResponse
+  approvals: ApprovalRequest[]
+  pending_approvals_count: number
+  purchase_orders: PurchaseOrder[]
+  production_milestones: ProductionMilestone[]
+  quality_inspections: QualityInspection[]
+  supplier_pay_requests: SupplierPayRequest[]
+  supplier_pay_quotes: SupplierPayQuote[]
+  source_messages: SourceMessage[]
+  delivery_plan: DeliveryPlan | null
+  import_project: ImportProject | null
 }
 
 export interface BookingPayload {

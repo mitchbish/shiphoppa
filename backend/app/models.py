@@ -96,6 +96,7 @@ class SourceType(str, Enum):
     carrier_api = "carrier_api"
     visibility_provider = "visibility_provider"
     warehouse_event = "warehouse_event"
+    partner_update = "partner_update"
 
 
 class SourceConfidence(str, Enum):
@@ -522,6 +523,14 @@ class SupplierOutreachStatus(str, Enum):
     onboarded = "onboarded"
     referred_importer = "referred_importer"
     do_not_contact = "do_not_contact"
+    rejected = "rejected"
+
+
+class SupplierVerificationStatus(str, Enum):
+    unverified = "unverified"
+    pending_review = "pending_review"
+    verified = "verified"
+    restricted = "restricted"
     rejected = "rejected"
 
 
@@ -1036,6 +1045,10 @@ class CustomsProfile(BaseModel):
     gst_estimate_usd: float = 0
     brokerage_fee_usd: float = 175
     landed_cost_estimate_usd: float = 0
+    customs_entry_number: Optional[str] = None
+    duty_paid_usd: Optional[float] = None
+    gst_paid_usd: Optional[float] = None
+    broker_notes: Optional[str] = None
     updated_at: datetime
 
 
@@ -1196,6 +1209,24 @@ class ImportProject(BaseModel):
     deleted_at: Optional[datetime] = None
 
 
+class ImportProjectCreate(BaseModel):
+    title: str = Field(..., min_length=2)
+    description: Optional[str] = None
+    workflow_type: ImportWorkflowType = ImportWorkflowType.standard_import
+    summary: Optional[str] = None
+    next_action: Optional[str] = None
+
+
+class ImportProjectUpdate(BaseModel):
+    title: Optional[str] = Field(default=None, min_length=2)
+    description: Optional[str] = None
+    summary: Optional[str] = None
+    status: Optional[ImportProjectStatus] = None
+    current_step: Optional[str] = None
+    next_action: Optional[str] = None
+    blocked_reason: Optional[str] = None
+
+
 class ImportProjectStepData(BaseModel):
     id: str
     import_project_id: str
@@ -1290,6 +1321,45 @@ class SourceMessageCreate(BaseModel):
     attachment_names: List[str] = Field(default_factory=list)
 
 
+class InboundEmailAddress(BaseModel):
+    email: str
+    name: Optional[str] = None
+
+
+class InboundEmailAttachment(BaseModel):
+    filename: Optional[str] = None
+    content_type: Optional[str] = None
+
+
+class InboundEmailWebhook(BaseModel):
+    """
+    Vendor-flexible inbound email shape. Accepts Resend Inbound and Mailgun
+    payloads.
+
+    Resend posts JSON like:
+      {"from": {"email": "...", "name": "..."},
+       "to": [{"email": "...", "name": "..."}],
+       "subject": "...", "html": "...", "text": "...",
+       "attachments": [{"filename": "..."}], "received_at": "..."}
+
+    Mailgun posts flat fields. Map common variants via field aliases.
+    """
+    model_config = {"populate_by_name": True}
+
+    from_field: Optional[Any] = Field(default=None, alias="from")
+    sender: Optional[str] = None
+    to: Optional[Any] = None
+    recipient: Optional[str] = None
+    subject: Optional[str] = None
+    text: Optional[str] = None
+    html: Optional[str] = None
+    body_plain: Optional[str] = Field(default=None, alias="body-plain")
+    body_html: Optional[str] = Field(default=None, alias="body-html")
+    received_at: Optional[datetime] = None
+    timestamp: Optional[Any] = None
+    attachments: Optional[List[Any]] = None
+
+
 class OutboundMessageCreate(BaseModel):
     recipient_type: OutboundRecipientType
     recipient_id: str
@@ -1333,6 +1403,69 @@ class ApprovalRequest(BaseModel):
     created_at: datetime
     decided_at: Optional[datetime] = None
     decided_by: Optional[str] = None
+    review_requested_by: Optional[str] = None
+    review_requested_at: Optional[datetime] = None
+    review_requested_reason: Optional[str] = None
+
+
+class ApprovalReviewRequest(BaseModel):
+    reason: str
+
+
+class SentinelSubscriberStatus(str, Enum):
+    pending = "pending"
+    active = "active"
+    opted_out = "opted_out"
+
+
+class SentinelSubscriber(BaseModel):
+    id: str
+    phone_number: str
+    label: Optional[str] = None
+    status: SentinelSubscriberStatus = SentinelSubscriberStatus.pending
+    confirmation_token: str
+    created_at: datetime
+    confirmed_at: Optional[datetime] = None
+    opted_out_at: Optional[datetime] = None
+
+
+class SentinelSubscriberCreate(BaseModel):
+    phone_number: str
+    label: Optional[str] = None
+
+
+class SentinelSubscriberConfirm(BaseModel):
+    token: str
+
+
+class SentinelSubscriberOptOut(BaseModel):
+    phone_number: str
+
+
+class SupplierProfileClaimStatus(str, Enum):
+    pending = "pending"
+    claimed = "claimed"
+    expired = "expired"
+
+
+class SupplierProfileClaim(BaseModel):
+    id: str
+    lead_id: str
+    token: str
+    status: SupplierProfileClaimStatus = SupplierProfileClaimStatus.pending
+    expires_at: datetime
+    created_at: datetime
+    claimed_at: Optional[datetime] = None
+    claimed_by_email: Optional[str] = None
+    claimed_contact_name: Optional[str] = None
+
+
+class SupplierProfileClaimAccept(BaseModel):
+    contact_email: str
+    contact_name: str
+
+
+# SupplierProfileClaimResponse is defined after SupplierLead (which is below).
 
 
 class OutboundMessage(BaseModel):
@@ -1482,8 +1615,582 @@ class SupplierLead(BaseModel):
     do_not_contact: bool = False
     assigned_owner: Optional[str] = None
     notes: Optional[str] = None
+    verification_status: SupplierVerificationStatus = SupplierVerificationStatus.unverified
+    verification_notes: Optional[str] = None
+    verified_at: Optional[datetime] = None
+    verified_by: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+
+
+class SupplierVerificationUpdate(BaseModel):
+    verification_status: SupplierVerificationStatus
+    verification_notes: Optional[str] = None
+
+
+class SupplierProfileClaimResponse(BaseModel):
+    claim: SupplierProfileClaim
+    lead: SupplierLead
+
+
+class DeliveryJobMode(str, Enum):
+    courier = "courier"
+    pallet_freight = "pallet_freight"
+    local_truck = "local_truck"
+    port_drayage = "port_drayage"
+    live_unload = "live_unload"
+    warehouse_delivery = "warehouse_delivery"
+
+
+class DeliveryJobStatus(str, Enum):
+    booked = "booked"
+    scheduled = "scheduled"
+    picked_up = "picked_up"
+    in_transit = "in_transit"
+    delivered = "delivered"
+    cancelled = "cancelled"
+
+
+class DeliveryJob(BaseModel):
+    id: str
+    booking_id: str
+    mode: DeliveryJobMode
+    pickup_address: Optional[str] = None
+    pickup_contact_name: Optional[str] = None
+    pickup_window_start: Optional[datetime] = None
+    pickup_window_end: Optional[datetime] = None
+    delivery_address: Optional[str] = None
+    delivery_contact_name: Optional[str] = None
+    delivery_window_start: Optional[datetime] = None
+    delivery_window_end: Optional[datetime] = None
+    equipment_required: List[str] = Field(default_factory=list)
+    quote_amount_usd: Optional[float] = None
+    currency: str = "USD"
+    status: DeliveryJobStatus = DeliveryJobStatus.booked
+    pod_document_id: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class DeliveryJobCreate(BaseModel):
+    mode: DeliveryJobMode
+    pickup_address: Optional[str] = None
+    pickup_contact_name: Optional[str] = None
+    pickup_window_start: Optional[datetime] = None
+    pickup_window_end: Optional[datetime] = None
+    delivery_address: Optional[str] = None
+    delivery_contact_name: Optional[str] = None
+    delivery_window_start: Optional[datetime] = None
+    delivery_window_end: Optional[datetime] = None
+    equipment_required: List[str] = Field(default_factory=list)
+    quote_amount_usd: Optional[float] = None
+    currency: str = "USD"
+    notes: Optional[str] = None
+
+
+class DeliveryJobUpdate(BaseModel):
+    mode: Optional[DeliveryJobMode] = None
+    pickup_address: Optional[str] = None
+    pickup_contact_name: Optional[str] = None
+    pickup_window_start: Optional[datetime] = None
+    pickup_window_end: Optional[datetime] = None
+    delivery_address: Optional[str] = None
+    delivery_contact_name: Optional[str] = None
+    delivery_window_start: Optional[datetime] = None
+    delivery_window_end: Optional[datetime] = None
+    equipment_required: Optional[List[str]] = None
+    quote_amount_usd: Optional[float] = None
+    currency: Optional[str] = None
+    status: Optional[DeliveryJobStatus] = None
+    pod_document_id: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class PartnerType(str, Enum):
+    supplier = "supplier"
+    courier = "courier"
+    broker = "broker"
+    forwarder = "forwarder"
+    warehouse = "warehouse"
+    destination_agent = "destination_agent"
+    trucker = "trucker"
+    inspection = "inspection"
+    customs = "customs"
+    other = "other"
+
+
+class PartnerCommunicationChannel(str, Enum):
+    email = "email"
+    sms = "sms"
+    whatsapp = "whatsapp"
+    wechat = "wechat"
+    portal = "portal"
+
+
+class PartnerCapabilityType(str, Enum):
+    supplier_production = "supplier_production"
+    origin_pickup = "origin_pickup"
+    inspection = "inspection"
+    warehouse_receipt = "warehouse_receipt"
+    customs_brokerage = "customs_brokerage"
+    port_drayage = "port_drayage"
+    local_delivery = "local_delivery"
+    freight_forwarding = "freight_forwarding"
+    payment_support = "payment_support"
+
+
+class ContingencyIssueType(str, Enum):
+    production_delay = "production_delay"
+    cutoff_miss = "cutoff_miss"
+    sailing_change = "sailing_change"
+    eta_slip = "eta_slip"
+    customs_hold = "customs_hold"
+    biosecurity_risk = "biosecurity_risk"
+    payment_delay = "payment_delay"
+    release_block = "release_block"
+    trucking_risk = "trucking_risk"
+    spare_space_opportunity = "spare_space_opportunity"
+
+
+class ContingencyOptionType(str, Enum):
+    approve_change = "approve_change"
+    book_next_sailing = "book_next_sailing"
+    change_trucker = "change_trucker"
+    request_partner_update = "request_partner_update"
+    pay_charge = "pay_charge"
+    split_shipment = "split_shipment"
+    hold_for_review = "hold_for_review"
+
+
+class ContingencyRiskLevel(str, Enum):
+    low = "low"
+    medium = "medium"
+    high = "high"
+
+
+class ContingencyStatus(str, Enum):
+    proposed = "proposed"
+    approved = "approved"
+    rejected = "rejected"
+    expired = "expired"
+    applied = "applied"
+
+
+class PartnerProfile(BaseModel):
+    id: str
+    partner_type: PartnerType
+    name: str
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    organization_id: Optional[str] = None
+    preferred_channel: PartnerCommunicationChannel = PartnerCommunicationChannel.email
+    upload_permissions: List[str] = Field(default_factory=list)
+    notes: Optional[str] = None
+    active: bool = True
+    created_at: datetime
+    updated_at: datetime
+
+
+class PartnerProfileCreate(BaseModel):
+    partner_type: PartnerType
+    name: str
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    organization_id: Optional[str] = None
+    preferred_channel: PartnerCommunicationChannel = PartnerCommunicationChannel.email
+    upload_permissions: List[str] = Field(default_factory=list)
+    notes: Optional[str] = None
+
+
+class PartnerProfileUpdate(BaseModel):
+    partner_type: Optional[PartnerType] = None
+    name: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    organization_id: Optional[str] = None
+    preferred_channel: Optional[PartnerCommunicationChannel] = None
+    upload_permissions: Optional[List[str]] = None
+    notes: Optional[str] = None
+    active: Optional[bool] = None
+
+
+class PartnerCapability(BaseModel):
+    id: str
+    partner_id: str
+    capability_type: PartnerCapabilityType
+    service_regions: List[str] = Field(default_factory=list)
+    service_lanes: List[str] = Field(default_factory=list)
+    equipment: List[str] = Field(default_factory=list)
+    cutoff_rules: Optional[str] = None
+    operating_hours: Optional[str] = None
+    escalation_contacts: List[str] = Field(default_factory=list)
+    average_response_hours: Optional[float] = None
+    average_completion_hours: Optional[float] = None
+    failure_rate: Optional[float] = None
+    cost_model: Optional[str] = None
+    active: bool = True
+    created_at: datetime
+    updated_at: datetime
+
+
+class PartnerCapabilityCreate(BaseModel):
+    capability_type: PartnerCapabilityType
+    service_regions: List[str] = Field(default_factory=list)
+    service_lanes: List[str] = Field(default_factory=list)
+    equipment: List[str] = Field(default_factory=list)
+    cutoff_rules: Optional[str] = None
+    operating_hours: Optional[str] = None
+    escalation_contacts: List[str] = Field(default_factory=list)
+    average_response_hours: Optional[float] = None
+    average_completion_hours: Optional[float] = None
+    failure_rate: Optional[float] = None
+    cost_model: Optional[str] = None
+
+
+class PartnerCapabilityUpdate(BaseModel):
+    capability_type: Optional[PartnerCapabilityType] = None
+    service_regions: Optional[List[str]] = None
+    service_lanes: Optional[List[str]] = None
+    equipment: Optional[List[str]] = None
+    cutoff_rules: Optional[str] = None
+    operating_hours: Optional[str] = None
+    escalation_contacts: Optional[List[str]] = None
+    average_response_hours: Optional[float] = None
+    average_completion_hours: Optional[float] = None
+    failure_rate: Optional[float] = None
+    cost_model: Optional[str] = None
+    active: Optional[bool] = None
+
+
+class ContingencyOption(BaseModel):
+    id: str
+    booking_id: str
+    issue_type: ContingencyIssueType
+    option_type: ContingencyOptionType
+    plain_language_summary: str
+    cost_impact_usd: Optional[float] = None
+    time_impact_days: Optional[float] = None
+    risk_level: ContingencyRiskLevel = ContingencyRiskLevel.medium
+    source_evidence: Optional[str] = None
+    approval_request_id: Optional[str] = None
+    status: ContingencyStatus = ContingencyStatus.proposed
+    created_at: datetime
+    updated_at: datetime
+
+
+class ContingencyOptionCreate(BaseModel):
+    issue_type: ContingencyIssueType
+    option_type: ContingencyOptionType
+    plain_language_summary: str
+    cost_impact_usd: Optional[float] = None
+    time_impact_days: Optional[float] = None
+    risk_level: ContingencyRiskLevel = ContingencyRiskLevel.medium
+    source_evidence: Optional[str] = None
+    approval_request_id: Optional[str] = None
+
+
+class ContingencyOptionUpdate(BaseModel):
+    plain_language_summary: Optional[str] = None
+    cost_impact_usd: Optional[float] = None
+    time_impact_days: Optional[float] = None
+    risk_level: Optional[ContingencyRiskLevel] = None
+    source_evidence: Optional[str] = None
+    approval_request_id: Optional[str] = None
+    status: Optional[ContingencyStatus] = None
+
+
+class PaymentProofType(str, Enum):
+    supplier_invoice = "supplier_invoice"
+    freight_invoice = "freight_invoice"
+    duty_gst = "duty_gst"
+    customs_brokerage = "customs_brokerage"
+    destination_delivery = "destination_delivery"
+    other = "other"
+
+
+class PaymentProofMethod(str, Enum):
+    bank_transfer = "bank_transfer"
+    card = "card"
+    wise = "wise"
+    ofx = "ofx"
+    other = "other"
+
+
+class PaymentProofReconciliationStatus(str, Enum):
+    pending_review = "pending_review"
+    matched = "matched"
+    variance = "variance"
+    rejected = "rejected"
+
+
+class PaymentProof(BaseModel):
+    id: str
+    booking_id: str
+    invoice_id: Optional[str] = None
+    supplier_pay_request_id: Optional[str] = None
+    payment_type: PaymentProofType
+    paid_amount: float
+    paid_currency: str = "USD"
+    paid_at: datetime
+    paid_by: str
+    payment_method: PaymentProofMethod = PaymentProofMethod.bank_transfer
+    reference_number: Optional[str] = None
+    proof_document_id: Optional[str] = None
+    bank_account_last_digits: Optional[str] = None
+    reconciliation_status: PaymentProofReconciliationStatus = PaymentProofReconciliationStatus.pending_review
+    variance_amount: Optional[float] = None
+    reviewed_by: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    notes: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class PaymentProofCreate(BaseModel):
+    payment_type: PaymentProofType
+    paid_amount: float = Field(..., gt=0)
+    paid_currency: str = "USD"
+    paid_at: datetime
+    paid_by: str
+    payment_method: PaymentProofMethod = PaymentProofMethod.bank_transfer
+    invoice_id: Optional[str] = None
+    supplier_pay_request_id: Optional[str] = None
+    reference_number: Optional[str] = None
+    proof_document_id: Optional[str] = None
+    bank_account_last_digits: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class PaymentProofReconcileUpdate(BaseModel):
+    reconciliation_status: PaymentProofReconciliationStatus
+    variance_amount: Optional[float] = None
+    notes: Optional[str] = None
+
+
+class LandedCostActual(BaseModel):
+    id: str
+    booking_id: str
+    estimated_total_usd: Optional[float] = None
+    actual_total_usd: float
+    currency: str = "USD"
+    supplier_invoice_amount: Optional[float] = None
+    fx_cost: Optional[float] = None
+    international_freight: Optional[float] = None
+    platform_fee: Optional[float] = None
+    origin_pickup: Optional[float] = None
+    inspection: Optional[float] = None
+    warehouse_charges: Optional[float] = None
+    customs_duty: Optional[float] = None
+    gst: Optional[float] = None
+    broker_fees: Optional[float] = None
+    port_charges: Optional[float] = None
+    destination_trucking: Optional[float] = None
+    insurance: Optional[float] = None
+    storage_demurrage_detention: Optional[float] = None
+    adjustments: Optional[float] = None
+    variance_amount_usd: Optional[float] = None
+    variance_reason: Optional[str] = None
+    finalised_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class InsurancePolicy(BaseModel):
+    id: str
+    booking_id: str
+    insurance_required: bool = True
+    waived_by: Optional[str] = None
+    insured_value: Optional[float] = None
+    currency: str = "USD"
+    provider: Optional[str] = None
+    policy_reference: Optional[str] = None
+    premium_usd: Optional[float] = None
+    coverage_notes: Optional[str] = None
+    document_id: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class InsurancePolicyUpsert(BaseModel):
+    insurance_required: bool = True
+    waived_by: Optional[str] = None
+    insured_value: Optional[float] = None
+    currency: str = "USD"
+    provider: Optional[str] = None
+    policy_reference: Optional[str] = None
+    premium_usd: Optional[float] = None
+    coverage_notes: Optional[str] = None
+    document_id: Optional[str] = None
+
+
+class ClaimType(str, Enum):
+    damage = "damage"
+    loss = "loss"
+    shortage = "shortage"
+    delay = "delay"
+    other = "other"
+
+
+class ClaimStatus(str, Enum):
+    draft = "draft"
+    submitted = "submitted"
+    under_review = "under_review"
+    approved = "approved"
+    rejected = "rejected"
+    paid = "paid"
+    closed = "closed"
+
+
+class ClaimRecord(BaseModel):
+    id: str
+    booking_id: str
+    insurance_policy_id: Optional[str] = None
+    claim_type: ClaimType
+    claim_status: ClaimStatus = ClaimStatus.draft
+    claim_amount_usd: float = 0
+    evidence_document_ids: List[str] = Field(default_factory=list)
+    photo_document_ids: List[str] = Field(default_factory=list)
+    survey_report_document_id: Optional[str] = None
+    submitted_at: Optional[datetime] = None
+    resolved_at: Optional[datetime] = None
+    recovery_amount_usd: Optional[float] = None
+    notes: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ClaimRecordCreate(BaseModel):
+    claim_type: ClaimType
+    claim_amount_usd: float = Field(0, ge=0)
+    insurance_policy_id: Optional[str] = None
+    evidence_document_ids: List[str] = Field(default_factory=list)
+    photo_document_ids: List[str] = Field(default_factory=list)
+    survey_report_document_id: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class ClaimRecordUpdate(BaseModel):
+    claim_type: Optional[ClaimType] = None
+    claim_status: Optional[ClaimStatus] = None
+    claim_amount_usd: Optional[float] = None
+    insurance_policy_id: Optional[str] = None
+    evidence_document_ids: Optional[List[str]] = None
+    photo_document_ids: Optional[List[str]] = None
+    survey_report_document_id: Optional[str] = None
+    submitted_at: Optional[datetime] = None
+    resolved_at: Optional[datetime] = None
+    recovery_amount_usd: Optional[float] = None
+    notes: Optional[str] = None
+
+
+class MarketplaceProvider(str, Enum):
+    alibaba = "alibaba"
+    direct_supplier = "direct_supplier"
+    agent = "agent"
+    trading_company = "trading_company"
+    marketplace_1688 = "1688"
+    global_sources = "global_sources"
+    made_in_china = "made_in_china"
+    other = "other"
+
+
+class MarketplaceSyncMethod(str, Enum):
+    email_forward = "email_forward"
+    document_upload = "document_upload"
+    browser_extension = "browser_extension"
+    official_api = "official_api"
+    manual = "manual"
+
+
+class MarketplaceOrder(BaseModel):
+    id: str
+    booking_id: Optional[str] = None
+    import_project_id: Optional[str] = None
+    marketplace: MarketplaceProvider
+    external_order_id: Optional[str] = None
+    trade_assurance_status: Optional[str] = None
+    supplier_profile_url: Optional[str] = None
+    product_url: Optional[str] = None
+    order_url: Optional[str] = None
+    buyer_account_reference: Optional[str] = None
+    agreed_terms_snapshot: Optional[str] = None
+    messages_snapshot_reference: Optional[str] = None
+    payment_method: Optional[str] = None
+    protection_notes: Optional[str] = None
+    last_synced_at: Optional[datetime] = None
+    sync_method: MarketplaceSyncMethod = MarketplaceSyncMethod.manual
+    created_at: datetime
+    updated_at: datetime
+
+
+class MarketplaceOrderCreate(BaseModel):
+    marketplace: MarketplaceProvider
+    booking_id: Optional[str] = None
+    import_project_id: Optional[str] = None
+    external_order_id: Optional[str] = None
+    trade_assurance_status: Optional[str] = None
+    supplier_profile_url: Optional[str] = None
+    product_url: Optional[str] = None
+    order_url: Optional[str] = None
+    buyer_account_reference: Optional[str] = None
+    agreed_terms_snapshot: Optional[str] = None
+    messages_snapshot_reference: Optional[str] = None
+    payment_method: Optional[str] = None
+    protection_notes: Optional[str] = None
+    sync_method: MarketplaceSyncMethod = MarketplaceSyncMethod.manual
+
+
+class LandedCostActualUpsert(BaseModel):
+    actual_total_usd: float = Field(..., ge=0)
+    currency: str = "USD"
+    estimated_total_usd: Optional[float] = None
+    supplier_invoice_amount: Optional[float] = None
+    fx_cost: Optional[float] = None
+    international_freight: Optional[float] = None
+    platform_fee: Optional[float] = None
+    origin_pickup: Optional[float] = None
+    inspection: Optional[float] = None
+    warehouse_charges: Optional[float] = None
+    customs_duty: Optional[float] = None
+    gst: Optional[float] = None
+    broker_fees: Optional[float] = None
+    port_charges: Optional[float] = None
+    destination_trucking: Optional[float] = None
+    insurance: Optional[float] = None
+    storage_demurrage_detention: Optional[float] = None
+    adjustments: Optional[float] = None
+    variance_reason: Optional[str] = None
+    finalised: bool = False
+
+
+class GrowthAttributionCreate(BaseModel):
+    event_type: GrowthAttributionEventType
+    source: str = Field(..., min_length=1)
+    supplier_lead_id: Optional[str] = None
+    shipment_id: Optional[str] = None
+    importer_organization_id: Optional[str] = None
+    campaign_id: Optional[str] = None
+    channel: Optional[str] = None
+    template_key: Optional[str] = None
+    category: Optional[str] = None
+    region: Optional[str] = None
+    value_usd: Optional[float] = Field(default=None, ge=0)
+
+
+class GrowthAttributionSummaryRow(BaseModel):
+    group_key: str
+    event_count: int
+    total_value_usd: float
+    unique_supplier_leads: int
+    unique_shipments: int
+
+
+class GrowthAttributionSummary(BaseModel):
+    group_by: str
+    rows: List[GrowthAttributionSummaryRow]
+    total_events: int
+    total_value_usd: float
 
 
 class GrowthAttributionEvent(BaseModel):
@@ -1661,6 +2368,211 @@ class SupplierPortalResponse(BaseModel):
     events: List[ShipmentEvent]
 
 
+class BrokerLinkCreate(BaseModel):
+    booking_id: str
+
+
+class BrokerClearanceUpdate(BaseModel):
+    customs_status: CustomsStatus
+    customs_entry_number: Optional[str] = None
+    duty_paid_usd: Optional[float] = Field(None, ge=0)
+    gst_paid_usd: Optional[float] = Field(None, ge=0)
+    broker_notes: Optional[str] = None
+
+
+class BrokerBookingSummary(BaseModel):
+    id: str
+    importer_company_name: Optional[str] = None
+    importer_abn: Optional[str] = None
+    supplier_country: str
+    delivery_country: str
+    delivery_city: str
+    cargo_description: Optional[str] = None
+    cargo_category: CargoCategory
+    cbm_estimate: float
+    weight_kg_estimate: float
+    cargo_ready_date_latest: date
+    status: BookingStatus
+
+
+class BrokerCustomsSummary(BaseModel):
+    incoterm: str
+    goods_value_usd: float
+    currency: str
+    hs_code: Optional[str] = None
+    biosecurity_flags: List[str]
+    customs_status: CustomsStatus
+    duty_estimate_usd: float
+    gst_estimate_usd: float
+    landed_cost_estimate_usd: float
+    customs_entry_number: Optional[str] = None
+    duty_paid_usd: Optional[float] = None
+    gst_paid_usd: Optional[float] = None
+    broker_notes: Optional[str] = None
+    updated_at: datetime
+
+
+class BrokerPortalResponse(BaseModel):
+    booking: BrokerBookingSummary
+    customs: BrokerCustomsSummary
+    holds: List[ReleaseHold]
+    documents: List[ShipmentDocument]
+    events: List[ShipmentEvent]
+
+
+class BrokerAccessLink(BaseModel):
+    id: str
+    booking_id: str
+    token: str
+    active: bool = True
+    expires_at: Optional[datetime] = None
+    last_used_at: Optional[datetime] = None
+    created_at: datetime
+
+
+class WarehouseLinkCreate(BaseModel):
+    booking_id: str
+
+
+class WarehouseReceiptUpdate(BaseModel):
+    actual_cbm: float = Field(..., gt=0)
+    actual_weight_kg: float = Field(..., gt=0)
+    notes: Optional[str] = None
+
+
+class WarehouseBookingSummary(BaseModel):
+    id: str
+    importer_company_name: Optional[str] = None
+    supplier_country: str
+    supplier_city: str
+    cargo_description: Optional[str] = None
+    cargo_category: CargoCategory
+    cbm_estimate: float
+    weight_kg_estimate: float
+    number_of_packages: Optional[int] = None
+    cargo_ready_date_latest: date
+    delivery_mode: DeliveryMode
+    warehouse_receipt_cutoff: Optional[date] = None
+    warehouse_name: Optional[str] = None
+    cbm_actual: Optional[float] = None
+    weight_kg_actual: Optional[float] = None
+    received_at_warehouse: Optional[datetime] = None
+    status: BookingStatus
+
+
+class WarehousePortalResponse(BaseModel):
+    booking: WarehouseBookingSummary
+    documents: List[ShipmentDocument]
+    events: List[ShipmentEvent]
+
+
+class WarehouseAccessLink(BaseModel):
+    id: str
+    booking_id: str
+    token: str
+    active: bool = True
+    expires_at: Optional[datetime] = None
+    last_used_at: Optional[datetime] = None
+    created_at: datetime
+
+
+class CarrierLinkCreate(BaseModel):
+    booking_id: str
+
+
+class CarrierEtaUpdate(BaseModel):
+    estimated_arrival: date
+    note: Optional[str] = None
+
+
+class CarrierEventUpdate(BaseModel):
+    stage: ShipmentEventStage
+    label: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class CarrierBookingSummary(BaseModel):
+    id: str
+    importer_company_name: Optional[str] = None
+    container_id: Optional[str] = None
+    container_number: Optional[str] = None
+    vessel_name: Optional[str] = None
+    voyage_number: Optional[str] = None
+    carrier_name: Optional[str] = None
+    estimated_departure: Optional[date] = None
+    estimated_arrival: Optional[date] = None
+    baseline_estimated_arrival: Optional[date] = None
+    target_sailing_date: Optional[date] = None
+    carrier_cutoff_date: Optional[date] = None
+    cargo_description: Optional[str] = None
+    cargo_category: CargoCategory
+    cbm_estimate: float
+    weight_kg_estimate: float
+    status: BookingStatus
+
+
+class CarrierPortalResponse(BaseModel):
+    booking: CarrierBookingSummary
+    documents: List[ShipmentDocument]
+    events: List[ShipmentEvent]
+
+
+class CarrierAccessLink(BaseModel):
+    id: str
+    booking_id: str
+    token: str
+    active: bool = True
+    expires_at: Optional[datetime] = None
+    last_used_at: Optional[datetime] = None
+    created_at: datetime
+
+
+class TruckerLinkCreate(BaseModel):
+    booking_id: str
+
+
+class TruckerStatusUpdate(BaseModel):
+    stage: ShipmentEventStage
+    notes: Optional[str] = None
+
+
+class TruckerBookingSummary(BaseModel):
+    id: str
+    importer_company_name: Optional[str] = None
+    delivery_method: DeliveryPlanMethod
+    destination_address: str
+    destination_contact_name: str
+    destination_contact_phone: Optional[str] = None
+    delivery_window_start: Optional[date] = None
+    delivery_window_end: Optional[date] = None
+    equipment_required: List[str]
+    cargo_description: Optional[str] = None
+    cargo_category: CargoCategory
+    cbm_estimate: float
+    weight_kg_estimate: float
+    delivery_status: DeliveryPlanStatus
+    booking_status: BookingStatus
+
+
+class TruckerPortalResponse(BaseModel):
+    booking: TruckerBookingSummary
+    release_status: ReleaseStatus
+    can_deliver: bool
+    holds: List[ReleaseHold]
+    documents: List[ShipmentDocument]
+    events: List[ShipmentEvent]
+
+
+class TruckerAccessLink(BaseModel):
+    id: str
+    booking_id: str
+    token: str
+    active: bool = True
+    expires_at: Optional[datetime] = None
+    last_used_at: Optional[datetime] = None
+    created_at: datetime
+
+
 class ReleaseStatusResponse(BaseModel):
     booking_id: str
     release_status: ReleaseStatus
@@ -1805,3 +2717,33 @@ class DashboardSummary(BaseModel):
     notifications: List[Notification]
     audit_events: List[AuditEvent]
     category_density_defaults: Dict[str, float]
+
+
+class ShipmentSummary(BaseModel):
+    booking: Booking
+    pending_approvals_count: int
+    documents_count: int
+    events_count: int
+    has_invoice: bool
+    last_event_stage: Optional[ShipmentEventStage] = None
+    last_event_at: Optional[datetime] = None
+
+
+class ShipmentWorkspace(BaseModel):
+    booking: Booking
+    container: Optional[Container] = None
+    documents: List[ShipmentDocument]
+    events: List[ShipmentEvent]
+    invoice: Optional[Invoice] = None
+    customs_profile: Optional[CustomsProfile] = None
+    release_status: ReleaseStatusResponse
+    approvals: List[ApprovalRequest]
+    pending_approvals_count: int
+    purchase_orders: List[PurchaseOrder]
+    production_milestones: List[ProductionMilestone]
+    quality_inspections: List[QualityInspection]
+    supplier_pay_requests: List[SupplierPayRequest]
+    supplier_pay_quotes: List[SupplierPayQuote]
+    source_messages: List[SourceMessage]
+    delivery_plan: Optional[DeliveryPlan] = None
+    import_project: Optional[ImportProject] = None

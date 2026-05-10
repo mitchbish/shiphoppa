@@ -18,7 +18,7 @@ from .algorithms import (
     run_release_checks,
     submit_booking,
 )
-from .auth import Principal, require_admin, require_cron, require_importer
+from .auth import Principal, require_admin, require_cron, require_importer, require_inbound_webhook
 from .automation import (
     AutomationResult,
     ExtractedFact,
@@ -28,6 +28,7 @@ from .automation import (
     check_stale_shipments,
     derive_lifecycle_state,
     detect_missing_data,
+    extract_facts_from_text,
     next_action_for_state,
     run_automation_for_booking,
     run_extraction_for_message,
@@ -43,6 +44,38 @@ from .models import (
     AdminTask,
     AdminTaskStatus,
     ApprovalDecisionRequest,
+    ApprovalReviewRequest,
+    SentinelSubscriber,
+    SentinelSubscriberCreate,
+    SentinelSubscriberConfirm,
+    SentinelSubscriberOptOut,
+    SupplierProfileClaim,
+    SupplierProfileClaimAccept,
+    SupplierProfileClaimResponse,
+    DeliveryJob,
+    DeliveryJobCreate,
+    DeliveryJobUpdate,
+    ContingencyOption,
+    ContingencyOptionCreate,
+    ContingencyOptionUpdate,
+    ClaimRecord,
+    ClaimRecordCreate,
+    ClaimRecordUpdate,
+    InsurancePolicy,
+    InsurancePolicyUpsert,
+    LandedCostActual,
+    LandedCostActualUpsert,
+    MarketplaceOrder,
+    MarketplaceOrderCreate,
+    PartnerCapability,
+    PartnerCapabilityCreate,
+    PartnerCapabilityUpdate,
+    PartnerProfile,
+    PartnerProfileCreate,
+    PartnerProfileUpdate,
+    PaymentProof,
+    PaymentProofCreate,
+    PaymentProofReconcileUpdate,
     ApprovalRequest,
     ApprovalStatus,
     AuditEvent,
@@ -97,11 +130,40 @@ from .models import (
     SupplierLinkCreate,
     SupplierPayMarkPaidRequest,
     SupplierPayQuote,
+    ShipmentSummary,
+    ShipmentWorkspace,
     SupplierPayRequest,
     SupplierPayRequestCreate,
     SupplierPortalResponse,
     SupplierReadyRequest,
     SystemHealthResponse,
+    BrokerAccessLink,
+    BrokerClearanceUpdate,
+    BrokerLinkCreate,
+    BrokerPortalResponse,
+    WarehouseAccessLink,
+    WarehouseLinkCreate,
+    WarehousePortalResponse,
+    WarehouseReceiptUpdate,
+    CarrierAccessLink,
+    CarrierLinkCreate,
+    CarrierEtaUpdate,
+    CarrierEventUpdate,
+    CarrierPortalResponse,
+    TruckerAccessLink,
+    TruckerLinkCreate,
+    TruckerPortalResponse,
+    TruckerStatusUpdate,
+    InboundEmailWebhook,
+    SourceMessageType,
+    ImportProjectCreate,
+    ImportProjectStatus,
+    ImportProjectUpdate,
+    SupplierVerificationUpdate,
+    GrowthAttributionCreate,
+    GrowthAttributionEvent,
+    GrowthAttributionEventType,
+    GrowthAttributionSummary,
 )
 from .customs import HSCodeSuggestion, best_suggestion, suggest_hs_code
 from .invoices import ParsedInvoice, extract_invoice_from_pdf, extract_invoice_from_text
@@ -114,10 +176,12 @@ from .operations import (
     create_shipment_event,
     create_supplier_link,
     create_purchase_order,
+    clone_purchase_order,
     detect_fcl_spare_space,
     dispatch_outbound_message,
     landed_cost_summary,
     list_quality_inspections_for_booking,
+    list_shipment_summaries,
     list_space_opportunities_for_booking,
     record_quality_inspection_result,
     record_warehouse_measurement,
@@ -135,7 +199,38 @@ from .operations import (
     mark_supplier_pay_paid_outside_app,
     mark_delivery_delivered,
     release_status_for_booking,
+    accept_supplier_claim,
+    confirm_sentinel_subscriber,
+    create_claim_record,
+    create_contingency_option,
+    create_delivery_job,
+    create_partner_capability,
+    create_partner_profile,
+    create_sentinel_subscriber,
+    create_supplier_claim_link,
+    get_insurance_policy_for_booking,
+    get_landed_cost_actual_for_booking,
+    get_supplier_claim_by_token,
+    list_claim_records_for_booking,
+    list_contingency_options_for_booking,
+    list_delivery_jobs_for_booking,
+    list_marketplace_orders,
+    list_partner_capabilities,
+    list_payment_proofs_for_booking,
+    opt_out_sentinel_subscriber,
+    record_insurance_policy,
+    record_landed_cost_actual,
+    record_marketplace_order,
+    record_payment_proof,
+    request_approval_review,
+    update_claim_record,
+    update_contingency_option,
+    update_delivery_job,
+    update_partner_capability,
+    update_partner_profile,
+    update_payment_proof_reconciliation,
     sailing_search,
+    shipment_workspace,
     create_seo_opportunity,
     create_supplier_discovery_run_from_opportunity,
     ensure_import_project_for_booking,
@@ -143,8 +238,34 @@ from .operations import (
     ingest_source_message,
     queue_outbound_message,
     supplier_portal,
+    supplier_portal_preview,
     supplier_ready,
     supplier_link_by_token,
+    broker_clearance_update,
+    broker_link_by_token,
+    broker_portal,
+    create_broker_link,
+    create_warehouse_link,
+    warehouse_link_by_token,
+    warehouse_portal,
+    warehouse_receipt_update,
+    create_carrier_link,
+    carrier_link_by_token,
+    carrier_portal,
+    carrier_eta_update,
+    carrier_event_update,
+    create_trucker_link,
+    trucker_link_by_token,
+    trucker_portal,
+    trucker_status_update,
+    create_import_project,
+    update_import_project,
+    clone_import_project,
+    soft_delete_import_project,
+    update_supplier_lead_verification,
+    create_growth_event,
+    filter_growth_attribution_events,
+    summarise_growth_attribution,
     update_account_integration,
     update_account_profile,
     update_customs_profile,
@@ -220,6 +341,10 @@ def reset_store_for_tests() -> None:
     store.shipment_documents.clear()
     store.shipment_events.clear()
     store.supplier_links.clear()
+    store.broker_links.clear()
+    store.warehouse_links.clear()
+    store.carrier_links.clear()
+    store.trucker_links.clear()
     store.invoices.clear()
     store.payment_records.clear()
     store.release_holds.clear()
@@ -248,6 +373,17 @@ def reset_store_for_tests() -> None:
     store.notifications.clear()
     store.audit_events.clear()
     store.space_opportunities.clear()
+    store.delivery_jobs.clear()
+    store.partner_profiles.clear()
+    store.partner_capabilities.clear()
+    store.contingency_options.clear()
+    store.payment_proofs.clear()
+    store.landed_cost_actuals.clear()
+    store.marketplace_orders.clear()
+    store.insurance_policies.clear()
+    store.claim_records.clear()
+    store.sentinel_subscribers.clear()
+    store.supplier_profile_claims.clear()
     store.idempotency_records.clear()
     store._counters.clear()
     seed_data(store)
@@ -277,6 +413,47 @@ def get_system_health(_principal: Principal = Depends(require_admin)) -> SystemH
 @app.get("/sentinel/error-codes", response_model=List[SentinelErrorDefinition])
 def sentinel_error_codes(_principal: Principal = Depends(require_admin)) -> List[SentinelErrorDefinition]:
     return sentinel_error_definitions()
+
+
+@app.get("/sentinel/subscribers", response_model=List[SentinelSubscriber])
+def sentinel_subscribers(_principal: Principal = Depends(require_admin)) -> List[SentinelSubscriber]:
+    return sorted(store.sentinel_subscribers.values(), key=lambda s: s.created_at, reverse=True)
+
+
+@app.post("/sentinel/subscribers", response_model=SentinelSubscriber, status_code=201)
+def post_sentinel_subscriber(
+    payload: SentinelSubscriberCreate,
+    principal: Principal = Depends(require_admin),
+) -> SentinelSubscriber:
+    try:
+        return persist_result(
+            create_sentinel_subscriber(store, payload.phone_number, payload.label, principal.actor_id)
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/sentinel/subscribers/confirm", response_model=SentinelSubscriber)
+def confirm_sentinel_subscriber_endpoint(
+    payload: SentinelSubscriberConfirm,
+) -> SentinelSubscriber:
+    try:
+        return persist_result(confirm_sentinel_subscriber(store, payload.token))
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 404 if "not found" in message.lower() else 400
+        raise HTTPException(status_code=status_code, detail=message)
+
+
+@app.post("/sentinel/subscribers/opt-out", response_model=SentinelSubscriber)
+def opt_out_sentinel_subscriber_endpoint(
+    payload: SentinelSubscriberOptOut,
+    principal: Principal = Depends(require_admin),
+) -> SentinelSubscriber:
+    result = opt_out_sentinel_subscriber(store, payload.phone_number, principal.actor_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Subscriber not found")
+    return persist_result(result)
 
 
 @app.get("/summary", response_model=DashboardSummary)
@@ -347,9 +524,75 @@ def bookings(_principal: Principal = Depends(require_admin)) -> List[Booking]:
     return sorted(store.bookings.values(), key=lambda item: item.created_at, reverse=True)
 
 
+@app.get("/shipments", response_model=List[ShipmentSummary])
+def shipments(_principal: Principal = Depends(require_importer)) -> List[ShipmentSummary]:
+    return list_shipment_summaries(store)
+
+
+@app.get("/shipments/{booking_id}/workspace", response_model=ShipmentWorkspace)
+def shipment_workspace_endpoint(
+    booking_id: str,
+    _principal: Principal = Depends(require_importer),
+) -> ShipmentWorkspace:
+    if booking_id not in store.bookings:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return shipment_workspace(store, booking_id)
+
+
 @app.get("/import-projects", response_model=List[ImportProject])
-def import_projects(_principal: Principal = Depends(require_importer)) -> List[ImportProject]:
-    return sorted(store.import_projects.values(), key=lambda item: item.updated_at, reverse=True)
+def import_projects(
+    include_deleted: bool = False,
+    _principal: Principal = Depends(require_importer),
+) -> List[ImportProject]:
+    deleted_statuses = {ImportProjectStatus.deleted_pending_retention, ImportProjectStatus.deleted}
+    projects = [
+        project for project in store.import_projects.values()
+        if include_deleted or project.status not in deleted_statuses
+    ]
+    return sorted(projects, key=lambda item: item.updated_at, reverse=True)
+
+
+@app.post("/import-projects", response_model=ImportProject, status_code=201)
+def post_import_project(
+    payload: ImportProjectCreate,
+    principal: Principal = Depends(require_importer),
+) -> ImportProject:
+    return persist_result(create_import_project(store, payload, principal.role, principal.actor_id))
+
+
+@app.patch("/import-projects/{project_id}", response_model=ImportProject)
+def patch_import_project(
+    project_id: str,
+    payload: ImportProjectUpdate,
+    principal: Principal = Depends(require_importer),
+) -> ImportProject:
+    try:
+        return persist_result(update_import_project(store, project_id, payload, principal.role, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post("/import-projects/{project_id}/clone", response_model=ImportProject, status_code=201)
+def post_clone_import_project(
+    project_id: str,
+    principal: Principal = Depends(require_importer),
+    new_title: Optional[str] = None,
+) -> ImportProject:
+    try:
+        return persist_result(clone_import_project(store, project_id, principal.role, principal.actor_id, new_title))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.delete("/import-projects/{project_id}", response_model=ImportProject)
+def delete_import_project(
+    project_id: str,
+    principal: Principal = Depends(require_importer),
+) -> ImportProject:
+    try:
+        return persist_result(soft_delete_import_project(store, project_id, principal.role, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 @app.get("/import-projects/{project_id}", response_model=ImportProjectWorkspaceResponse)
@@ -394,8 +637,38 @@ def mark_notification_read(
 
 
 @app.get("/audit-events", response_model=List[AuditEvent])
-def audit_events(_principal: Principal = Depends(require_admin)) -> List[AuditEvent]:
-    return sorted(store.audit_events.values(), key=lambda item: item.created_at, reverse=True)
+def audit_events(
+    actor_id: Optional[str] = None,
+    actor_role: Optional[ActorRole] = None,
+    event_type: Optional[str] = None,
+    entity_type: Optional[str] = None,
+    entity_id: Optional[str] = None,
+    since: Optional[date] = None,
+    until: Optional[date] = None,
+    limit: int = 200,
+    _principal: Principal = Depends(require_admin),
+) -> List[AuditEvent]:
+    """Return audit events newest-first, with optional filtering by actor, event,
+    entity, or date range. The default limit is 200; pass `limit=0` for all."""
+    events = list(store.audit_events.values())
+    if actor_id:
+        events = [event for event in events if event.actor_id == actor_id]
+    if actor_role:
+        events = [event for event in events if event.actor_role == actor_role]
+    if event_type:
+        events = [event for event in events if event.event_type == event_type]
+    if entity_type:
+        events = [event for event in events if event.entity_type == entity_type]
+    if entity_id:
+        events = [event for event in events if event.entity_id == entity_id]
+    if since:
+        events = [event for event in events if event.created_at.date() >= since]
+    if until:
+        events = [event for event in events if event.created_at.date() <= until]
+    events.sort(key=lambda item: item.created_at, reverse=True)
+    if limit and limit > 0:
+        events = events[:limit]
+    return events
 
 
 @app.get("/source-messages", response_model=List[SourceMessage])
@@ -489,6 +762,84 @@ def create_source_message(
     return persist_result(ingest_source_message(store, payload, principal.role, principal.actor_id))
 
 
+def _coerce_inbound_address(value) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        email = value.get("email")
+        if isinstance(email, str):
+            return email
+    return None
+
+
+def _coerce_inbound_addresses(value) -> List[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list):
+        results: List[str] = []
+        for item in value:
+            email = _coerce_inbound_address(item)
+            if email:
+                results.append(email)
+        return results
+    return []
+
+
+def _coerce_inbound_attachments(value) -> List[str]:
+    if not value:
+        return []
+    if not isinstance(value, list):
+        return []
+    names: List[str] = []
+    for item in value:
+        if isinstance(item, str) and item.strip():
+            names.append(item.strip())
+        elif isinstance(item, dict):
+            filename = item.get("filename") or item.get("name")
+            if isinstance(filename, str) and filename.strip():
+                names.append(filename.strip())
+    return names
+
+
+def _inbound_email_to_source_message(payload: InboundEmailWebhook) -> SourceMessageCreate:
+    from_address = _coerce_inbound_address(payload.from_field) or payload.sender or ""
+    if not from_address:
+        raise HTTPException(status_code=422, detail="Inbound email has no sender address.")
+    to_addresses = _coerce_inbound_addresses(payload.to)
+    if not to_addresses and payload.recipient:
+        to_addresses = [payload.recipient]
+    body = payload.text or payload.body_plain or payload.html or payload.body_html or ""
+    return SourceMessageCreate(
+        source_type=SourceMessageType.forwarded_email,
+        from_address=from_address,
+        to_addresses=to_addresses,
+        subject=payload.subject or "(no subject)",
+        body=body,
+        received_at=payload.received_at,
+        attachment_names=_coerce_inbound_attachments(payload.attachments),
+    )
+
+
+@app.post("/inbound/email", response_model=SourceMessage, status_code=201)
+def inbound_email(
+    payload: InboundEmailWebhook,
+    principal: Principal = Depends(require_inbound_webhook),
+) -> SourceMessage:
+    """
+    Inbound email webhook. Receives JSON from Resend Inbound, Mailgun, or any
+    forwarder that posts a compatible shape. Creates a SourceMessage and runs
+    the existing matching / extraction automation.
+    """
+    source_payload = _inbound_email_to_source_message(payload)
+    return persist_result(
+        ingest_source_message(store, source_payload, ActorRole.system, principal.actor_id)
+    )
+
+
 @app.get("/approvals", response_model=List[ApprovalRequest])
 def approvals(_principal: Principal = Depends(require_importer)) -> List[ApprovalRequest]:
     return sorted(store.approval_requests.values(), key=lambda item: item.created_at, reverse=True)
@@ -534,6 +885,22 @@ def reject_request(
         raise HTTPException(status_code=404, detail=str(exc))
 
 
+@app.post("/approvals/{approval_id}/request-review", response_model=ApprovalRequest)
+def request_approval_review_endpoint(
+    approval_id: str,
+    payload: ApprovalReviewRequest,
+    principal: Principal = Depends(require_importer),
+) -> ApprovalRequest:
+    try:
+        return persist_result(
+            request_approval_review(store, approval_id, payload.reason, principal.actor_id)
+        )
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 404 if message == "Approval not found" else 400
+        raise HTTPException(status_code=status_code, detail=message)
+
+
 @app.get("/purchase-orders", response_model=List[PurchaseOrder])
 def purchase_orders(_principal: Principal = Depends(require_importer)) -> List[PurchaseOrder]:
     return sorted(store.purchase_orders.values(), key=lambda item: item.created_at, reverse=True)
@@ -555,6 +922,28 @@ def get_purchase_order(purchase_order_id: str, _principal: Principal = Depends(r
     if purchase_order_id not in store.purchase_orders:
         raise HTTPException(status_code=404, detail="Purchase order not found")
     return store.purchase_orders[purchase_order_id]
+
+
+@app.post("/purchase-orders/{purchase_order_id}/clone", response_model=PurchaseOrder, status_code=201)
+def clone_po(
+    purchase_order_id: str,
+    target_project_id: Optional[str] = None,
+    new_order_reference: Optional[str] = None,
+    principal: Principal = Depends(require_importer),
+) -> PurchaseOrder:
+    try:
+        return persist_result(
+            clone_purchase_order(
+                store,
+                purchase_order_id,
+                principal.role,
+                principal.actor_id,
+                target_project_id=target_project_id,
+                new_order_reference=new_order_reference,
+            )
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 # --- Quality inspection ---
@@ -885,11 +1274,160 @@ def supplier_leads(_principal: Principal = Depends(require_admin)) -> List[Suppl
     return sorted(store.supplier_leads.values(), key=lambda item: item.created_at, reverse=True)
 
 
+@app.patch("/growth/supplier-leads/{lead_id}/verification", response_model=SupplierLead)
+def patch_supplier_lead_verification(
+    lead_id: str,
+    payload: SupplierVerificationUpdate,
+    principal: Principal = Depends(require_admin),
+) -> SupplierLead:
+    try:
+        return persist_result(
+            update_supplier_lead_verification(store, lead_id, payload, principal.role, principal.actor_id)
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post(
+    "/growth/supplier-leads/{lead_id}/claim-link",
+    response_model=SupplierProfileClaim,
+    status_code=201,
+)
+def post_supplier_claim_link(
+    lead_id: str,
+    principal: Principal = Depends(require_admin),
+) -> SupplierProfileClaim:
+    try:
+        return persist_result(create_supplier_claim_link(store, lead_id, principal.actor_id))
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 404 if message == "Supplier lead not found" else 400
+        raise HTTPException(status_code=status_code, detail=message)
+
+
+@app.get("/api/supplier-claim/{token}", response_model=SupplierProfileClaimResponse)
+def get_supplier_claim(token: str) -> SupplierProfileClaimResponse:
+    try:
+        claim = get_supplier_claim_by_token(store, token)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    lead = store.supplier_leads.get(claim.lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Supplier lead no longer exists")
+    return SupplierProfileClaimResponse(claim=claim, lead=lead)
+
+
+@app.post("/api/supplier-claim/{token}/accept", response_model=SupplierProfileClaimResponse)
+def accept_supplier_claim_endpoint(
+    token: str,
+    payload: SupplierProfileClaimAccept,
+) -> SupplierProfileClaimResponse:
+    try:
+        claim = accept_supplier_claim(store, token, payload.contact_email, payload.contact_name)
+    except ValueError as exc:
+        message = str(exc)
+        if message == "Claim not found":
+            status_code = 404
+        elif message == "Claim has expired":
+            status_code = 410
+        else:
+            status_code = 400
+        raise HTTPException(status_code=status_code, detail=message)
+    lead = store.supplier_leads.get(claim.lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Supplier lead no longer exists")
+    persist_store()
+    return SupplierProfileClaimResponse(claim=claim, lead=lead)
+
+
+@app.get("/growth/attribution-events", response_model=List[GrowthAttributionEvent])
+def growth_attribution_events(
+    event_type: Optional[GrowthAttributionEventType] = None,
+    source: Optional[str] = None,
+    channel: Optional[str] = None,
+    template_key: Optional[str] = None,
+    category: Optional[str] = None,
+    region: Optional[str] = None,
+    supplier_lead_id: Optional[str] = None,
+    shipment_id: Optional[str] = None,
+    since: Optional[date] = None,
+    until: Optional[date] = None,
+    limit: int = 200,
+    _principal: Principal = Depends(require_admin),
+) -> List[GrowthAttributionEvent]:
+    events = filter_growth_attribution_events(
+        store,
+        event_type=event_type,
+        source=source,
+        channel=channel,
+        template_key=template_key,
+        category=category,
+        region=region,
+        supplier_lead_id=supplier_lead_id,
+        shipment_id=shipment_id,
+        since=since,
+        until=until,
+    )
+    if limit and limit > 0:
+        events = events[:limit]
+    return events
+
+
+@app.post("/growth/attribution-events", response_model=GrowthAttributionEvent, status_code=201)
+def post_growth_attribution_event(
+    payload: GrowthAttributionCreate,
+    _principal: Principal = Depends(require_admin),
+) -> GrowthAttributionEvent:
+    return persist_result(
+        create_growth_event(
+            store,
+            event_type=payload.event_type,
+            source=payload.source,
+            supplier_lead_id=payload.supplier_lead_id,
+            shipment_id=payload.shipment_id,
+            importer_organization_id=payload.importer_organization_id,
+            campaign_id=payload.campaign_id,
+            channel=payload.channel,
+            template_key=payload.template_key,
+            category=payload.category,
+            region=payload.region,
+            value_usd=payload.value_usd,
+        )
+    )
+
+
+@app.get("/growth/attribution-summary", response_model=GrowthAttributionSummary)
+def growth_attribution_summary(
+    group_by: str = "source",
+    event_type: Optional[GrowthAttributionEventType] = None,
+    since: Optional[date] = None,
+    until: Optional[date] = None,
+    _principal: Principal = Depends(require_admin),
+) -> GrowthAttributionSummary:
+    try:
+        return GrowthAttributionSummary(**summarise_growth_attribution(
+            store, group_by, event_type=event_type, since=since, until=until,
+        ))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 @app.post("/supplier-links", response_model=SupplierAccessLink, status_code=201)
 def supplier_link(payload: SupplierLinkCreate, _principal: Principal = Depends(require_admin)) -> SupplierAccessLink:
     if payload.booking_id not in store.bookings:
         raise HTTPException(status_code=404, detail="Booking not found")
     return persist_result(create_supplier_link(store, payload.booking_id))
+
+
+@app.get("/bookings/{booking_id}/supplier-preview", response_model=SupplierPortalResponse)
+def supplier_portal_preview_endpoint(
+    booking_id: str,
+    principal: Principal = Depends(require_importer),
+) -> SupplierPortalResponse:
+    try:
+        return persist_result(supplier_portal_preview(store, booking_id, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 @app.get("/supplier/{token}", response_model=SupplierPortalResponse)
@@ -915,6 +1453,158 @@ def supplier_document(token: str, payload: DocumentUploadRequest) -> ShipmentDoc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     return persist_result(upload_document(store, link.booking_id, payload, ActorRole.system, "supplier-portal"))
+
+
+@app.post("/broker-links", response_model=BrokerAccessLink, status_code=201)
+def broker_link(payload: BrokerLinkCreate, _principal: Principal = Depends(require_admin)) -> BrokerAccessLink:
+    try:
+        return persist_result(create_broker_link(store, payload.booking_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/broker/{token}", response_model=BrokerPortalResponse)
+def get_broker_portal(token: str) -> BrokerPortalResponse:
+    try:
+        return broker_portal(store, token)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post("/broker/{token}/clearance", response_model=BrokerPortalResponse)
+def broker_clearance(token: str, payload: BrokerClearanceUpdate) -> BrokerPortalResponse:
+    try:
+        return persist_result(broker_clearance_update(store, token, payload))
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 400 if "may only" in message else 404
+        raise HTTPException(status_code=status_code, detail=message)
+
+
+@app.post("/broker/{token}/documents", response_model=ShipmentDocument, status_code=201)
+def broker_document(token: str, payload: DocumentUploadRequest) -> ShipmentDocument:
+    try:
+        link = broker_link_by_token(store, token)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return persist_result(upload_document(store, link.booking_id, payload, ActorRole.system, "broker-portal"))
+
+
+@app.post("/warehouse-links", response_model=WarehouseAccessLink, status_code=201)
+def warehouse_link(payload: WarehouseLinkCreate, _principal: Principal = Depends(require_admin)) -> WarehouseAccessLink:
+    try:
+        return persist_result(create_warehouse_link(store, payload.booking_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/warehouse/{token}", response_model=WarehousePortalResponse)
+def get_warehouse_portal(token: str) -> WarehousePortalResponse:
+    try:
+        return warehouse_portal(store, token)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post("/warehouse/{token}/receipt", response_model=WarehousePortalResponse)
+def warehouse_receipt(token: str, payload: WarehouseReceiptUpdate) -> WarehousePortalResponse:
+    try:
+        return persist_result(warehouse_receipt_update(store, token, payload))
+    except PermissionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post("/warehouse/{token}/documents", response_model=ShipmentDocument, status_code=201)
+def warehouse_document(token: str, payload: DocumentUploadRequest) -> ShipmentDocument:
+    try:
+        link = warehouse_link_by_token(store, token)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return persist_result(upload_document(store, link.booking_id, payload, ActorRole.system, "warehouse-portal"))
+
+
+@app.post("/carrier-links", response_model=CarrierAccessLink, status_code=201)
+def carrier_link(payload: CarrierLinkCreate, _principal: Principal = Depends(require_admin)) -> CarrierAccessLink:
+    try:
+        return persist_result(create_carrier_link(store, payload.booking_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/carrier/{token}", response_model=CarrierPortalResponse)
+def get_carrier_portal(token: str) -> CarrierPortalResponse:
+    try:
+        return carrier_portal(store, token)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post("/carrier/{token}/eta", response_model=CarrierPortalResponse)
+def carrier_eta(token: str, payload: CarrierEtaUpdate) -> CarrierPortalResponse:
+    try:
+        return persist_result(carrier_eta_update(store, token, payload))
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 400 if ("delivered" in message or "not yet on a container" in message) else 404
+        raise HTTPException(status_code=status_code, detail=message)
+
+
+@app.post("/carrier/{token}/event", response_model=CarrierPortalResponse)
+def carrier_event(token: str, payload: CarrierEventUpdate) -> CarrierPortalResponse:
+    try:
+        return persist_result(carrier_event_update(store, token, payload))
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 400 if "may only" in message else 404
+        raise HTTPException(status_code=status_code, detail=message)
+
+
+@app.post("/carrier/{token}/documents", response_model=ShipmentDocument, status_code=201)
+def carrier_document(token: str, payload: DocumentUploadRequest) -> ShipmentDocument:
+    try:
+        link = carrier_link_by_token(store, token)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return persist_result(upload_document(store, link.booking_id, payload, ActorRole.system, "carrier-portal"))
+
+
+@app.post("/trucker-links", response_model=TruckerAccessLink, status_code=201)
+def trucker_link(payload: TruckerLinkCreate, _principal: Principal = Depends(require_admin)) -> TruckerAccessLink:
+    try:
+        return persist_result(create_trucker_link(store, payload.booking_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/trucker/{token}", response_model=TruckerPortalResponse)
+def get_trucker_portal(token: str) -> TruckerPortalResponse:
+    try:
+        return trucker_portal(store, token)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post("/trucker/{token}/status", response_model=TruckerPortalResponse)
+def trucker_status(token: str, payload: TruckerStatusUpdate) -> TruckerPortalResponse:
+    try:
+        return persist_result(trucker_status_update(store, token, payload))
+    except PermissionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 400 if "may only" in message else 404
+        raise HTTPException(status_code=status_code, detail=message)
+
+
+@app.post("/trucker/{token}/pod", response_model=ShipmentDocument, status_code=201)
+def trucker_pod(token: str, payload: DocumentUploadRequest) -> ShipmentDocument:
+    try:
+        link = trucker_link_by_token(store, token)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return persist_result(upload_document(store, link.booking_id, payload, ActorRole.system, "trucker-portal"))
 
 
 @app.get("/bookings/{booking_id}/invoice", response_model=Invoice)
@@ -1079,6 +1769,289 @@ def booking_delivery_plan(booking_id: str, _principal: Principal = Depends(requi
     return persist_result(ensure_delivery_plan(store, store.bookings[booking_id]))
 
 
+@app.post(
+    "/bookings/{booking_id}/delivery-jobs",
+    response_model=DeliveryJob,
+    status_code=201,
+)
+def post_delivery_job(
+    booking_id: str,
+    payload: DeliveryJobCreate,
+    principal: Principal = Depends(require_importer),
+) -> DeliveryJob:
+    try:
+        return persist_result(create_delivery_job(store, booking_id, payload, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/bookings/{booking_id}/delivery-jobs", response_model=List[DeliveryJob])
+def get_delivery_jobs(
+    booking_id: str,
+    _principal: Principal = Depends(require_importer),
+) -> List[DeliveryJob]:
+    if booking_id not in store.bookings:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return list_delivery_jobs_for_booking(store, booking_id)
+
+
+@app.patch("/delivery-jobs/{job_id}", response_model=DeliveryJob)
+def patch_delivery_job(
+    job_id: str,
+    payload: DeliveryJobUpdate,
+    principal: Principal = Depends(require_importer),
+) -> DeliveryJob:
+    try:
+        return persist_result(update_delivery_job(store, job_id, payload, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/partners", response_model=List[PartnerProfile])
+def list_partners(_principal: Principal = Depends(require_admin)) -> List[PartnerProfile]:
+    return sorted(store.partner_profiles.values(), key=lambda p: (p.created_at, p.id), reverse=True)
+
+
+@app.post("/partners", response_model=PartnerProfile, status_code=201)
+def post_partner(
+    payload: PartnerProfileCreate,
+    principal: Principal = Depends(require_admin),
+) -> PartnerProfile:
+    return persist_result(create_partner_profile(store, payload, principal.actor_id))
+
+
+@app.patch("/partners/{partner_id}", response_model=PartnerProfile)
+def patch_partner(
+    partner_id: str,
+    payload: PartnerProfileUpdate,
+    principal: Principal = Depends(require_admin),
+) -> PartnerProfile:
+    try:
+        return persist_result(update_partner_profile(store, partner_id, payload, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/partners/{partner_id}/capabilities", response_model=List[PartnerCapability])
+def get_partner_capabilities(
+    partner_id: str,
+    _principal: Principal = Depends(require_admin),
+) -> List[PartnerCapability]:
+    if partner_id not in store.partner_profiles:
+        raise HTTPException(status_code=404, detail="Partner profile not found")
+    return list_partner_capabilities(store, partner_id)
+
+
+@app.post("/partners/{partner_id}/capabilities", response_model=PartnerCapability, status_code=201)
+def post_partner_capability(
+    partner_id: str,
+    payload: PartnerCapabilityCreate,
+    principal: Principal = Depends(require_admin),
+) -> PartnerCapability:
+    try:
+        return persist_result(create_partner_capability(store, partner_id, payload, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.patch("/partner-capabilities/{capability_id}", response_model=PartnerCapability)
+def patch_partner_capability(
+    capability_id: str,
+    payload: PartnerCapabilityUpdate,
+    principal: Principal = Depends(require_admin),
+) -> PartnerCapability:
+    try:
+        return persist_result(update_partner_capability(store, capability_id, payload, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/bookings/{booking_id}/contingency-options", response_model=List[ContingencyOption])
+def get_contingency_options(
+    booking_id: str,
+    _principal: Principal = Depends(require_admin),
+) -> List[ContingencyOption]:
+    if booking_id not in store.bookings:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return list_contingency_options_for_booking(store, booking_id)
+
+
+@app.post(
+    "/bookings/{booking_id}/contingency-options",
+    response_model=ContingencyOption,
+    status_code=201,
+)
+def post_contingency_option(
+    booking_id: str,
+    payload: ContingencyOptionCreate,
+    principal: Principal = Depends(require_admin),
+) -> ContingencyOption:
+    try:
+        return persist_result(create_contingency_option(store, booking_id, payload, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.patch("/contingency-options/{option_id}", response_model=ContingencyOption)
+def patch_contingency_option(
+    option_id: str,
+    payload: ContingencyOptionUpdate,
+    principal: Principal = Depends(require_admin),
+) -> ContingencyOption:
+    try:
+        return persist_result(update_contingency_option(store, option_id, payload, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post(
+    "/bookings/{booking_id}/payment-proofs",
+    response_model=PaymentProof,
+    status_code=201,
+)
+def post_payment_proof(
+    booking_id: str,
+    payload: PaymentProofCreate,
+    principal: Principal = Depends(require_importer),
+) -> PaymentProof:
+    try:
+        return persist_result(record_payment_proof(store, booking_id, payload, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/bookings/{booking_id}/payment-proofs", response_model=List[PaymentProof])
+def get_payment_proofs(
+    booking_id: str,
+    _principal: Principal = Depends(require_importer),
+) -> List[PaymentProof]:
+    if booking_id not in store.bookings:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return list_payment_proofs_for_booking(store, booking_id)
+
+
+@app.patch("/payment-proofs/{proof_id}", response_model=PaymentProof)
+def patch_payment_proof(
+    proof_id: str,
+    payload: PaymentProofReconcileUpdate,
+    principal: Principal = Depends(require_admin),
+) -> PaymentProof:
+    try:
+        return persist_result(
+            update_payment_proof_reconciliation(store, proof_id, payload, principal.actor_id)
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post(
+    "/bookings/{booking_id}/landed-cost-actual",
+    response_model=LandedCostActual,
+    status_code=201,
+)
+def post_landed_cost_actual(
+    booking_id: str,
+    payload: LandedCostActualUpsert,
+    principal: Principal = Depends(require_admin),
+) -> LandedCostActual:
+    try:
+        return persist_result(record_landed_cost_actual(store, booking_id, payload, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/bookings/{booking_id}/landed-cost-actual", response_model=LandedCostActual)
+def get_landed_cost_actual(
+    booking_id: str,
+    _principal: Principal = Depends(require_importer),
+) -> LandedCostActual:
+    if booking_id not in store.bookings:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    actual = get_landed_cost_actual_for_booking(store, booking_id)
+    if not actual:
+        raise HTTPException(status_code=404, detail="Landed cost actual not recorded yet")
+    return actual
+
+
+@app.post("/marketplace-orders", response_model=MarketplaceOrder, status_code=201)
+def post_marketplace_order(
+    payload: MarketplaceOrderCreate,
+    principal: Principal = Depends(require_importer),
+) -> MarketplaceOrder:
+    try:
+        return persist_result(record_marketplace_order(store, payload, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/marketplace-orders", response_model=List[MarketplaceOrder])
+def get_marketplace_orders(
+    booking_id: Optional[str] = None,
+    import_project_id: Optional[str] = None,
+    _principal: Principal = Depends(require_importer),
+) -> List[MarketplaceOrder]:
+    return list_marketplace_orders(store, booking_id, import_project_id)
+
+
+@app.post("/bookings/{booking_id}/insurance-policy", response_model=InsurancePolicy, status_code=201)
+def post_insurance_policy(
+    booking_id: str,
+    payload: InsurancePolicyUpsert,
+    principal: Principal = Depends(require_admin),
+) -> InsurancePolicy:
+    try:
+        return persist_result(record_insurance_policy(store, booking_id, payload, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/bookings/{booking_id}/insurance-policy", response_model=InsurancePolicy)
+def get_insurance_policy(
+    booking_id: str,
+    _principal: Principal = Depends(require_importer),
+) -> InsurancePolicy:
+    if booking_id not in store.bookings:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    policy = get_insurance_policy_for_booking(store, booking_id)
+    if not policy:
+        raise HTTPException(status_code=404, detail="Insurance policy not recorded yet")
+    return policy
+
+
+@app.post("/bookings/{booking_id}/claims", response_model=ClaimRecord, status_code=201)
+def post_claim(
+    booking_id: str,
+    payload: ClaimRecordCreate,
+    principal: Principal = Depends(require_importer),
+) -> ClaimRecord:
+    try:
+        return persist_result(create_claim_record(store, booking_id, payload, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/bookings/{booking_id}/claims", response_model=List[ClaimRecord])
+def get_claims(
+    booking_id: str,
+    _principal: Principal = Depends(require_importer),
+) -> List[ClaimRecord]:
+    if booking_id not in store.bookings:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return list_claim_records_for_booking(store, booking_id)
+
+
+@app.patch("/claims/{claim_id}", response_model=ClaimRecord)
+def patch_claim(
+    claim_id: str,
+    payload: ClaimRecordUpdate,
+    principal: Principal = Depends(require_admin),
+) -> ClaimRecord:
+    try:
+        return persist_result(update_claim_record(store, claim_id, payload, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
 @app.put("/bookings/{booking_id}/delivery-plan", response_model=DeliveryPlan)
 def put_delivery_plan(
     booking_id: str,
@@ -1162,6 +2135,37 @@ def extract_message_facts(message_id: str, _principal: Principal = Depends(requi
     facts = run_extraction_for_message(store, message)
     persist_store()
     return facts
+
+
+class ExtractionPreviewRequest(BaseModel):
+    text: str
+    subject: Optional[str] = None
+
+
+class ExtractionPreviewResponse(BaseModel):
+    facts: List[ExtractedFact]
+    extracted_count: int
+    would_match_booking_id: Optional[str] = None
+
+
+@app.post("/automation/extract-preview", response_model=ExtractionPreviewResponse)
+def extract_preview(
+    payload: ExtractionPreviewRequest,
+    _principal: Principal = Depends(require_importer),
+) -> ExtractionPreviewResponse:
+    text = f"{payload.subject or ''}\n{payload.text}".strip()
+    facts = extract_facts_from_text(text)
+    booking_id_fact = next((f for f in facts if f.field == "booking_id"), None)
+    would_match = (
+        booking_id_fact.value
+        if booking_id_fact and booking_id_fact.value in store.bookings
+        else None
+    )
+    return ExtractionPreviewResponse(
+        facts=facts,
+        extracted_count=len(facts),
+        would_match_booking_id=would_match,
+    )
 
 
 # --- Supplier invoice extractor ---

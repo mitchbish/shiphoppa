@@ -11,9 +11,12 @@ import {
   ClipboardCheck,
   Container as ContainerIcon,
   FileText,
+  FolderOpen,
   Gauge,
+  LineChart,
   Loader2,
   MapPin,
+  MessageCircle,
   PackageCheck,
   Receipt,
   RefreshCw,
@@ -21,6 +24,7 @@ import {
   Ship,
   ShieldCheck,
   Truck,
+  UserCheck,
   UserRound,
 } from 'lucide-react'
 import './App.css'
@@ -28,8 +32,25 @@ import {
   addEvent,
   approveDocument,
   bookDeliveryPlan,
+  createBrokerLink,
+  createCarrierLink,
   createSupplierLink,
+  createTruckerLink,
+  createWarehouseLink,
   commitContainer,
+  getBrokerPortal,
+  getCarrierPortal,
+  getTruckerPortal,
+  getWarehousePortal,
+  submitBrokerClearance,
+  submitCarrierEta,
+  submitCarrierEvent,
+  submitTruckerStatus,
+  submitWarehouseReceipt,
+  uploadBrokerDocument,
+  uploadCarrierDocument,
+  uploadTruckerPod,
+  uploadWarehouseDocument,
   confirmBooking,
   createBooking,
   createPurchaseOrder,
@@ -64,6 +85,41 @@ import {
   getApprovals,
   approveApprovalRequest,
   rejectApprovalRequest,
+  requestApprovalReview,
+  extractFactsPreview,
+  getSupplierPortalPreview,
+  getSupplierClaim,
+  acceptSupplierClaim,
+  getLandedCostActual,
+  getInsurancePolicy,
+  listClaims,
+  createClaim,
+  listMarketplaceOrders,
+  recordMarketplaceOrder,
+  listDeliveryJobsForBooking,
+  createDeliveryJob,
+  updateDeliveryJob,
+  listPaymentProofs,
+  recordPaymentProof,
+  listPartners,
+  createPartner,
+  listPartnerCapabilities,
+  createPartnerCapability,
+  listContingencyOptions,
+  updateContingencyOption,
+  getSentinelSubscribers,
+  createSentinelSubscriber,
+  confirmSentinelSubscriber,
+  optOutSentinelSubscriber,
+  listSupplierLeads,
+  updateSupplierLeadVerification,
+  createSupplierClaimLink,
+  listGrowthAttributionEvents,
+  getGrowthAttributionSummary,
+  listImportProjects,
+  createImportProject,
+  cloneImportProject,
+  softDeleteImportProject,
   getSourceMessages,
   getLandedCostSummary,
   getNotifications,
@@ -75,6 +131,7 @@ import {
   parseInvoicePdf,
   getBookingInspections,
   bookInspection,
+  getAuditEvents,
   getHsSuggestions,
   acceptHsSuggestion,
   supplierReady,
@@ -85,11 +142,13 @@ import {
   uploadDocument,
   uploadSupplierDocument,
 } from './api'
+import type { AuditEventFilters } from './api'
 import type {
   AdminTask,
   AdminTaskSummary,
   ApprovalRequestRecord,
   AutomationRunAllResult,
+  ExtractionPreviewResponse,
   HsSuggestionsResponse,
   LandedCostSummary,
   ParsedInvoice,
@@ -100,12 +159,53 @@ import type {
   StaleCheckAlert,
 } from './api'
 import type {
+  ClaimRecord,
+  ClaimType,
+  DeliveryJob,
+  DeliveryJobMode,
+  DeliveryJobStatus,
+  GrowthAttributionEvent,
+  GrowthAttributionSummary,
+  ImportProject,
+  InsurancePolicy,
+  LandedCostActual,
+  MarketplaceOrder,
+  MarketplaceProvider,
+  ContingencyOption,
+  ContingencyStatus,
+  PartnerCapability,
+  PartnerCapabilityType,
+  PartnerCommunicationChannel,
+  PartnerProfile,
+  PartnerType,
+  PaymentProof,
+  PaymentProofMethod,
+  PaymentProofType,
+  SentinelSubscriber,
+  SupplierLead,
+  SupplierProfileClaimResponse,
+  SupplierVerificationStatus,
+} from './types'
+import type {
   AccountIntegration,
   AccountIntegrationProvider,
   AccountProfile,
+  AuditEvent,
   Booking,
   BookingPayload,
   BookingChecklistResponse,
+  BrokerAccessLink,
+  BrokerClearanceUpdate,
+  BrokerPortalResponse,
+  BrokerSubmittableStatus,
+  WarehouseAccessLink,
+  WarehousePortalResponse,
+  CarrierAccessLink,
+  CarrierEventStage,
+  CarrierPortalResponse,
+  TruckerAccessLink,
+  TruckerPortalResponse,
+  TruckerStage,
   CargoCategory,
   CarrierOption,
   Container,
@@ -148,8 +248,22 @@ type View =
   | 'customs'
   | 'delivery'
   | 'admin'
-type WorkspaceMode = 'customer' | 'admin-login' | 'admin'
-type AdminView = 'overview' | 'containers' | 'exceptions' | 'documents' | 'tracking' | 'payments' | 'customs' | 'automation' | 'audit'
+type WorkspaceMode = 'customer' | 'admin-login' | 'admin' | 'broker-portal' | 'warehouse-portal' | 'carrier-portal' | 'trucker-portal' | 'supplier-claim'
+type AdminView =
+  | 'overview'
+  | 'containers'
+  | 'exceptions'
+  | 'documents'
+  | 'tracking'
+  | 'payments'
+  | 'customs'
+  | 'automation'
+  | 'audit'
+  | 'sentinel'
+  | 'growth'
+  | 'suppliers'
+  | 'projects'
+  | 'partners'
 type TrackingStage = ShipmentEvent['stage']
 type MapPoint = { lat: number; lng: number }
 type MapPlotPoint = { x: number; y: number }
@@ -480,11 +594,11 @@ const incotermLabels: Record<string, string> = {
 
 const invoiceSourceLabels: Record<string, string> = {
   freight_share: 'Container share',
-  platform_fee: 'Platform fee',
-  urgency_fee: 'Priority handling',
-  ship_hoppa_service_fee_standard: 'Standard timing - 7+ business days before cutoff',
-  ship_hoppa_service_fee_priority: 'Priority timing - 3-6 business days before cutoff',
-  ship_hoppa_service_fee_rush: 'Rush timing - 0-2 business days before cutoff',
+  platform_fee: 'Ship Hoppa service fee',
+  urgency_fee: 'Ship Hoppa service fee Priority',
+  ship_hoppa_service_fee_standard: 'Ship Hoppa service fee Standard - 7+ business days before sailing',
+  ship_hoppa_service_fee_priority: 'Ship Hoppa service fee Priority - 3-6 business days before sailing',
+  ship_hoppa_service_fee_rush: 'Ship Hoppa service fee Priority - 0-2 business days before sailing',
   pickup_fee: 'Pickup',
   customs_brokerage: 'Customs estimate',
   destination_charge: 'Destination estimate',
@@ -496,6 +610,65 @@ const releaseHoldLabels: Record<string, string> = {
   customs_hold: 'Customs not cleared',
   warehouse_variance: 'Warehouse check needed',
   admin_hold: 'Team review needed',
+}
+
+type DecisionCardCopy = {
+  why: string
+  ifApproved: string
+  ifNoAction: string
+}
+
+const decisionCardCopyByType: Record<string, DecisionCardCopy> = {
+  approve_payment: {
+    why: 'Ship Hoppa needs your sign off before we charge or release this payment.',
+    ifApproved: 'We move the payment forward today and update the money tab.',
+    ifNoAction: 'The payment stays on hold and the supplier or partner is not paid.',
+  },
+  approve_supplier_payment: {
+    why: 'The supplier invoice and bank details are checked. We need a green light before sending funds overseas.',
+    ifApproved: 'We trigger the FX transfer to the supplier and record the proof of payment.',
+    ifNoAction: 'Production may pause and the supplier may delay the goods ready date.',
+  },
+  approve_trucking: {
+    why: 'Final delivery to your warehouse is ready to book. We need confirmation before locking the slot.',
+    ifApproved: 'We confirm the truck and notify the warehouse and driver.',
+    ifNoAction: 'The slot is released and final delivery slips to the next available day.',
+  },
+  accept_sailing_change: {
+    why: 'The sailing schedule moved. You should know before we accept the new arrival date.',
+    ifApproved: 'We update the shipment timeline and adjust downstream pickup and delivery plans.',
+    ifNoAction: 'Your timeline still shows the old date and downstream bookings may clash.',
+  },
+  approve_customs_submission: {
+    why: 'The customs entry is ready. We do not lodge it until you confirm the HS code and value.',
+    ifApproved: 'The broker submits the customs entry and starts the clearance clock.',
+    ifNoAction: 'Customs is not lodged. Storage charges may begin once the vessel arrives.',
+  },
+  approve_spare_space_listing: {
+    why: 'We can list your spare container space for resale to recover cost. We need consent first.',
+    ifApproved: 'We list the space, and any sale offsets your container cost.',
+    ifNoAction: 'The empty space sails with you and the cost is not recovered.',
+  },
+  approve_release: {
+    why: 'All checks are clear. We need a final yes to release the cargo.',
+    ifApproved: 'The container is released and final delivery can begin.',
+    ifNoAction: 'The cargo stays in the holding yard. Storage charges may apply.',
+  },
+  approve_invoice_variance: {
+    why: 'The invoice is different from what we expected. We need you to confirm the new amount.',
+    ifApproved: 'We update the landed cost and clear the invoice for payment.',
+    ifNoAction: 'The variance stays open and the invoice is not paid.',
+  },
+}
+
+const decisionCardCopyDefault: DecisionCardCopy = {
+  why: 'This action needs a person to confirm before Ship Hoppa moves it forward.',
+  ifApproved: 'We will action this immediately.',
+  ifNoAction: 'The shipment stays paused until someone responds.',
+}
+
+function decisionCardCopy(requestType: string): DecisionCardCopy {
+  return decisionCardCopyByType[requestType] ?? decisionCardCopyDefault
 }
 
 const trackingStageLabels: Record<TrackingStage, string> = {
@@ -615,9 +788,9 @@ function integrationStatusClass(status: string) {
 }
 
 function serviceFeeCategory(urgencyFee: number | null | undefined) {
-  if ((urgencyFee ?? 0) >= 150) return 'Rush - 0-2 business days before cutoff'
-  if ((urgencyFee ?? 0) > 0) return 'Priority - 3-6 business days before cutoff'
-  return 'Standard - 7+ business days before cutoff'
+  if ((urgencyFee ?? 0) >= 150) return 'Priority - 0-2 business days before sailing'
+  if ((urgencyFee ?? 0) > 0) return 'Priority - 3-6 business days before sailing'
+  return 'Standard - 7+ business days before sailing'
 }
 
 function serviceFeeTotal(booking: Booking) {
@@ -942,11 +1115,11 @@ function viewIntroCopy(view: View, phase: CustomerPhase) {
     },
     money: {
       title: 'Ship Hoppa invoice and release.',
-      summary: 'Show freight, service fees, pickup, customs, destination charges, payment status, and release blockers clearly.',
+      summary: 'Show freight, service fees, pickup, customs, destination charges, payment status, and what is blocking release.',
     },
     delivery: {
       title: 'Final delivery.',
-      summary: 'Prepare destination delivery only when customs, documents, payment, and release holds are clear.',
+      summary: 'Prepare final delivery only when customs, documents, payment, and delivery holds are clear.',
     },
     profile: {
       title: 'Saved account details.',
@@ -1735,7 +1908,7 @@ function ShipmentJourneyMap({
         <aside className="journey-detail-panel">
           <div className="journey-detail-grid">
             <span>
-              <small>Warehouse cutoff</small>
+              <small>Arrive at warehouse by</small>
               <strong>{formatDateFriendly(booking.warehouse_receipt_cutoff)}</strong>
             </span>
             <span>
@@ -2339,7 +2512,42 @@ function supplierLocationInputValue(form: BookingPayload) {
   return [form.supplier_city, form.supplier_province, form.supplier_country].filter(Boolean).join(', ')
 }
 
+function brokerTokenFromPath(): string | null {
+  const pathname = globalThis.location?.pathname ?? ''
+  const match = pathname.match(/^\/broker\/([^/]+)\/?$/)
+  return match ? match[1] : null
+}
+
+function warehouseTokenFromPath(): string | null {
+  const pathname = globalThis.location?.pathname ?? ''
+  const match = pathname.match(/^\/warehouse\/([^/]+)\/?$/)
+  return match ? match[1] : null
+}
+
+function carrierTokenFromPath(): string | null {
+  const pathname = globalThis.location?.pathname ?? ''
+  const match = pathname.match(/^\/carrier\/([^/]+)\/?$/)
+  return match ? match[1] : null
+}
+
+function truckerTokenFromPath(): string | null {
+  const pathname = globalThis.location?.pathname ?? ''
+  const match = pathname.match(/^\/trucker\/([^/]+)\/?$/)
+  return match ? match[1] : null
+}
+
+function supplierClaimTokenFromPath(): string | null {
+  const pathname = globalThis.location?.pathname ?? ''
+  const match = pathname.match(/^\/supplier-claim\/([^/]+)\/?$/)
+  return match ? match[1] : null
+}
+
 function initialWorkspaceMode(): WorkspaceMode {
+  if (brokerTokenFromPath()) return 'broker-portal'
+  if (warehouseTokenFromPath()) return 'warehouse-portal'
+  if (carrierTokenFromPath()) return 'carrier-portal'
+  if (truckerTokenFromPath()) return 'trucker-portal'
+  if (supplierClaimTokenFromPath()) return 'supplier-claim'
   return globalThis.location?.pathname === '/admin' ? 'admin-login' : 'customer'
 }
 
@@ -2348,6 +2556,1339 @@ function setBrowserPath(path: string) {
     globalThis.history?.pushState({}, '', path)
   }
 }
+
+function BrokerPortalView({ token }: { token: string }) {
+  const [portal, setPortal] = useState<BrokerPortalResponse | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const [statusChoice, setStatusChoice] = useState<BrokerSubmittableStatus>('submitted')
+  const [entryNumber, setEntryNumber] = useState('')
+  const [dutyPaid, setDutyPaid] = useState('')
+  const [gstPaid, setGstPaid] = useState('')
+  const [notes, setNotes] = useState('')
+  const [docFile, setDocFile] = useState('')
+  const [docType, setDocType] = useState<DocumentType>('house_bill')
+  const [docNotes, setDocNotes] = useState('')
+  const [docSubmitting, setDocSubmitting] = useState(false)
+  const [statusMessage, setStatusMessage] = useState<string | null>(null)
+  const [docMessage, setDocMessage] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    getBrokerPortal(token)
+      .then((data) => {
+        if (cancelled) return
+        setPortal(data)
+        setStatusChoice(
+          data.customs.customs_status === 'cleared' || data.customs.customs_status === 'queried' || data.customs.customs_status === 'submitted'
+            ? (data.customs.customs_status as BrokerSubmittableStatus)
+            : 'submitted',
+        )
+        setEntryNumber(data.customs.customs_entry_number ?? '')
+        setNotes(data.customs.broker_notes ?? '')
+        setDutyPaid(data.customs.duty_paid_usd != null ? String(data.customs.duty_paid_usd) : '')
+        setGstPaid(data.customs.gst_paid_usd != null ? String(data.customs.gst_paid_usd) : '')
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setLoadError(err instanceof Error ? err.message : 'Could not load broker portal')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [token])
+
+  async function refreshPortal() {
+    const data = await getBrokerPortal(token)
+    setPortal(data)
+    return data
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!portal) return
+    if (statusChoice === 'queried' && !notes.trim()) {
+      setStatusMessage('A note explaining the query is required when status is queried.')
+      return
+    }
+    setSubmitting(true)
+    setStatusMessage(null)
+    try {
+      const latest = await refreshPortal()
+      if (latest.customs.updated_at !== portal.customs.updated_at) {
+        setStatusMessage('The customs profile changed since you opened this page. Re-check the latest values, then submit again.')
+        setSubmitting(false)
+        return
+      }
+      const payload: BrokerClearanceUpdate = {
+        customs_status: statusChoice,
+        customs_entry_number: entryNumber.trim() || null,
+        duty_paid_usd: dutyPaid ? Number(dutyPaid) : null,
+        gst_paid_usd: gstPaid ? Number(gstPaid) : null,
+        broker_notes: notes.trim() || null,
+      }
+      const updated = await submitBrokerClearance(token, payload)
+      setPortal(updated)
+      setStatusMessage(`Customs status set to ${statusChoice.replace('_', ' ')}.`)
+    } catch (err) {
+      setStatusMessage(err instanceof Error ? err.message : 'Could not save clearance update.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleDocUpload(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!docFile.trim()) {
+      setDocMessage('A file name is required before uploading.')
+      return
+    }
+    setDocSubmitting(true)
+    setDocMessage(null)
+    try {
+      await uploadBrokerDocument(token, docType, docFile.trim(), docNotes.trim() || undefined)
+      const refreshed = await refreshPortal()
+      setPortal(refreshed)
+      setDocMessage(`${docFile} attached to the shipment.`)
+      setDocFile('')
+      setDocNotes('')
+    } catch (err) {
+      setDocMessage(err instanceof Error ? err.message : 'Could not upload the document.')
+    } finally {
+      setDocSubmitting(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="app-shell broker-portal-shell">
+        <header className="topbar">
+          <Logo />
+          <span className="eyebrow">Broker workspace</span>
+        </header>
+        <main className="broker-portal-main">
+          <p>Loading shipment.</p>
+        </main>
+      </div>
+    )
+  }
+
+  if (loadError || !portal) {
+    return (
+      <div className="app-shell broker-portal-shell">
+        <header className="topbar">
+          <Logo />
+          <span className="eyebrow">Broker workspace</span>
+        </header>
+        <main className="broker-portal-main">
+          <div className="notice error">{loadError ?? 'Broker link not found.'}</div>
+        </main>
+      </div>
+    )
+  }
+
+  const { booking, customs, holds, documents, events } = portal
+
+  return (
+    <div className="app-shell broker-portal-shell">
+      <header className="topbar broker-portal-topbar">
+        <Logo />
+        <span className="eyebrow">Broker workspace</span>
+      </header>
+      <main className="broker-portal-main">
+        <section className="broker-portal-card">
+          <p className="eyebrow">Shipment</p>
+          <h1>{booking.id}</h1>
+          <p className="broker-portal-subtitle">
+            {booking.importer_company_name ?? 'Importer'} into {booking.delivery_city}, {booking.delivery_country}.
+            Cargo from {booking.supplier_country}, ready by {booking.cargo_ready_date_latest}.
+          </p>
+          <div className="broker-portal-grid">
+            <div>
+              <p className="broker-portal-label">Importer</p>
+              <p>{booking.importer_company_name ?? 'Not on file'}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Importer ABN / tax ID</p>
+              <p>{booking.importer_abn ?? 'Not on file. Ask the importer.'}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">HS code</p>
+              <p>{customs.hs_code ?? 'Not yet classified.'}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Goods value</p>
+              <p>
+                {customs.currency} {customs.goods_value_usd.toLocaleString()}
+              </p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Incoterm</p>
+              <p>{customs.incoterm}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Customs status</p>
+              <p>{customs.customs_status.replace('_', ' ')}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Duty estimate</p>
+              <p>USD {customs.duty_estimate_usd.toLocaleString()}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">GST estimate</p>
+              <p>USD {customs.gst_estimate_usd.toLocaleString()}</p>
+            </div>
+          </div>
+          {customs.biosecurity_flags.length > 0 && (
+            <p className="notice">
+              <ShieldCheck size={16} /> Biosecurity flags: {customs.biosecurity_flags.join(', ')}
+            </p>
+          )}
+        </section>
+
+        <section className="broker-portal-card">
+          <h2>Submit clearance update</h2>
+          <form onSubmit={handleSubmit} className="broker-portal-form">
+            <label>
+              <span>Status</span>
+              <select
+                value={statusChoice}
+                onChange={(event) => setStatusChoice(event.target.value as BrokerSubmittableStatus)}
+              >
+                <option value="submitted">Submitted to customs</option>
+                <option value="queried">Queried by customs</option>
+                <option value="cleared">Cleared</option>
+              </select>
+            </label>
+            <label>
+              <span>Customs entry number</span>
+              <input
+                value={entryNumber}
+                onChange={(event) => setEntryNumber(event.target.value)}
+                placeholder="e.g. E-123456"
+              />
+            </label>
+            <label>
+              <span>Duty paid (USD)</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={dutyPaid}
+                onChange={(event) => setDutyPaid(event.target.value)}
+              />
+            </label>
+            <label>
+              <span>GST paid (USD)</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={gstPaid}
+                onChange={(event) => setGstPaid(event.target.value)}
+              />
+            </label>
+            <label className="broker-portal-textarea">
+              <span>Broker notes {statusChoice === 'queried' && '(required for queries)'}</span>
+              <textarea
+                value={notes}
+                onChange={(event) => setNotes(event.target.value)}
+                rows={3}
+              />
+            </label>
+            <button className="primary-action" type="submit" disabled={submitting}>
+              {submitting ? <Loader2 size={16} className="spin" /> : <Check size={16} />}
+              {submitting ? 'Saving' : 'Submit update'}
+            </button>
+          </form>
+          {statusMessage && <div className="notice">{statusMessage}</div>}
+        </section>
+
+        <section className="broker-portal-card">
+          <h2>Attach customs document</h2>
+          <form onSubmit={handleDocUpload} className="broker-portal-form">
+            <label>
+              <span>Document type</span>
+              <select value={docType} onChange={(event) => setDocType(event.target.value as DocumentType)}>
+                <option value="house_bill">House bill of lading</option>
+                <option value="commercial_invoice">Commercial invoice</option>
+                <option value="packing_list">Packing list</option>
+                <option value="arrival_notice">Arrival notice</option>
+                <option value="delivery_order">Delivery order</option>
+              </select>
+            </label>
+            <label>
+              <span>File name</span>
+              <input
+                value={docFile}
+                onChange={(event) => setDocFile(event.target.value)}
+                placeholder="e.g. customs-decl-1234.pdf"
+              />
+            </label>
+            <label className="broker-portal-textarea">
+              <span>Notes</span>
+              <textarea value={docNotes} onChange={(event) => setDocNotes(event.target.value)} rows={2} />
+            </label>
+            <button className="secondary-action" type="submit" disabled={docSubmitting}>
+              {docSubmitting ? <Loader2 size={16} className="spin" /> : <FileText size={16} />}
+              {docSubmitting ? 'Attaching' : 'Attach document'}
+            </button>
+          </form>
+          {docMessage && <div className="notice">{docMessage}</div>}
+        </section>
+
+        <section className="broker-portal-card">
+          <h2>Active holds</h2>
+          {holds.length === 0 ? (
+            <p>No release holds. Shipment can move when customs is cleared.</p>
+          ) : (
+            <ul className="broker-portal-list">
+              {holds.map((hold) => (
+                <li key={hold.id}>
+                  <strong>{hold.hold_type.replace('_', ' ')}</strong>: {hold.reason}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="broker-portal-card">
+          <h2>Recent documents</h2>
+          {documents.length === 0 ? (
+            <p>No documents attached yet.</p>
+          ) : (
+            <ul className="broker-portal-list">
+              {documents.slice(0, 8).map((doc) => (
+                <li key={doc.id}>
+                  {doc.file_name} <span className="muted">({doc.document_type.replace('_', ' ')})</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="broker-portal-card">
+          <h2>Recent events</h2>
+          {events.length === 0 ? (
+            <p>No events recorded yet.</p>
+          ) : (
+            <ul className="broker-portal-list">
+              {events.slice(0, 8).map((event) => (
+                <li key={event.id}>
+                  <strong>{event.label}</strong> <span className="muted">({event.stage.replace('_', ' ')})</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </main>
+    </div>
+  )
+}
+
+
+function WarehousePortalView({ token }: { token: string }) {
+  const [portal, setPortal] = useState<WarehousePortalResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [actualCbm, setActualCbm] = useState('')
+  const [actualWeight, setActualWeight] = useState('')
+  const [notes, setNotes] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [confirmedAt, setConfirmedAt] = useState<string | null>(null)
+  const [statusMessage, setStatusMessage] = useState<string | null>(null)
+  const [docFile, setDocFile] = useState('')
+  const [docNotes, setDocNotes] = useState('')
+  const [docSubmitting, setDocSubmitting] = useState(false)
+  const [docMessage, setDocMessage] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    getWarehousePortal(token)
+      .then((data) => {
+        if (cancelled) return
+        setPortal(data)
+        if (data.booking.cbm_actual != null) setActualCbm(String(data.booking.cbm_actual))
+        if (data.booking.weight_kg_actual != null) setActualWeight(String(data.booking.weight_kg_actual))
+        if (data.booking.received_at_warehouse) setConfirmedAt(data.booking.received_at_warehouse)
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setLoadError(err instanceof Error ? err.message : 'Could not load warehouse portal')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [token])
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!portal) return
+    const cbmValue = Number(actualCbm)
+    const weightValue = Number(actualWeight)
+    if (!Number.isFinite(cbmValue) || cbmValue <= 0) {
+      setStatusMessage('Enter actual cubic meters greater than zero.')
+      return
+    }
+    if (!Number.isFinite(weightValue) || weightValue <= 0) {
+      setStatusMessage('Enter actual weight in kilograms greater than zero.')
+      return
+    }
+    setSubmitting(true)
+    setStatusMessage(null)
+    try {
+      const updated = await submitWarehouseReceipt(token, {
+        actual_cbm: cbmValue,
+        actual_weight_kg: weightValue,
+        notes: notes.trim() || null,
+      })
+      setPortal(updated)
+      setConfirmedAt(updated.booking.received_at_warehouse ?? new Date().toISOString())
+      setStatusMessage('Receipt confirmed. The importer has been notified.')
+    } catch (err) {
+      setStatusMessage(err instanceof Error ? err.message : 'Could not save receipt.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleDocUpload(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!docFile.trim()) {
+      setDocMessage('A file name is required before uploading.')
+      return
+    }
+    setDocSubmitting(true)
+    setDocMessage(null)
+    try {
+      await uploadWarehouseDocument(token, 'supplier_photos', docFile.trim(), docNotes.trim() || undefined)
+      const refreshed = await getWarehousePortal(token)
+      setPortal(refreshed)
+      setDocMessage(`${docFile} attached.`)
+      setDocFile('')
+      setDocNotes('')
+    } catch (err) {
+      setDocMessage(err instanceof Error ? err.message : 'Could not upload the photo.')
+    } finally {
+      setDocSubmitting(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="app-shell broker-portal-shell">
+        <header className="topbar">
+          <Logo />
+          <span className="eyebrow">Warehouse workspace</span>
+        </header>
+        <main className="broker-portal-main">
+          <p>Loading shipment.</p>
+        </main>
+      </div>
+    )
+  }
+
+  if (loadError || !portal) {
+    return (
+      <div className="app-shell broker-portal-shell">
+        <header className="topbar">
+          <Logo />
+          <span className="eyebrow">Warehouse workspace</span>
+        </header>
+        <main className="broker-portal-main">
+          <div className="notice error">{loadError ?? 'Warehouse link not found.'}</div>
+        </main>
+      </div>
+    )
+  }
+
+  const { booking, documents, events } = portal
+  const isPickupMode = booking.delivery_mode === 'ship_hoppa_pickup'
+
+  return (
+    <div className="app-shell broker-portal-shell">
+      <header className="topbar broker-portal-topbar">
+        <Logo />
+        <span className="eyebrow">Warehouse workspace</span>
+      </header>
+      <main className="broker-portal-main">
+        <section className="broker-portal-card">
+          <p className="eyebrow">Shipment</p>
+          <h1>{booking.id}</h1>
+          <p className="broker-portal-subtitle">
+            {booking.importer_company_name ?? 'Importer'} from {booking.supplier_city}, {booking.supplier_country}.
+            Ready by {booking.cargo_ready_date_latest}.
+            {booking.warehouse_name && <> Drop at {booking.warehouse_name}.</>}
+          </p>
+          <div className="broker-portal-grid">
+            <div>
+              <p className="broker-portal-label">Cargo</p>
+              <p>{booking.cargo_description ?? booking.cargo_category}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Expected cubic meters (CBM)</p>
+              <p>{booking.cbm_estimate}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Expected weight (kg)</p>
+              <p>{booking.weight_kg_estimate}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Packages</p>
+              <p>{booking.number_of_packages ?? 'Not provided'}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Receipt cutoff</p>
+              <p>{booking.warehouse_receipt_cutoff ?? 'No cutoff set'}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Booking status</p>
+              <p>{booking.status.replace('_', ' ')}</p>
+            </div>
+          </div>
+        </section>
+
+        {isPickupMode ? (
+          <section className="broker-portal-card">
+            <h2>Ship Hoppa is collecting from the supplier</h2>
+            <p>
+              This shipment is on Ship Hoppa pickup. You do not need to receive it at a warehouse. The pickup driver will contact
+              the supplier directly. If you reached this page by mistake, please tell the importer.
+            </p>
+          </section>
+        ) : confirmedAt ? (
+          <section className="broker-portal-card">
+            <h2>Receipt confirmed</h2>
+            <p>
+              You confirmed receipt at {new Date(confirmedAt).toLocaleString()} with {booking.cbm_actual ?? actualCbm} CBM and{' '}
+              {booking.weight_kg_actual ?? actualWeight} kg. The importer can see this in their tracking tab.
+            </p>
+            <p className="muted">If something is wrong, contact the importer to correct the record.</p>
+          </section>
+        ) : (
+          <section className="broker-portal-card">
+            <h2>Confirm cargo receipt</h2>
+            <form onSubmit={handleSubmit} className="broker-portal-form">
+              <label>
+                <span>Actual cubic meters (CBM)</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={actualCbm}
+                  onChange={(event) => setActualCbm(event.target.value)}
+                  required
+                />
+              </label>
+              <label>
+                <span>Actual weight (kg)</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={actualWeight}
+                  onChange={(event) => setActualWeight(event.target.value)}
+                  required
+                />
+              </label>
+              <label className="broker-portal-textarea">
+                <span>Receipt notes (damage, missing items, anything unusual)</span>
+                <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} />
+              </label>
+              <button className="primary-action" type="submit" disabled={submitting}>
+                {submitting ? <Loader2 size={16} className="spin" /> : <Check size={16} />}
+                {submitting ? 'Saving' : 'Confirm receipt'}
+              </button>
+            </form>
+            {statusMessage && <div className="notice">{statusMessage}</div>}
+          </section>
+        )}
+
+        {!isPickupMode && (
+          <section className="broker-portal-card">
+            <h2>Attach a cargo photo</h2>
+            <form onSubmit={handleDocUpload} className="broker-portal-form">
+              <label>
+                <span>File name</span>
+                <input
+                  value={docFile}
+                  onChange={(event) => setDocFile(event.target.value)}
+                  placeholder="e.g. cargo-photo-front.jpg"
+                />
+              </label>
+              <label className="broker-portal-textarea">
+                <span>Notes</span>
+                <textarea value={docNotes} onChange={(event) => setDocNotes(event.target.value)} rows={2} />
+              </label>
+              <button className="secondary-action" type="submit" disabled={docSubmitting}>
+                {docSubmitting ? <Loader2 size={16} className="spin" /> : <FileText size={16} />}
+                {docSubmitting ? 'Attaching' : 'Attach photo'}
+              </button>
+            </form>
+            {docMessage && <div className="notice">{docMessage}</div>}
+          </section>
+        )}
+
+        <section className="broker-portal-card">
+          <h2>Recent documents</h2>
+          {documents.length === 0 ? (
+            <p>No documents attached yet.</p>
+          ) : (
+            <ul className="broker-portal-list">
+              {documents.slice(0, 8).map((doc) => (
+                <li key={doc.id}>
+                  {doc.file_name} <span className="muted">({doc.document_type.replace('_', ' ')})</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="broker-portal-card">
+          <h2>Recent events</h2>
+          {events.length === 0 ? (
+            <p>No events recorded yet.</p>
+          ) : (
+            <ul className="broker-portal-list">
+              {events.slice(0, 8).map((event) => (
+                <li key={event.id}>
+                  <strong>{event.label}</strong> <span className="muted">({event.stage.replace('_', ' ')})</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </main>
+    </div>
+  )
+}
+
+
+function CarrierPortalView({ token }: { token: string }) {
+  const [portal, setPortal] = useState<CarrierPortalResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [eta, setEta] = useState('')
+  const [etaNote, setEtaNote] = useState('')
+  const [etaSubmitting, setEtaSubmitting] = useState(false)
+  const [etaMessage, setEtaMessage] = useState<string | null>(null)
+  const [eventSubmitting, setEventSubmitting] = useState<CarrierEventStage | null>(null)
+  const [eventMessage, setEventMessage] = useState<string | null>(null)
+  const [docFile, setDocFile] = useState('')
+  const [docNotes, setDocNotes] = useState('')
+  const [docSubmitting, setDocSubmitting] = useState(false)
+  const [docMessage, setDocMessage] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    getCarrierPortal(token)
+      .then((data) => {
+        if (cancelled) return
+        setPortal(data)
+        if (data.booking.estimated_arrival) setEta(data.booking.estimated_arrival)
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setLoadError(err instanceof Error ? err.message : 'Could not load carrier portal')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [token])
+
+  async function handleEtaSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!eta) {
+      setEtaMessage('Pick a new estimated arrival date.')
+      return
+    }
+    setEtaSubmitting(true)
+    setEtaMessage(null)
+    try {
+      const updated = await submitCarrierEta(token, {
+        estimated_arrival: eta,
+        note: etaNote.trim() || null,
+      })
+      setPortal(updated)
+      setEtaMessage('ETA saved. The importer will see the updated arrival.')
+      setEtaNote('')
+    } catch (err) {
+      setEtaMessage(err instanceof Error ? err.message : 'Could not update ETA.')
+    } finally {
+      setEtaSubmitting(false)
+    }
+  }
+
+  async function handleEvent(stage: CarrierEventStage) {
+    setEventSubmitting(stage)
+    setEventMessage(null)
+    try {
+      const updated = await submitCarrierEvent(token, { stage })
+      setPortal(updated)
+      setEventMessage(`Recorded ${stage.replace('_', ' ')}.`)
+    } catch (err) {
+      setEventMessage(err instanceof Error ? err.message : 'Could not record the event.')
+    } finally {
+      setEventSubmitting(null)
+    }
+  }
+
+  async function handleDocUpload(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!docFile.trim()) {
+      setDocMessage('A file name is required before uploading.')
+      return
+    }
+    setDocSubmitting(true)
+    setDocMessage(null)
+    try {
+      await uploadCarrierDocument(token, 'house_bill', docFile.trim(), docNotes.trim() || undefined)
+      const refreshed = await getCarrierPortal(token)
+      setPortal(refreshed)
+      setDocMessage(`${docFile} attached to the shipment.`)
+      setDocFile('')
+      setDocNotes('')
+    } catch (err) {
+      setDocMessage(err instanceof Error ? err.message : 'Could not upload the document.')
+    } finally {
+      setDocSubmitting(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="app-shell broker-portal-shell">
+        <header className="topbar">
+          <Logo />
+          <span className="eyebrow">Carrier workspace</span>
+        </header>
+        <main className="broker-portal-main">
+          <p>Loading shipment.</p>
+        </main>
+      </div>
+    )
+  }
+
+  if (loadError || !portal) {
+    return (
+      <div className="app-shell broker-portal-shell">
+        <header className="topbar">
+          <Logo />
+          <span className="eyebrow">Carrier workspace</span>
+        </header>
+        <main className="broker-portal-main">
+          <div className="notice error">{loadError ?? 'Carrier link not found.'}</div>
+        </main>
+      </div>
+    )
+  }
+
+  const { booking, documents, events } = portal
+  const noContainer = !booking.container_id
+
+  return (
+    <div className="app-shell broker-portal-shell">
+      <header className="topbar broker-portal-topbar">
+        <Logo />
+        <span className="eyebrow">Carrier workspace</span>
+      </header>
+      <main className="broker-portal-main">
+        <section className="broker-portal-card">
+          <p className="eyebrow">Shipment</p>
+          <h1>{booking.id}</h1>
+          <p className="broker-portal-subtitle">
+            {booking.importer_company_name ?? 'Importer'}. {booking.cargo_description ?? booking.cargo_category}.
+          </p>
+          <div className="broker-portal-grid">
+            <div>
+              <p className="broker-portal-label">Container</p>
+              <p>{booking.container_number ?? booking.container_id ?? 'Not yet assigned'}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Vessel / voyage</p>
+              <p>
+                {booking.vessel_name ?? 'TBC'}
+                {booking.voyage_number && ` / ${booking.voyage_number}`}
+              </p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Carrier</p>
+              <p>{booking.carrier_name ?? 'TBC'}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Sailing date</p>
+              <p>{booking.target_sailing_date ?? booking.estimated_departure ?? 'TBC'}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Current ETA</p>
+              <p>{booking.estimated_arrival ?? 'Not set'}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Cutoff</p>
+              <p>{booking.carrier_cutoff_date ?? 'TBC'}</p>
+            </div>
+          </div>
+        </section>
+
+        {noContainer ? (
+          <section className="broker-portal-card">
+            <h2>Container not yet assigned</h2>
+            <p>
+              This booking has not been placed on a container. ETA updates and milestone events are accepted only after the
+              importer has selected a sailing.
+            </p>
+          </section>
+        ) : (
+          <>
+            <section className="broker-portal-card">
+              <h2>Update ETA</h2>
+              <form onSubmit={handleEtaSubmit} className="broker-portal-form">
+                <label>
+                  <span>New estimated arrival</span>
+                  <input
+                    type="date"
+                    value={eta}
+                    onChange={(event) => setEta(event.target.value)}
+                    required
+                  />
+                </label>
+                <label className="broker-portal-textarea">
+                  <span>Reason / note (optional)</span>
+                  <textarea value={etaNote} onChange={(event) => setEtaNote(event.target.value)} rows={2} />
+                </label>
+                <button className="primary-action" type="submit" disabled={etaSubmitting}>
+                  {etaSubmitting ? <Loader2 size={16} className="spin" /> : <CalendarClock size={16} />}
+                  {etaSubmitting ? 'Saving' : 'Save new ETA'}
+                </button>
+              </form>
+              {etaMessage && <div className="notice">{etaMessage}</div>}
+            </section>
+
+            <section className="broker-portal-card">
+              <h2>Mark milestone</h2>
+              <p className="muted">
+                Record the moment the cargo is loaded, the vessel departs, or the vessel arrives at the destination port.
+              </p>
+              <div className="action-panel-buttons">
+                <button
+                  className="secondary-action small"
+                  type="button"
+                  disabled={eventSubmitting !== null}
+                  onClick={() => handleEvent('loaded')}
+                >
+                  {eventSubmitting === 'loaded' ? <Loader2 size={14} className="spin" /> : <Check size={14} />}
+                  Mark loaded
+                </button>
+                <button
+                  className="secondary-action small"
+                  type="button"
+                  disabled={eventSubmitting !== null}
+                  onClick={() => handleEvent('departed')}
+                >
+                  {eventSubmitting === 'departed' ? <Loader2 size={14} className="spin" /> : <Ship size={14} />}
+                  Mark departed
+                </button>
+                <button
+                  className="secondary-action small"
+                  type="button"
+                  disabled={eventSubmitting !== null}
+                  onClick={() => handleEvent('arrived')}
+                >
+                  {eventSubmitting === 'arrived' ? <Loader2 size={14} className="spin" /> : <MapPin size={14} />}
+                  Mark arrived
+                </button>
+              </div>
+              {eventMessage && <div className="notice">{eventMessage}</div>}
+            </section>
+
+            <section className="broker-portal-card">
+              <h2>Attach bill of lading</h2>
+              <form onSubmit={handleDocUpload} className="broker-portal-form">
+                <label>
+                  <span>File name</span>
+                  <input
+                    value={docFile}
+                    onChange={(event) => setDocFile(event.target.value)}
+                    placeholder="e.g. house-bl-12345.pdf"
+                  />
+                </label>
+                <label className="broker-portal-textarea">
+                  <span>Notes</span>
+                  <textarea value={docNotes} onChange={(event) => setDocNotes(event.target.value)} rows={2} />
+                </label>
+                <button className="secondary-action" type="submit" disabled={docSubmitting}>
+                  {docSubmitting ? <Loader2 size={16} className="spin" /> : <FileText size={16} />}
+                  {docSubmitting ? 'Attaching' : 'Attach BL'}
+                </button>
+              </form>
+              {docMessage && <div className="notice">{docMessage}</div>}
+            </section>
+          </>
+        )}
+
+        <section className="broker-portal-card">
+          <h2>Recent events</h2>
+          {events.length === 0 ? (
+            <p>No events recorded yet.</p>
+          ) : (
+            <ul className="broker-portal-list">
+              {events.slice(0, 8).map((event) => (
+                <li key={event.id}>
+                  <strong>{event.label}</strong> <span className="muted">({event.stage.replace('_', ' ')})</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="broker-portal-card">
+          <h2>Recent documents</h2>
+          {documents.length === 0 ? (
+            <p>No documents attached yet.</p>
+          ) : (
+            <ul className="broker-portal-list">
+              {documents.slice(0, 8).map((doc) => (
+                <li key={doc.id}>
+                  {doc.file_name} <span className="muted">({doc.document_type.replace('_', ' ')})</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </main>
+    </div>
+  )
+}
+
+
+function TruckerPortalView({ token }: { token: string }) {
+  const [portal, setPortal] = useState<TruckerPortalResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [stageSubmitting, setStageSubmitting] = useState<TruckerStage | null>(null)
+  const [stageMessage, setStageMessage] = useState<string | null>(null)
+  const [statusNotes, setStatusNotes] = useState('')
+  const [podFile, setPodFile] = useState('')
+  const [podNotes, setPodNotes] = useState('')
+  const [podSubmitting, setPodSubmitting] = useState(false)
+  const [podMessage, setPodMessage] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    getTruckerPortal(token)
+      .then((data) => {
+        if (!cancelled) setPortal(data)
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setLoadError(err instanceof Error ? err.message : 'Could not load trucker portal')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [token])
+
+  async function handleStage(stage: TruckerStage) {
+    setStageSubmitting(stage)
+    setStageMessage(null)
+    try {
+      const updated = await submitTruckerStatus(token, { stage, notes: statusNotes.trim() || null })
+      setPortal(updated)
+      setStageMessage(`Recorded ${stage.replace('_', ' ')}.`)
+      setStatusNotes('')
+    } catch (err) {
+      setStageMessage(err instanceof Error ? err.message : 'Could not record the status update.')
+    } finally {
+      setStageSubmitting(null)
+    }
+  }
+
+  async function handlePodUpload(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!podFile.trim()) {
+      setPodMessage('A file name is required before uploading.')
+      return
+    }
+    setPodSubmitting(true)
+    setPodMessage(null)
+    try {
+      await uploadTruckerPod(token, podFile.trim(), podNotes.trim() || undefined)
+      const refreshed = await getTruckerPortal(token)
+      setPortal(refreshed)
+      setPodMessage(`${podFile} attached as proof of delivery.`)
+      setPodFile('')
+      setPodNotes('')
+    } catch (err) {
+      setPodMessage(err instanceof Error ? err.message : 'Could not upload the proof of delivery.')
+    } finally {
+      setPodSubmitting(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="app-shell broker-portal-shell">
+        <header className="topbar">
+          <Logo />
+          <span className="eyebrow">Trucker workspace</span>
+        </header>
+        <main className="broker-portal-main">
+          <p>Loading shipment.</p>
+        </main>
+      </div>
+    )
+  }
+
+  if (loadError || !portal) {
+    return (
+      <div className="app-shell broker-portal-shell">
+        <header className="topbar">
+          <Logo />
+          <span className="eyebrow">Trucker workspace</span>
+        </header>
+        <main className="broker-portal-main">
+          <div className="notice error">{loadError ?? 'Trucker link not found.'}</div>
+        </main>
+      </div>
+    )
+  }
+
+  const { booking, holds, can_deliver: canDeliver, documents, events } = portal
+
+  return (
+    <div className="app-shell broker-portal-shell">
+      <header className="topbar broker-portal-topbar">
+        <Logo />
+        <span className="eyebrow">Trucker workspace</span>
+      </header>
+      <main className="broker-portal-main">
+        <section className="broker-portal-card">
+          <p className="eyebrow">Shipment</p>
+          <h1>{booking.id}</h1>
+          <p className="broker-portal-subtitle">
+            Deliver to {booking.importer_company_name ?? 'importer'} at {booking.destination_address}.
+          </p>
+          <div className="broker-portal-grid">
+            <div>
+              <p className="broker-portal-label">Contact</p>
+              <p>{booking.destination_contact_name}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Phone</p>
+              <p>{booking.destination_contact_phone ?? 'Not provided'}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Delivery window</p>
+              <p>
+                {booking.delivery_window_start ?? 'TBC'}
+                {booking.delivery_window_end && ` to ${booking.delivery_window_end}`}
+              </p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Equipment</p>
+              <p>{booking.equipment_required.length ? booking.equipment_required.join(', ') : 'None specified'}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Cargo</p>
+              <p>{booking.cargo_description ?? booking.cargo_category}</p>
+            </div>
+            <div>
+              <p className="broker-portal-label">Volume / weight</p>
+              <p>{booking.cbm_estimate} CBM / {booking.weight_kg_estimate} kg</p>
+            </div>
+          </div>
+        </section>
+
+        {!canDeliver && holds.length > 0 && (
+          <section className="broker-portal-card">
+            <h2>Release blocked</h2>
+            <p>This shipment cannot be marked delivered until the importer clears these holds.</p>
+            <ul className="broker-portal-list">
+              {holds.map((hold) => (
+                <li key={hold.id}>
+                  <strong>{hold.hold_type.replace('_', ' ')}</strong>: {hold.reason}
+                </li>
+              ))}
+            </ul>
+            <p className="muted">You can still mark pickup_scheduled and picked_up while we wait.</p>
+          </section>
+        )}
+
+        <section className="broker-portal-card">
+          <h2>Update delivery status</h2>
+          <label className="broker-portal-textarea">
+            <span>Optional note for this update</span>
+            <textarea value={statusNotes} onChange={(event) => setStatusNotes(event.target.value)} rows={2} />
+          </label>
+          <div className="action-panel-buttons">
+            <button
+              className="secondary-action small"
+              type="button"
+              disabled={stageSubmitting !== null}
+              onClick={() => handleStage('pickup_scheduled')}
+            >
+              {stageSubmitting === 'pickup_scheduled' ? <Loader2 size={14} className="spin" /> : <CalendarClock size={14} />}
+              Pickup scheduled
+            </button>
+            <button
+              className="secondary-action small"
+              type="button"
+              disabled={stageSubmitting !== null}
+              onClick={() => handleStage('picked_up')}
+            >
+              {stageSubmitting === 'picked_up' ? <Loader2 size={14} className="spin" /> : <Truck size={14} />}
+              Picked up from port
+            </button>
+            <button
+              className="primary-action small"
+              type="button"
+              disabled={stageSubmitting !== null || !canDeliver}
+              onClick={() => handleStage('delivered')}
+              title={canDeliver ? '' : 'Release is blocked. Importer must clear holds first.'}
+            >
+              {stageSubmitting === 'delivered' ? <Loader2 size={14} className="spin" /> : <PackageCheck size={14} />}
+              Mark delivered
+            </button>
+          </div>
+          {stageMessage && <div className="notice">{stageMessage}</div>}
+        </section>
+
+        <section className="broker-portal-card">
+          <h2>Upload proof of delivery</h2>
+          <form onSubmit={handlePodUpload} className="broker-portal-form">
+            <label>
+              <span>POD file name</span>
+              <input
+                value={podFile}
+                onChange={(event) => setPodFile(event.target.value)}
+                placeholder="e.g. pod-signed.pdf"
+              />
+            </label>
+            <label className="broker-portal-textarea">
+              <span>Notes</span>
+              <textarea value={podNotes} onChange={(event) => setPodNotes(event.target.value)} rows={2} />
+            </label>
+            <button className="secondary-action" type="submit" disabled={podSubmitting}>
+              {podSubmitting ? <Loader2 size={16} className="spin" /> : <FileText size={16} />}
+              {podSubmitting ? 'Attaching' : 'Attach POD'}
+            </button>
+          </form>
+          {podMessage && <div className="notice">{podMessage}</div>}
+        </section>
+
+        <section className="broker-portal-card">
+          <h2>Recent events</h2>
+          {events.length === 0 ? (
+            <p>No events recorded yet.</p>
+          ) : (
+            <ul className="broker-portal-list">
+              {events.slice(0, 8).map((event) => (
+                <li key={event.id}>
+                  <strong>{event.label}</strong> <span className="muted">({event.stage.replace('_', ' ')})</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="broker-portal-card">
+          <h2>Recent documents</h2>
+          {documents.length === 0 ? (
+            <p>No documents attached yet.</p>
+          ) : (
+            <ul className="broker-portal-list">
+              {documents.slice(0, 8).map((doc) => (
+                <li key={doc.id}>
+                  {doc.file_name} <span className="muted">({doc.document_type.replace('_', ' ')})</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </main>
+    </div>
+  )
+}
+
+
+function SupplierClaimView({ token }: { token: string }) {
+  const [data, setData] = useState<SupplierProfileClaimResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [contactName, setContactName] = useState('')
+  const [contactEmail, setContactEmail] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [accepted, setAccepted] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    getSupplierClaim(token)
+      .then((response) => {
+        if (cancelled) return
+        setData(response)
+        setContactEmail(response.claim.claimed_by_email ?? '')
+        setContactName(response.claim.claimed_contact_name ?? '')
+        if (response.claim.status === 'claimed') setAccepted(true)
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setLoadError(err instanceof Error ? err.message : 'Could not load this claim link')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [token])
+
+  async function handleAccept(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setSubmitError(null)
+    if (!contactEmail.trim() || !contactName.trim()) {
+      setSubmitError('Add your name and email so we know who claimed the profile.')
+      return
+    }
+    setSubmitting(true)
+    try {
+      const response = await acceptSupplierClaim(token, contactEmail.trim(), contactName.trim())
+      setData(response)
+      setAccepted(true)
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Could not accept the claim')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="app-shell broker-portal-shell">
+      <header className="topbar broker-portal-topbar">
+        <Logo />
+        <span className="status-chip orange">Supplier claim</span>
+      </header>
+      <main className="broker-portal-main">
+        {loading && <p>Loading your supplier profile…</p>}
+        {loadError && (
+          <section className="panel">
+            <h2>This link is no longer valid.</h2>
+            <p>{loadError}</p>
+            <p>Please ask Ship Hoppa for a fresh link.</p>
+          </section>
+        )}
+        {data && (
+          <>
+            <section className="panel">
+              <div className="panel-heading">
+                <div>
+                  <p className="eyebrow">Welcome to Ship Hoppa</p>
+                  <h2>{data.lead.company_name}</h2>
+                </div>
+              </div>
+              <p className="tab-intro-copy">
+                Ship Hoppa created a free profile for your business so importers can route real
+                orders to you. Confirm the profile below to claim it. After you claim, you can
+                log in to manage orders, photos, and documents in one place.
+              </p>
+              <dl className="decision-card-grid">
+                <div>
+                  <dt>Country</dt>
+                  <dd>{data.lead.country}</dd>
+                </div>
+                {data.lead.city && (
+                  <div>
+                    <dt>City</dt>
+                    <dd>{data.lead.city}</dd>
+                  </div>
+                )}
+                <div>
+                  <dt>Source</dt>
+                  <dd>{data.lead.discovery_source.replace('_', ' ')}</dd>
+                </div>
+                {data.lead.public_email && (
+                  <div>
+                    <dt>Listed email</dt>
+                    <dd>{data.lead.public_email}</dd>
+                  </div>
+                )}
+                {data.lead.public_phone && (
+                  <div>
+                    <dt>Listed phone</dt>
+                    <dd>{data.lead.public_phone}</dd>
+                  </div>
+                )}
+                {data.lead.product_categories.length > 0 && (
+                  <div>
+                    <dt>Listed categories</dt>
+                    <dd>{data.lead.product_categories.join(', ')}</dd>
+                  </div>
+                )}
+              </dl>
+            </section>
+
+            {accepted ? (
+              <section className="panel">
+                <h2>Thank you. Your profile is claimed.</h2>
+                <p>
+                  We sent a confirmation to {data.claim.claimed_by_email ?? contactEmail}.
+                  We will follow up with login details so you can manage orders.
+                </p>
+              </section>
+            ) : (
+              <section className="panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">Claim this profile</p>
+                    <h2>Add a contact name and email so we can reach you.</h2>
+                  </div>
+                </div>
+                <form onSubmit={handleAccept} style={{ display: 'grid', gap: 12, maxWidth: 480 }}>
+                  <label>
+                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Your name</span>
+                    <input
+                      type="text"
+                      value={contactName}
+                      onChange={(e) => setContactName(e.target.value)}
+                      required
+                    />
+                  </label>
+                  <label>
+                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Your email</span>
+                    <input
+                      type="email"
+                      value={contactEmail}
+                      onChange={(e) => setContactEmail(e.target.value)}
+                      required
+                    />
+                  </label>
+                  {submitError && <p style={{ color: '#dc2626' }}>{submitError}</p>}
+                  <button type="submit" className="primary" disabled={submitting}>
+                    {submitting ? 'Submitting…' : 'Claim profile'}
+                  </button>
+                </form>
+              </section>
+            )}
+          </>
+        )}
+      </main>
+    </div>
+  )
+}
+
 
 function App() {
   const [view, setView] = useState<View>('book')
@@ -2360,6 +3901,138 @@ function App() {
   const [adminTasks, setAdminTasks] = useState<AdminTask[]>([])
   const [adminTaskSummary, setAdminTaskSummary] = useState<AdminTaskSummary | null>(null)
   const [allApprovals, setAllApprovals] = useState<ApprovalRequestRecord[]>([])
+  const [auditFilters, setAuditFilters] = useState<AuditEventFilters>({})
+  const [auditFilterDraft, setAuditFilterDraft] = useState<AuditEventFilters>({})
+  const [auditResults, setAuditResults] = useState<AuditEvent[] | null>(null)
+  const [auditLoading, setAuditLoading] = useState(false)
+  const [auditError, setAuditError] = useState<string | null>(null)
+  const [sentinelSubscribers, setSentinelSubscribers] = useState<SentinelSubscriber[]>([])
+  const [sentinelDraft, setSentinelDraft] = useState({ phone_number: '', label: '' })
+  const [sentinelConfirmToken, setSentinelConfirmToken] = useState('')
+  const [sentinelMessage, setSentinelMessage] = useState<string | null>(null)
+  const [sentinelError, setSentinelError] = useState<string | null>(null)
+  const [supplierLeads, setSupplierLeads] = useState<SupplierLead[]>([])
+  const [supplierVerifyDraft, setSupplierVerifyDraft] = useState<Record<string, { status: SupplierVerificationStatus; notes: string }>>({})
+  const [supplierMessage, setSupplierMessage] = useState<string | null>(null)
+  const [supplierError, setSupplierError] = useState<string | null>(null)
+  const [growthEvents, setGrowthEvents] = useState<GrowthAttributionEvent[]>([])
+  const [growthSummary, setGrowthSummary] = useState<GrowthAttributionSummary | null>(null)
+  const [growthGroupBy, setGrowthGroupBy] = useState<'source' | 'channel' | 'category' | 'region' | 'event_type' | 'campaign'>('source')
+  const [growthError, setGrowthError] = useState<string | null>(null)
+  const [adminImportProjects, setAdminImportProjects] = useState<ImportProject[]>([])
+  const [importProjectDraft, setImportProjectDraft] = useState({ title: '', description: '' })
+  const [importProjectMessage, setImportProjectMessage] = useState<string | null>(null)
+  const [importProjectError, setImportProjectError] = useState<string | null>(null)
+  const [includeDeletedProjects, setIncludeDeletedProjects] = useState(false)
+  const [extractionPreviewOpen, setExtractionPreviewOpen] = useState(false)
+  const [extractionPreviewSubject, setExtractionPreviewSubject] = useState('')
+  const [extractionPreviewBody, setExtractionPreviewBody] = useState('')
+  const [extractionPreviewResult, setExtractionPreviewResult] = useState<ExtractionPreviewResponse | null>(null)
+  const [extractionPreviewLoading, setExtractionPreviewLoading] = useState(false)
+  const [extractionPreviewError, setExtractionPreviewError] = useState<string | null>(null)
+  const [supplierPreviewOpen, setSupplierPreviewOpen] = useState(false)
+  const [supplierPreviewResult, setSupplierPreviewResult] = useState<SupplierPortalResponse | null>(null)
+  const [supplierPreviewLoading, setSupplierPreviewLoading] = useState(false)
+  const [supplierPreviewError, setSupplierPreviewError] = useState<string | null>(null)
+  const [landedCostActual, setLandedCostActual] = useState<LandedCostActual | null>(null)
+  const [insurancePolicy, setInsurancePolicy] = useState<InsurancePolicy | null>(null)
+  const [bookingClaims, setBookingClaims] = useState<ClaimRecord[]>([])
+  const [bookingMarketplaceOrders, setBookingMarketplaceOrders] = useState<MarketplaceOrder[]>([])
+  const [claimDraft, setClaimDraft] = useState<{ claim_type: ClaimType; claim_amount_usd: string; notes: string }>({
+    claim_type: 'damage',
+    claim_amount_usd: '',
+    notes: '',
+  })
+  const [claimMessage, setClaimMessage] = useState<string | null>(null)
+  const [claimError, setClaimError] = useState<string | null>(null)
+  const [marketplaceDraft, setMarketplaceDraft] = useState<{
+    marketplace: MarketplaceProvider
+    external_order_id: string
+    product_url: string
+    payment_method: string
+    notes: string
+  }>({
+    marketplace: 'alibaba',
+    external_order_id: '',
+    product_url: '',
+    payment_method: '',
+    notes: '',
+  })
+  const [marketplaceMessage, setMarketplaceMessage] = useState<string | null>(null)
+  const [marketplaceError, setMarketplaceError] = useState<string | null>(null)
+  const [deliveryJobs, setDeliveryJobs] = useState<DeliveryJob[]>([])
+  const [deliveryJobDraft, setDeliveryJobDraft] = useState<{
+    mode: DeliveryJobMode
+    pickup_address: string
+    delivery_address: string
+    quote_amount_usd: string
+    notes: string
+  }>({
+    mode: 'warehouse_delivery',
+    pickup_address: '',
+    delivery_address: '',
+    quote_amount_usd: '',
+    notes: '',
+  })
+  const [deliveryJobMessage, setDeliveryJobMessage] = useState<string | null>(null)
+  const [deliveryJobError, setDeliveryJobError] = useState<string | null>(null)
+  const [paymentProofs, setPaymentProofs] = useState<PaymentProof[]>([])
+  const [paymentProofDraft, setPaymentProofDraft] = useState<{
+    payment_type: PaymentProofType
+    paid_amount: string
+    paid_currency: string
+    paid_at: string
+    paid_by: string
+    payment_method: PaymentProofMethod
+    reference_number: string
+    notes: string
+  }>({
+    payment_type: 'supplier_invoice',
+    paid_amount: '',
+    paid_currency: 'USD',
+    paid_at: '',
+    paid_by: '',
+    payment_method: 'bank_transfer',
+    reference_number: '',
+    notes: '',
+  })
+  const [paymentProofMessage, setPaymentProofMessage] = useState<string | null>(null)
+  const [paymentProofError, setPaymentProofError] = useState<string | null>(null)
+  const [partners, setPartners] = useState<PartnerProfile[]>([])
+  const [partnerTypeFilter, setPartnerTypeFilter] = useState<PartnerType | 'all'>('all')
+  const [activePartnerId, setActivePartnerId] = useState<string | null>(null)
+  const [partnerCapabilities, setPartnerCapabilities] = useState<PartnerCapability[]>([])
+  const [partnerDraft, setPartnerDraft] = useState<{
+    name: string
+    partner_type: PartnerType
+    contact_email: string
+    contact_phone: string
+    preferred_channel: PartnerCommunicationChannel
+    notes: string
+  }>({
+    name: '',
+    partner_type: 'broker',
+    contact_email: '',
+    contact_phone: '',
+    preferred_channel: 'email',
+    notes: '',
+  })
+  const [capabilityDraft, setCapabilityDraft] = useState<{
+    capability_type: PartnerCapabilityType
+    service_regions: string
+    service_lanes: string
+    operating_hours: string
+  }>({
+    capability_type: 'customs_brokerage',
+    service_regions: '',
+    service_lanes: '',
+    operating_hours: '',
+  })
+  const [partnerMessage, setPartnerMessage] = useState<string | null>(null)
+  const [partnerError, setPartnerError] = useState<string | null>(null)
+  const [contingencyOptions, setContingencyOptions] = useState<ContingencyOption[]>([])
+  const [contingencyMessage, setContingencyMessage] = useState<string | null>(null)
+  const [contingencyError, setContingencyError] = useState<string | null>(null)
   const [inboxMessages, setInboxMessages] = useState<SourceMessage[]>([])
   const [landedCost, setLandedCost] = useState<LandedCostSummary | null>(null)
   const [notifications, setNotifications] = useState<Notification[]>([])
@@ -2402,6 +4075,14 @@ function App() {
   const [projectWorkspace, setProjectWorkspace] = useState<ImportProjectWorkspaceResponse | null>(null)
   const [supplierLink, setSupplierLink] = useState<SupplierAccessLink | null>(null)
   const [supplierPortal, setSupplierPortal] = useState<SupplierPortalResponse | null>(null)
+  const [brokerLink, setBrokerLink] = useState<BrokerAccessLink | null>(null)
+  const [brokerInviteMessage, setBrokerInviteMessage] = useState<string | null>(null)
+  const [warehouseLink, setWarehouseLink] = useState<WarehouseAccessLink | null>(null)
+  const [warehouseInviteMessage, setWarehouseInviteMessage] = useState<string | null>(null)
+  const [carrierLink, setCarrierLink] = useState<CarrierAccessLink | null>(null)
+  const [carrierInviteMessage, setCarrierInviteMessage] = useState<string | null>(null)
+  const [truckerLink, setTruckerLink] = useState<TruckerAccessLink | null>(null)
+  const [truckerInviteMessage, setTruckerInviteMessage] = useState<string | null>(null)
   const [sourceMessageDraft, setSourceMessageDraft] = useState({
     from_address: 'sales@supplier.example',
     subject: 'Supplier pro forma and production update',
@@ -2477,6 +4158,22 @@ function App() {
 
   useEffect(() => {
     function syncWorkspaceToPath() {
+      if (brokerTokenFromPath()) {
+        setWorkspaceMode('broker-portal')
+        return
+      }
+      if (warehouseTokenFromPath()) {
+        setWorkspaceMode('warehouse-portal')
+        return
+      }
+      if (carrierTokenFromPath()) {
+        setWorkspaceMode('carrier-portal')
+        return
+      }
+      if (truckerTokenFromPath()) {
+        setWorkspaceMode('trucker-portal')
+        return
+      }
       if (globalThis.location?.pathname === '/admin') {
         setWorkspaceMode((current) => (current === 'admin' ? current : 'admin-login'))
         return
@@ -2502,6 +4199,48 @@ function App() {
       getAdminTaskSummary().then(setAdminTaskSummary).catch(() => {})
     }
   }, [workspaceMode, adminView])
+
+  useEffect(() => {
+    if (workspaceMode !== 'admin') return
+    if (adminView === 'sentinel') {
+      getSentinelSubscribers().then(setSentinelSubscribers).catch((err) => {
+        setSentinelError(err instanceof Error ? err.message : 'Could not load subscribers')
+      })
+    }
+    if (adminView === 'suppliers') {
+      listSupplierLeads().then(setSupplierLeads).catch((err) => {
+        setSupplierError(err instanceof Error ? err.message : 'Could not load supplier leads')
+      })
+    }
+    if (adminView === 'growth') {
+      listGrowthAttributionEvents({ limit: 100 }).then(setGrowthEvents).catch((err) => {
+        setGrowthError(err instanceof Error ? err.message : 'Could not load growth events')
+      })
+      getGrowthAttributionSummary(growthGroupBy).then(setGrowthSummary).catch((err) => {
+        setGrowthError(err instanceof Error ? err.message : 'Could not load growth summary')
+      })
+    }
+    if (adminView === 'projects') {
+      listImportProjects(includeDeletedProjects).then(setAdminImportProjects).catch((err) => {
+        setImportProjectError(err instanceof Error ? err.message : 'Could not load import projects')
+      })
+    }
+    if (adminView === 'partners') {
+      listPartners().then(setPartners).catch((err) => {
+        setPartnerError(err instanceof Error ? err.message : 'Could not load partners')
+      })
+    }
+  }, [workspaceMode, adminView, growthGroupBy, includeDeletedProjects])
+
+  useEffect(() => {
+    if (workspaceMode !== 'admin' || adminView !== 'partners' || !activePartnerId) {
+      setPartnerCapabilities([])
+      return
+    }
+    listPartnerCapabilities(activePartnerId).then(setPartnerCapabilities).catch((err) => {
+      setPartnerError(err instanceof Error ? err.message : 'Could not load capabilities')
+    })
+  }, [workspaceMode, adminView, activePartnerId])
 
   useEffect(() => {
     if (view === 'inbox') {
@@ -2540,12 +4279,41 @@ function App() {
   useEffect(() => {
     if (view === 'money' && activeBooking) {
       getLandedCostSummary(activeBooking.id).then(setLandedCost).catch(() => setLandedCost(null))
+      getLandedCostActual(activeBooking.id).then(setLandedCostActual).catch(() => setLandedCostActual(null))
     }
   }, [view, activeBooking?.id])
 
   useEffect(() => {
+    if (workspaceMode !== 'admin' || adminView !== 'exceptions' || !activeBooking) {
+      setContingencyOptions([])
+      return
+    }
+    listContingencyOptions(activeBooking.id).then(setContingencyOptions).catch(() => setContingencyOptions([]))
+  }, [workspaceMode, adminView, activeBooking?.id])
+
+  useEffect(() => {
     if (view === 'customs' && activeBooking) {
       getHsSuggestions(activeBooking.id).then(setHsSuggestions).catch(() => setHsSuggestions(null))
+    }
+  }, [view, activeBooking?.id])
+
+  useEffect(() => {
+    if (view === 'delivery' && activeBooking) {
+      getInsurancePolicy(activeBooking.id).then(setInsurancePolicy).catch(() => setInsurancePolicy(null))
+      listClaims(activeBooking.id).then(setBookingClaims).catch(() => setBookingClaims([]))
+      listDeliveryJobsForBooking(activeBooking.id).then(setDeliveryJobs).catch(() => setDeliveryJobs([]))
+    }
+  }, [view, activeBooking?.id])
+
+  useEffect(() => {
+    if (view === 'money' && activeBooking) {
+      listPaymentProofs(activeBooking.id).then(setPaymentProofs).catch(() => setPaymentProofs([]))
+    }
+  }, [view, activeBooking?.id])
+
+  useEffect(() => {
+    if (view === 'supplier' && activeBooking) {
+      listMarketplaceOrders({ booking_id: activeBooking.id }).then(setBookingMarketplaceOrders).catch(() => setBookingMarketplaceOrders([]))
     }
   }, [view, activeBooking?.id])
 
@@ -2739,6 +4507,20 @@ function App() {
       setAllApprovals(refreshed)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Approval decision failed')
+    }
+  }
+
+  async function handleApprovalAskReview(approvalId: string) {
+    const reason = window.prompt(
+      'Tell Ship Hoppa what you would like reviewed. We will reply before any decision is taken.',
+    )
+    if (!reason || !reason.trim()) return
+    try {
+      await requestApprovalReview(approvalId, reason.trim())
+      const refreshed = await getApprovals()
+      setAllApprovals(refreshed)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not request a review')
     }
   }
   const activeSourceMessages = projectWorkspace?.source_messages ?? []
@@ -3149,6 +4931,118 @@ function App() {
     }
   }
 
+  async function handleInviteBroker() {
+    if (!activeBooking) return
+    setLoading(true)
+    setError(null)
+    setBrokerInviteMessage(null)
+    try {
+      const link = await createBrokerLink(activeBooking.id)
+      setBrokerLink(link)
+      const url = `${globalThis.location?.origin ?? ''}/broker/${link.token}`
+      let copied = false
+      try {
+        await globalThis.navigator?.clipboard?.writeText(url)
+        copied = true
+      } catch {
+        copied = false
+      }
+      setBrokerInviteMessage(
+        copied
+          ? 'Broker link copied to clipboard. Send it to your customs broker.'
+          : 'Broker link ready. Copy the URL below and send it to your customs broker.',
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create broker link')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleInviteWarehouse() {
+    if (!activeBooking) return
+    setLoading(true)
+    setError(null)
+    setWarehouseInviteMessage(null)
+    try {
+      const link = await createWarehouseLink(activeBooking.id)
+      setWarehouseLink(link)
+      const url = `${globalThis.location?.origin ?? ''}/warehouse/${link.token}`
+      let copied = false
+      try {
+        await globalThis.navigator?.clipboard?.writeText(url)
+        copied = true
+      } catch {
+        copied = false
+      }
+      setWarehouseInviteMessage(
+        copied
+          ? 'Warehouse link copied to clipboard. Send it to the warehouse contact.'
+          : 'Warehouse link ready. Copy the URL below and send it to the warehouse contact.',
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create warehouse link')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleInviteCarrier() {
+    if (!activeBooking) return
+    setLoading(true)
+    setError(null)
+    setCarrierInviteMessage(null)
+    try {
+      const link = await createCarrierLink(activeBooking.id)
+      setCarrierLink(link)
+      const url = `${globalThis.location?.origin ?? ''}/carrier/${link.token}`
+      let copied = false
+      try {
+        await globalThis.navigator?.clipboard?.writeText(url)
+        copied = true
+      } catch {
+        copied = false
+      }
+      setCarrierInviteMessage(
+        copied
+          ? 'Carrier link copied to clipboard. Send it to the carrier contact.'
+          : 'Carrier link ready. Copy the URL below and send it to the carrier contact.',
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create carrier link')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleInviteTrucker() {
+    if (!activeBooking) return
+    setLoading(true)
+    setError(null)
+    setTruckerInviteMessage(null)
+    try {
+      const link = await createTruckerLink(activeBooking.id)
+      setTruckerLink(link)
+      const url = `${globalThis.location?.origin ?? ''}/trucker/${link.token}`
+      let copied = false
+      try {
+        await globalThis.navigator?.clipboard?.writeText(url)
+        copied = true
+      } catch {
+        copied = false
+      }
+      setTruckerInviteMessage(
+        copied
+          ? 'Trucker link copied to clipboard. Send it to the destination trucker.'
+          : 'Trucker link ready. Copy the URL below and send it to the destination trucker.',
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create trucker link')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   async function handleSupplierUpload() {
     if (!supplierLink || !activeBooking) return
     setLoading(true)
@@ -3352,6 +5246,11 @@ function App() {
     { view: 'payments', label: 'Payments', icon: <Receipt size={17} /> },
     { view: 'customs', label: 'Customs', icon: <ShieldCheck size={17} /> },
     { view: 'automation', label: 'Automation', icon: <RefreshCw size={17} /> },
+    { view: 'projects', label: 'Imports', icon: <FolderOpen size={17} /> },
+    { view: 'partners', label: 'Partners', icon: <UserRound size={17} /> },
+    { view: 'suppliers', label: 'Suppliers', icon: <UserCheck size={17} /> },
+    { view: 'growth', label: 'Growth', icon: <LineChart size={17} /> },
+    { view: 'sentinel', label: 'Sentinel SMS', icon: <MessageCircle size={17} /> },
     { view: 'audit', label: 'Audit log', icon: <Bell size={17} /> },
   ]
   const adminTitles: Record<AdminView, { eyebrow: string; title: string; summary: string; automation: string }> = {
@@ -3409,6 +5308,36 @@ function App() {
       summary: 'A read-only record of automation decisions, operator actions, and notifications.',
       automation: 'Automated: every system or operator decision writes an audit event. Human action should not be required here.',
     },
+    sentinel: {
+      eyebrow: 'Sentinel SMS',
+      title: 'On-call subscribers',
+      summary: 'People who receive Sentinel P0 and P1 SMS alerts. Each phone confirms by replying with the token before alerts fire.',
+      automation: 'Automated: confirm tokens are generated on add, opt-out is recorded immediately, and alerts respect a 10-minute cooldown per code.',
+    },
+    growth: {
+      eyebrow: 'Growth',
+      title: 'Attribution and discovery activity',
+      summary: 'Where supplier leads, signups, invites, and shipments came from, plus the value attached.',
+      automation: 'Automated: every growth signal writes an attribution event. The summary groups events by source, channel, category, or campaign.',
+    },
+    suppliers: {
+      eyebrow: 'Suppliers',
+      title: 'Verification queue',
+      summary: 'Supplier leads waiting on a human verification call. Verify, restrict, or generate a claim link to onboard them.',
+      automation: 'Automated: discovery and enrichment populate the queue. A person reviews each lead before contact begins.',
+    },
+    projects: {
+      eyebrow: 'Imports',
+      title: 'Saved import projects',
+      summary: 'Import projects across all customers. Use this to clone a known-good project or recover one that was soft deleted.',
+      automation: 'Automated: import projects save and version automatically. Clone or soft delete only when a project needs admin help.',
+    },
+    partners: {
+      eyebrow: 'Partners',
+      title: 'Directory of brokers, truckers, warehouses, and forwarders',
+      summary: 'Each partner has capabilities such as customs brokerage or local delivery, with regions, lanes, and equipment. Used to route the right partner per shipment.',
+      automation: 'Automated: partners with active capabilities are matched to shipments by region and lane. Add a partner to start routing to them.',
+    },
   }
   const adminTabAudit: { view: AdminView; label: string; necessary: string; human: string }[] = [
     {
@@ -3464,6 +5393,36 @@ function App() {
       label: 'Audit log',
       necessary: 'Yes, but read-only. It is not daily work.',
       human: 'Investigate why automation or an operator made a decision.',
+    },
+    {
+      view: 'sentinel',
+      label: 'Sentinel SMS',
+      necessary: 'Yes. P0 and P1 alerts page real people, so this list must stay current.',
+      human: 'Add a phone, paste the confirm token, and remove people who leave the on-call rotation.',
+    },
+    {
+      view: 'growth',
+      label: 'Growth',
+      necessary: 'Yes. Acquisition and supplier-discovery have to be traceable to a source.',
+      human: 'Read the summary and click into events when a number looks wrong.',
+    },
+    {
+      view: 'suppliers',
+      label: 'Suppliers',
+      necessary: 'Yes for v1. Outreach is gated on a person verifying the lead.',
+      human: 'Verify, restrict, or reject a lead, then create a claim link if the supplier is approved.',
+    },
+    {
+      view: 'projects',
+      label: 'Imports',
+      necessary: 'Yes. Cloning a known-good import is the fastest way to start a repeat order.',
+      human: 'Clone, rename, or soft delete an import project on a customer request.',
+    },
+    {
+      view: 'partners',
+      label: 'Partners',
+      necessary: 'Yes. Routing a shipment to the right broker or trucker depends on this directory.',
+      human: 'Add a partner, attach a capability, and update contact details when a partner moves.',
     },
   ]
   const customerPhases: CustomerPhase[] = [
@@ -3793,6 +5752,41 @@ function App() {
     view,
     visibleSailing,
   ])
+
+  if (workspaceMode === 'broker-portal') {
+    const brokerToken = brokerTokenFromPath()
+    if (brokerToken) {
+      return <BrokerPortalView token={brokerToken} />
+    }
+  }
+
+  if (workspaceMode === 'warehouse-portal') {
+    const whToken = warehouseTokenFromPath()
+    if (whToken) {
+      return <WarehousePortalView token={whToken} />
+    }
+  }
+
+  if (workspaceMode === 'carrier-portal') {
+    const carrierToken = carrierTokenFromPath()
+    if (carrierToken) {
+      return <CarrierPortalView token={carrierToken} />
+    }
+  }
+
+  if (workspaceMode === 'trucker-portal') {
+    const truckerToken = truckerTokenFromPath()
+    if (truckerToken) {
+      return <TruckerPortalView token={truckerToken} />
+    }
+  }
+
+  if (workspaceMode === 'supplier-claim') {
+    const claimToken = supplierClaimTokenFromPath()
+    if (claimToken) {
+      return <SupplierClaimView token={claimToken} />
+    }
+  }
 
   if (workspaceMode === 'admin-login') {
     return (
@@ -4137,6 +6131,94 @@ function App() {
                   </div>
                 )}
               </section>
+
+              {activeBooking && (
+                <section className="panel admin-panel full">
+                  <div className="panel-heading">
+                    <div>
+                      <p className="eyebrow">Contingency options</p>
+                      <h2>{contingencyOptions.length} option{contingencyOptions.length === 1 ? '' : 's'} for {activeBooking.id}</h2>
+                    </div>
+                    <PackageCheck size={22} />
+                  </div>
+                  {contingencyMessage && <p style={{ color: '#059669' }}>{contingencyMessage}</p>}
+                  {contingencyError && <p style={{ color: '#dc2626' }}>{contingencyError}</p>}
+                  {contingencyOptions.length === 0 ? (
+                    <p>No contingency options proposed for this shipment.</p>
+                  ) : (
+                    <div className="decision-cards">
+                      {contingencyOptions.map((option) => (
+                        <article className="decision-card" key={option.id}>
+                          <header className="decision-card-head">
+                            <div>
+                              <h3>{option.option_type.replace(/_/g, ' ')}</h3>
+                              <p className="decision-card-summary">{option.plain_language_summary}</p>
+                            </div>
+                            <span
+                              className={`status-chip ${
+                                option.risk_level === 'high' ? '' :
+                                option.risk_level === 'medium' ? 'orange' : 'green'
+                              }`}
+                            >
+                              {option.risk_level} risk
+                            </span>
+                          </header>
+                          <dl className="decision-card-grid">
+                            <div>
+                              <dt>Issue</dt>
+                              <dd>{option.issue_type.replace(/_/g, ' ')}</dd>
+                            </div>
+                            {option.cost_impact_usd != null && (
+                              <div>
+                                <dt>Cost impact</dt>
+                                <dd>USD ${option.cost_impact_usd.toLocaleString()}</dd>
+                              </div>
+                            )}
+                            {option.time_impact_days != null && (
+                              <div>
+                                <dt>Time impact</dt>
+                                <dd>{option.time_impact_days} day{option.time_impact_days === 1 ? '' : 's'}</dd>
+                              </div>
+                            )}
+                            <div>
+                              <dt>Status</dt>
+                              <dd>{option.status}</dd>
+                            </div>
+                          </dl>
+                          {option.source_evidence && (
+                            <p style={{ fontSize: 13, color: '#64748b' }}>{option.source_evidence}</p>
+                          )}
+                          <div className="decision-card-actions">
+                            {(['approved', 'rejected', 'applied'] as ContingencyStatus[]).map((nextStatus) => (
+                              <button
+                                key={nextStatus}
+                                type="button"
+                                className={nextStatus === 'approved' ? 'primary-action small' : nextStatus === 'rejected' ? 'secondary-action small' : 'ghost-action small'}
+                                disabled={option.status === nextStatus}
+                                onClick={async () => {
+                                  setContingencyMessage(null)
+                                  setContingencyError(null)
+                                  try {
+                                    await updateContingencyOption(option.id, { status: nextStatus })
+                                    if (activeBooking) {
+                                      setContingencyOptions(await listContingencyOptions(activeBooking.id))
+                                    }
+                                    setContingencyMessage(`Marked ${option.option_type.replace(/_/g, ' ')} as ${nextStatus}.`)
+                                  } catch (err) {
+                                    setContingencyError(err instanceof Error ? err.message : 'Could not update option')
+                                  }
+                                }}
+                              >
+                                {nextStatus === 'approved' ? 'Approve' : nextStatus === 'rejected' ? 'Reject' : 'Mark applied'}
+                              </button>
+                            ))}
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              )}
 
               <section className="panel admin-panel full">
                 <div className="panel-heading">
@@ -4574,6 +6656,1043 @@ function App() {
                   ))}
                 </div>
               </section>
+
+              <section className="panel admin-panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">Audit search</p>
+                    <h2>Filter the full audit log.</h2>
+                  </div>
+                  <ClipboardCheck size={24} />
+                </div>
+                <form
+                  className="audit-filter-form"
+                  onSubmit={async (event) => {
+                    event.preventDefault()
+                    setAuditLoading(true)
+                    setAuditError(null)
+                    try {
+                      const cleaned: AuditEventFilters = {}
+                      for (const [key, value] of Object.entries(auditFilterDraft)) {
+                        if (value !== undefined && value !== null && value !== '') {
+                          ;(cleaned as Record<string, unknown>)[key] = value
+                        }
+                      }
+                      setAuditFilters(cleaned)
+                      const events = await getAuditEvents(cleaned)
+                      setAuditResults(events)
+                    } catch (err) {
+                      setAuditError(err instanceof Error ? err.message : 'Could not load audit events.')
+                    } finally {
+                      setAuditLoading(false)
+                    }
+                  }}
+                  style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', alignItems: 'end' }}
+                >
+                  <label>
+                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Actor id</span>
+                    <input
+                      type="text"
+                      value={auditFilterDraft.actor_id ?? ''}
+                      placeholder="any"
+                      onChange={(e) => setAuditFilterDraft((d) => ({ ...d, actor_id: e.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Actor role</span>
+                    <select
+                      value={auditFilterDraft.actor_role ?? ''}
+                      onChange={(e) =>
+                        setAuditFilterDraft((d) => ({
+                          ...d,
+                          actor_role: (e.target.value || undefined) as AuditEventFilters['actor_role'],
+                        }))
+                      }
+                    >
+                      <option value="">any</option>
+                      <option value="importer">importer</option>
+                      <option value="admin">admin</option>
+                      <option value="system">system</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Event type</span>
+                    <input
+                      type="text"
+                      value={auditFilterDraft.event_type ?? ''}
+                      placeholder="e.g. approval_decided"
+                      onChange={(e) => setAuditFilterDraft((d) => ({ ...d, event_type: e.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Entity type</span>
+                    <input
+                      type="text"
+                      value={auditFilterDraft.entity_type ?? ''}
+                      placeholder="e.g. booking"
+                      onChange={(e) => setAuditFilterDraft((d) => ({ ...d, entity_type: e.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Entity id</span>
+                    <input
+                      type="text"
+                      value={auditFilterDraft.entity_id ?? ''}
+                      placeholder="e.g. BKG-0001"
+                      onChange={(e) => setAuditFilterDraft((d) => ({ ...d, entity_id: e.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Since</span>
+                    <input
+                      type="date"
+                      value={auditFilterDraft.since ?? ''}
+                      onChange={(e) => setAuditFilterDraft((d) => ({ ...d, since: e.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Until</span>
+                    <input
+                      type="date"
+                      value={auditFilterDraft.until ?? ''}
+                      onChange={(e) => setAuditFilterDraft((d) => ({ ...d, until: e.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Limit</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={1000}
+                      value={auditFilterDraft.limit ?? ''}
+                      placeholder="200"
+                      onChange={(e) =>
+                        setAuditFilterDraft((d) => ({
+                          ...d,
+                          limit: e.target.value ? Number(e.target.value) : undefined,
+                        }))
+                      }
+                    />
+                  </label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button type="submit" className="primary" disabled={auditLoading}>
+                      {auditLoading ? 'Filtering' : 'Filter'}
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost"
+                      onClick={() => {
+                        setAuditFilterDraft({})
+                        setAuditFilters({})
+                        setAuditResults(null)
+                        setAuditError(null)
+                      }}
+                    >
+                      Reset
+                    </button>
+                  </div>
+                </form>
+                {auditError && <p style={{ color: '#dc2626', marginTop: 12 }}>{auditError}</p>}
+                {auditResults !== null && (
+                  <div style={{ marginTop: 16 }}>
+                    <p style={{ fontSize: 13, color: '#64748b' }}>
+                      {auditResults.length} event{auditResults.length === 1 ? '' : 's'}
+                      {Object.keys(auditFilters).length > 0 ? ' match the filters.' : '.'}
+                    </p>
+                    {auditResults.length === 0 ? (
+                      <p>No matching audit events.</p>
+                    ) : (
+                      <table className="data-table">
+                        <thead>
+                          <tr>
+                            <th>When</th>
+                            <th>Actor</th>
+                            <th>Event</th>
+                            <th>Entity</th>
+                            <th>Message</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {auditResults.map((event) => (
+                            <tr key={event.id}>
+                              <td>{new Date(event.created_at).toLocaleString()}</td>
+                              <td>
+                                {event.actor_role} / {event.actor_id}
+                              </td>
+                              <td>{event.event_type}</td>
+                              <td>
+                                {event.entity_type} / {event.entity_id}
+                              </td>
+                              <td>{event.message}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                )}
+              </section>
+            </div>
+          )}
+
+          {adminView === 'partners' && (
+            <div className="workspace admin-workspace">
+              <section className="panel admin-panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">Add a partner</p>
+                    <h2>Drop a broker, trucker, warehouse, or forwarder into the directory.</h2>
+                  </div>
+                  <UserRound size={22} />
+                </div>
+                <form
+                  style={{ display: 'grid', gap: 12 }}
+                  onSubmit={async (event) => {
+                    event.preventDefault()
+                    setPartnerMessage(null)
+                    setPartnerError(null)
+                    if (!partnerDraft.name.trim()) return
+                    try {
+                      await createPartner({
+                        name: partnerDraft.name.trim(),
+                        partner_type: partnerDraft.partner_type,
+                        contact_email: partnerDraft.contact_email || null,
+                        contact_phone: partnerDraft.contact_phone || null,
+                        preferred_channel: partnerDraft.preferred_channel,
+                        notes: partnerDraft.notes || null,
+                      })
+                      setPartners(await listPartners())
+                      setPartnerDraft({
+                        name: '',
+                        partner_type: 'broker',
+                        contact_email: '',
+                        contact_phone: '',
+                        preferred_channel: 'email',
+                        notes: '',
+                      })
+                      setPartnerMessage('Partner added.')
+                    } catch (err) {
+                      setPartnerError(err instanceof Error ? err.message : 'Could not add partner')
+                    }
+                  }}
+                >
+                  <div className="form-grid two">
+                    <label>
+                      <span>Name</span>
+                      <input
+                        value={partnerDraft.name}
+                        onChange={(e) => setPartnerDraft((d) => ({ ...d, name: e.target.value }))}
+                        required
+                      />
+                    </label>
+                    <label>
+                      <span>Type</span>
+                      <select
+                        value={partnerDraft.partner_type}
+                        onChange={(e) =>
+                          setPartnerDraft((d) => ({ ...d, partner_type: e.target.value as PartnerType }))
+                        }
+                      >
+                        <option value="supplier">Supplier</option>
+                        <option value="courier">Courier</option>
+                        <option value="broker">Broker</option>
+                        <option value="forwarder">Forwarder</option>
+                        <option value="warehouse">Warehouse</option>
+                        <option value="destination_agent">Destination agent</option>
+                        <option value="trucker">Trucker</option>
+                        <option value="inspection">Inspection</option>
+                        <option value="customs">Customs</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div className="form-grid three">
+                    <label>
+                      <span>Contact email</span>
+                      <input
+                        type="email"
+                        value={partnerDraft.contact_email}
+                        onChange={(e) => setPartnerDraft((d) => ({ ...d, contact_email: e.target.value }))}
+                      />
+                    </label>
+                    <label>
+                      <span>Contact phone</span>
+                      <input
+                        type="tel"
+                        value={partnerDraft.contact_phone}
+                        onChange={(e) => setPartnerDraft((d) => ({ ...d, contact_phone: e.target.value }))}
+                      />
+                    </label>
+                    <label>
+                      <span>Preferred channel</span>
+                      <select
+                        value={partnerDraft.preferred_channel}
+                        onChange={(e) =>
+                          setPartnerDraft((d) => ({ ...d, preferred_channel: e.target.value as PartnerCommunicationChannel }))
+                        }
+                      >
+                        <option value="email">Email</option>
+                        <option value="sms">SMS</option>
+                        <option value="whatsapp">WhatsApp</option>
+                        <option value="wechat">WeChat</option>
+                        <option value="portal">Portal</option>
+                      </select>
+                    </label>
+                  </div>
+                  <label>
+                    <span>Notes</span>
+                    <input
+                      value={partnerDraft.notes}
+                      onChange={(e) => setPartnerDraft((d) => ({ ...d, notes: e.target.value }))}
+                    />
+                  </label>
+                  <button type="submit" className="primary">Add partner</button>
+                </form>
+                {partnerMessage && <p style={{ color: '#059669', marginTop: 8 }}>{partnerMessage}</p>}
+                {partnerError && <p style={{ color: '#dc2626', marginTop: 8 }}>{partnerError}</p>}
+              </section>
+
+              <section className="panel admin-panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">Partners</p>
+                    <h2>{partners.length} partner{partners.length === 1 ? '' : 's'}</h2>
+                  </div>
+                  <label>
+                    <span style={{ fontSize: 12, color: '#64748b' }}>Type filter</span>
+                    <select
+                      value={partnerTypeFilter}
+                      onChange={(e) => setPartnerTypeFilter(e.target.value as PartnerType | 'all')}
+                    >
+                      <option value="all">All</option>
+                      <option value="supplier">Supplier</option>
+                      <option value="courier">Courier</option>
+                      <option value="broker">Broker</option>
+                      <option value="forwarder">Forwarder</option>
+                      <option value="warehouse">Warehouse</option>
+                      <option value="destination_agent">Destination agent</option>
+                      <option value="trucker">Trucker</option>
+                      <option value="inspection">Inspection</option>
+                      <option value="customs">Customs</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </label>
+                </div>
+                {partners.length === 0 ? (
+                  <p>No partners in the directory yet.</p>
+                ) : (
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Contact</th>
+                        <th>Channel</th>
+                        <th>Active</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {partners
+                        .filter((p) => partnerTypeFilter === 'all' || p.partner_type === partnerTypeFilter)
+                        .map((partner) => (
+                          <tr key={partner.id} style={{ background: activePartnerId === partner.id ? '#fff8f3' : undefined }}>
+                            <td><strong>{partner.name}</strong></td>
+                            <td>{partner.partner_type.replace('_', ' ')}</td>
+                            <td>
+                              {partner.contact_email ?? '—'}
+                              {partner.contact_phone && <><br />{partner.contact_phone}</>}
+                            </td>
+                            <td>{partner.preferred_channel}</td>
+                            <td>
+                              <span className={`status-chip ${partner.active ? 'green' : ''}`}>
+                                {partner.active ? 'Active' : 'Inactive'}
+                              </span>
+                            </td>
+                            <td>
+                              <button
+                                type="button"
+                                className="ghost-action small"
+                                onClick={() =>
+                                  setActivePartnerId((current) => (current === partner.id ? null : partner.id))
+                                }
+                              >
+                                {activePartnerId === partner.id ? 'Hide capabilities' : 'View capabilities'}
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                )}
+              </section>
+
+              {activePartnerId && (
+                <section className="panel admin-panel">
+                  <div className="panel-heading">
+                    <div>
+                      <p className="eyebrow">Capabilities</p>
+                      <h2>{partners.find((p) => p.id === activePartnerId)?.name ?? 'Partner'}</h2>
+                    </div>
+                    <PackageCheck size={22} />
+                  </div>
+                  {partnerCapabilities.length === 0 ? (
+                    <p>No capabilities yet for this partner.</p>
+                  ) : (
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Capability</th>
+                          <th>Regions</th>
+                          <th>Lanes</th>
+                          <th>Hours</th>
+                          <th>Active</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {partnerCapabilities.map((cap) => (
+                          <tr key={cap.id}>
+                            <td>{cap.capability_type.replace('_', ' ')}</td>
+                            <td>{cap.service_regions.join(', ') || '—'}</td>
+                            <td>{cap.service_lanes.join(', ') || '—'}</td>
+                            <td>{cap.operating_hours ?? '—'}</td>
+                            <td>
+                              <span className={`status-chip ${cap.active ? 'green' : ''}`}>
+                                {cap.active ? 'Active' : 'Inactive'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                  <h3 style={{ fontSize: 14, marginTop: 16 }}>Add a capability</h3>
+                  <form
+                    style={{ display: 'grid', gap: 8 }}
+                    onSubmit={async (event) => {
+                      event.preventDefault()
+                      setPartnerMessage(null)
+                      setPartnerError(null)
+                      if (!activePartnerId) return
+                      try {
+                        await createPartnerCapability(activePartnerId, {
+                          capability_type: capabilityDraft.capability_type,
+                          service_regions: capabilityDraft.service_regions
+                            .split(',')
+                            .map((s) => s.trim())
+                            .filter(Boolean),
+                          service_lanes: capabilityDraft.service_lanes
+                            .split(',')
+                            .map((s) => s.trim())
+                            .filter(Boolean),
+                          operating_hours: capabilityDraft.operating_hours || null,
+                        })
+                        setPartnerCapabilities(await listPartnerCapabilities(activePartnerId))
+                        setCapabilityDraft({
+                          capability_type: 'customs_brokerage',
+                          service_regions: '',
+                          service_lanes: '',
+                          operating_hours: '',
+                        })
+                        setPartnerMessage('Capability added.')
+                      } catch (err) {
+                        setPartnerError(err instanceof Error ? err.message : 'Could not add capability')
+                      }
+                    }}
+                  >
+                    <div className="form-grid two">
+                      <label>
+                        <span>Capability</span>
+                        <select
+                          value={capabilityDraft.capability_type}
+                          onChange={(e) =>
+                            setCapabilityDraft((d) => ({ ...d, capability_type: e.target.value as PartnerCapabilityType }))
+                          }
+                        >
+                          <option value="supplier_production">Supplier production</option>
+                          <option value="origin_pickup">Origin pickup</option>
+                          <option value="inspection">Inspection</option>
+                          <option value="warehouse_receipt">Warehouse receipt</option>
+                          <option value="customs_brokerage">Customs brokerage</option>
+                          <option value="port_drayage">Port drayage</option>
+                          <option value="local_delivery">Local delivery</option>
+                          <option value="freight_forwarding">Freight forwarding</option>
+                          <option value="payment_support">Payment support</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>Operating hours</span>
+                        <input
+                          value={capabilityDraft.operating_hours}
+                          onChange={(e) => setCapabilityDraft((d) => ({ ...d, operating_hours: e.target.value }))}
+                          placeholder="e.g. Mon-Fri 09:00-17:00 AEST"
+                        />
+                      </label>
+                    </div>
+                    <label>
+                      <span>Service regions (comma separated)</span>
+                      <input
+                        value={capabilityDraft.service_regions}
+                        onChange={(e) => setCapabilityDraft((d) => ({ ...d, service_regions: e.target.value }))}
+                        placeholder="VIC, NSW, QLD"
+                      />
+                    </label>
+                    <label>
+                      <span>Service lanes (comma separated)</span>
+                      <input
+                        value={capabilityDraft.service_lanes}
+                        onChange={(e) => setCapabilityDraft((d) => ({ ...d, service_lanes: e.target.value }))}
+                        placeholder="CN-AU, CN-US"
+                      />
+                    </label>
+                    <button type="submit" className="primary-action small">Add capability</button>
+                  </form>
+                </section>
+              )}
+            </div>
+          )}
+
+          {adminView === 'sentinel' && (
+            <div className="workspace admin-workspace">
+              <section className="panel admin-panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">Add a subscriber</p>
+                    <h2>Send a confirm token to a phone.</h2>
+                  </div>
+                  <MessageCircle size={22} />
+                </div>
+                <form
+                  className="audit-filter-form"
+                  style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, alignItems: 'end' }}
+                  onSubmit={async (event) => {
+                    event.preventDefault()
+                    setSentinelMessage(null)
+                    setSentinelError(null)
+                    if (!sentinelDraft.phone_number.trim()) return
+                    try {
+                      const subscriber = await createSentinelSubscriber(
+                        sentinelDraft.phone_number.trim(),
+                        sentinelDraft.label.trim() || undefined,
+                      )
+                      setSentinelDraft({ phone_number: '', label: '' })
+                      setSentinelSubscribers(await getSentinelSubscribers())
+                      setSentinelMessage(`Token for ${subscriber.phone_number}: ${subscriber.confirmation_token}`)
+                    } catch (err) {
+                      setSentinelError(err instanceof Error ? err.message : 'Could not add subscriber')
+                    }
+                  }}
+                >
+                  <label>
+                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Phone in E.164 format</span>
+                    <input
+                      type="tel"
+                      placeholder="+61..."
+                      value={sentinelDraft.phone_number}
+                      onChange={(e) => setSentinelDraft((d) => ({ ...d, phone_number: e.target.value }))}
+                      required
+                    />
+                  </label>
+                  <label>
+                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Label (optional)</span>
+                    <input
+                      type="text"
+                      placeholder="e.g. Mitch on-call"
+                      value={sentinelDraft.label}
+                      onChange={(e) => setSentinelDraft((d) => ({ ...d, label: e.target.value }))}
+                    />
+                  </label>
+                  <button type="submit" className="primary">Send confirm token</button>
+                </form>
+                {sentinelMessage && <p style={{ color: '#059669', marginTop: 12 }}>{sentinelMessage}</p>}
+                {sentinelError && <p style={{ color: '#dc2626', marginTop: 12 }}>{sentinelError}</p>}
+              </section>
+
+              <section className="panel admin-panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">Confirm a subscriber</p>
+                    <h2>Paste the token the phone replied with.</h2>
+                  </div>
+                  <MessageCircle size={22} />
+                </div>
+                <form
+                  style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}
+                  onSubmit={async (event) => {
+                    event.preventDefault()
+                    setSentinelMessage(null)
+                    setSentinelError(null)
+                    if (!sentinelConfirmToken.trim()) return
+                    try {
+                      const subscriber = await confirmSentinelSubscriber(sentinelConfirmToken.trim())
+                      setSentinelConfirmToken('')
+                      setSentinelSubscribers(await getSentinelSubscribers())
+                      setSentinelMessage(`${subscriber.phone_number} is now active.`)
+                    } catch (err) {
+                      setSentinelError(err instanceof Error ? err.message : 'Could not confirm subscriber')
+                    }
+                  }}
+                >
+                  <label style={{ flex: 1, minWidth: 220 }}>
+                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Confirmation token</span>
+                    <input
+                      type="text"
+                      placeholder="6-character token"
+                      value={sentinelConfirmToken}
+                      onChange={(e) => setSentinelConfirmToken(e.target.value)}
+                      required
+                    />
+                  </label>
+                  <button type="submit" className="primary">Confirm</button>
+                </form>
+              </section>
+
+              <section className="panel admin-panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">Subscribers</p>
+                    <h2>{sentinelSubscribers.length} on the list.</h2>
+                  </div>
+                  <Bell size={22} />
+                </div>
+                {sentinelSubscribers.length === 0 ? (
+                  <p>No subscribers yet. Add a phone above to start receiving alerts.</p>
+                ) : (
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Phone</th>
+                        <th>Label</th>
+                        <th>Status</th>
+                        <th>Confirmed</th>
+                        <th>Created</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sentinelSubscribers.map((sub) => (
+                        <tr key={sub.id}>
+                          <td>{sub.phone_number}</td>
+                          <td>{sub.label ?? '—'}</td>
+                          <td>
+                            <span className={`status-chip ${sub.status === 'active' ? 'green' : sub.status === 'pending' ? 'orange' : ''}`}>
+                              {sub.status === 'active' ? 'Active' : sub.status === 'pending' ? 'Pending' : 'Opted out'}
+                            </span>
+                          </td>
+                          <td>{sub.confirmed_at ? formatDateFriendly(sub.confirmed_at) : '—'}</td>
+                          <td>{formatDateFriendly(sub.created_at)}</td>
+                          <td>
+                            {sub.status !== 'opted_out' && (
+                              <button
+                                type="button"
+                                className="ghost-action small"
+                                onClick={async () => {
+                                  setSentinelMessage(null)
+                                  setSentinelError(null)
+                                  try {
+                                    await optOutSentinelSubscriber(sub.phone_number)
+                                    setSentinelSubscribers(await getSentinelSubscribers())
+                                    setSentinelMessage(`${sub.phone_number} has opted out.`)
+                                  } catch (err) {
+                                    setSentinelError(err instanceof Error ? err.message : 'Opt-out failed')
+                                  }
+                                }}
+                              >
+                                Opt out
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </section>
+            </div>
+          )}
+
+          {adminView === 'growth' && (
+            <div className="workspace admin-workspace">
+              <section className="panel admin-panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">Attribution summary</p>
+                    <h2>Where the leads, signups, and shipments came from.</h2>
+                  </div>
+                  <LineChart size={22} />
+                </div>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 12 }}>
+                  <label>
+                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Group by</span>
+                    <select
+                      value={growthGroupBy}
+                      onChange={(e) => setGrowthGroupBy(e.target.value as typeof growthGroupBy)}
+                    >
+                      <option value="source">Source</option>
+                      <option value="channel">Channel</option>
+                      <option value="category">Category</option>
+                      <option value="region">Region</option>
+                      <option value="event_type">Event type</option>
+                      <option value="campaign">Campaign</option>
+                    </select>
+                  </label>
+                </div>
+                {growthError && <p style={{ color: '#dc2626' }}>{growthError}</p>}
+                {growthSummary && (
+                  <>
+                    <p style={{ fontSize: 13, color: '#64748b' }}>
+                      {growthSummary.total_events} event{growthSummary.total_events === 1 ? '' : 's'} totalling USD ${growthSummary.total_value_usd.toLocaleString()}
+                    </p>
+                    {growthSummary.rows.length === 0 ? (
+                      <p>No events match yet.</p>
+                    ) : (
+                      <table className="data-table">
+                        <thead>
+                          <tr>
+                            <th>{growthGroupBy.replace('_', ' ')}</th>
+                            <th>Events</th>
+                            <th>Value (USD)</th>
+                            <th>Unique leads</th>
+                            <th>Unique shipments</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {growthSummary.rows.map((row) => (
+                            <tr key={row.group_key}>
+                              <td>{row.group_key}</td>
+                              <td>{row.event_count}</td>
+                              <td>${row.total_value_usd.toLocaleString()}</td>
+                              <td>{row.unique_supplier_leads}</td>
+                              <td>{row.unique_shipments}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </>
+                )}
+              </section>
+
+              <section className="panel admin-panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">Recent events</p>
+                    <h2>{growthEvents.length} event{growthEvents.length === 1 ? '' : 's'}</h2>
+                  </div>
+                  <ClipboardCheck size={22} />
+                </div>
+                {growthEvents.length === 0 ? (
+                  <p>No attribution events yet.</p>
+                ) : (
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>When</th>
+                        <th>Type</th>
+                        <th>Source</th>
+                        <th>Channel</th>
+                        <th>Category</th>
+                        <th>Value (USD)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {growthEvents.map((event) => (
+                        <tr key={event.id}>
+                          <td>{new Date(event.occurred_at).toLocaleString()}</td>
+                          <td>{event.event_type.replaceAll('_', ' ')}</td>
+                          <td>{event.source}</td>
+                          <td>{event.channel ?? '—'}</td>
+                          <td>{event.category ?? '—'}</td>
+                          <td>{event.value_usd != null ? `$${event.value_usd.toLocaleString()}` : '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </section>
+            </div>
+          )}
+
+          {adminView === 'suppliers' && (
+            <div className="workspace admin-workspace">
+              <section className="panel admin-panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">Verification queue</p>
+                    <h2>{supplierLeads.length} lead{supplierLeads.length === 1 ? '' : 's'}</h2>
+                  </div>
+                  <UserCheck size={22} />
+                </div>
+                {supplierMessage && <p style={{ color: '#059669', marginBottom: 12 }}>{supplierMessage}</p>}
+                {supplierError && <p style={{ color: '#dc2626', marginBottom: 12 }}>{supplierError}</p>}
+                {supplierLeads.length === 0 ? (
+                  <p>No supplier leads yet.</p>
+                ) : (
+                  <div className="decision-cards">
+                    {supplierLeads.map((lead) => {
+                      const draft = supplierVerifyDraft[lead.id] ?? {
+                        status: lead.verification_status,
+                        notes: lead.verification_notes ?? '',
+                      }
+                      return (
+                        <article className="decision-card" key={lead.id}>
+                          <header className="decision-card-head">
+                            <div>
+                              <h3>{lead.company_name}</h3>
+                              <p className="decision-card-summary">
+                                {lead.city ? `${lead.city}, ` : ''}{lead.country} · score {Math.round(lead.lead_score)}
+                              </p>
+                            </div>
+                            <span
+                              className={`status-chip ${
+                                lead.verification_status === 'verified' ? 'green' :
+                                lead.verification_status === 'rejected' ? '' :
+                                lead.verification_status === 'restricted' ? 'orange' : 'orange'
+                              }`}
+                            >
+                              {lead.verification_status.replace('_', ' ')}
+                            </span>
+                          </header>
+                          <dl className="decision-card-grid">
+                            <div>
+                              <dt>Source</dt>
+                              <dd>{lead.discovery_source.replace('_', ' ')}</dd>
+                            </div>
+                            {lead.public_email && (
+                              <div>
+                                <dt>Public email</dt>
+                                <dd>{lead.public_email}</dd>
+                              </div>
+                            )}
+                            {lead.public_phone && (
+                              <div>
+                                <dt>Public phone</dt>
+                                <dd>{lead.public_phone}</dd>
+                              </div>
+                            )}
+                            <div>
+                              <dt>Outreach</dt>
+                              <dd>{lead.outreach_status.replace('_', ' ')}</dd>
+                            </div>
+                          </dl>
+                          {lead.fit_reason && (
+                            <p style={{ fontSize: 13, color: '#64748b' }}>{lead.fit_reason}</p>
+                          )}
+                          <form
+                            style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}
+                            onSubmit={async (event) => {
+                              event.preventDefault()
+                              setSupplierMessage(null)
+                              setSupplierError(null)
+                              try {
+                                await updateSupplierLeadVerification(lead.id, {
+                                  verification_status: draft.status,
+                                  verification_notes: draft.notes || undefined,
+                                })
+                                setSupplierLeads(await listSupplierLeads())
+                                setSupplierMessage(`${lead.company_name} marked ${draft.status.replace('_', ' ')}.`)
+                              } catch (err) {
+                                setSupplierError(err instanceof Error ? err.message : 'Verification failed')
+                              }
+                            }}
+                          >
+                            <label>
+                              <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>New status</span>
+                              <select
+                                value={draft.status}
+                                onChange={(e) =>
+                                  setSupplierVerifyDraft((s) => ({
+                                    ...s,
+                                    [lead.id]: { ...draft, status: e.target.value as SupplierVerificationStatus },
+                                  }))
+                                }
+                              >
+                                <option value="unverified">unverified</option>
+                                <option value="pending_review">pending review</option>
+                                <option value="verified">verified</option>
+                                <option value="restricted">restricted</option>
+                                <option value="rejected">rejected</option>
+                              </select>
+                            </label>
+                            <label style={{ flex: 1, minWidth: 200 }}>
+                              <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Notes</span>
+                              <input
+                                type="text"
+                                value={draft.notes}
+                                onChange={(e) =>
+                                  setSupplierVerifyDraft((s) => ({
+                                    ...s,
+                                    [lead.id]: { ...draft, notes: e.target.value },
+                                  }))
+                                }
+                              />
+                            </label>
+                            <button type="submit" className="primary-action small">
+                              Save verification
+                            </button>
+                            <button
+                              type="button"
+                              className="ghost-action small"
+                              onClick={async () => {
+                                setSupplierMessage(null)
+                                setSupplierError(null)
+                                try {
+                                  const claim = await createSupplierClaimLink(lead.id)
+                                  const url = `${window.location.origin}/supplier-claim/${claim.token}`
+                                  setSupplierMessage(`Claim link for ${lead.company_name}: ${url}`)
+                                  await navigator.clipboard?.writeText(url).catch(() => {})
+                                } catch (err) {
+                                  setSupplierError(err instanceof Error ? err.message : 'Could not generate claim link')
+                                }
+                              }}
+                            >
+                              Generate claim link
+                            </button>
+                          </form>
+                        </article>
+                      )
+                    })}
+                  </div>
+                )}
+              </section>
+            </div>
+          )}
+
+          {adminView === 'projects' && (
+            <div className="workspace admin-workspace">
+              <section className="panel admin-panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">Create import project</p>
+                    <h2>Start a fresh project from a title.</h2>
+                  </div>
+                  <FolderOpen size={22} />
+                </div>
+                <form
+                  style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}
+                  onSubmit={async (event) => {
+                    event.preventDefault()
+                    setImportProjectMessage(null)
+                    setImportProjectError(null)
+                    if (!importProjectDraft.title.trim()) return
+                    try {
+                      const created = await createImportProject({
+                        title: importProjectDraft.title.trim(),
+                        description: importProjectDraft.description.trim() || undefined,
+                      })
+                      setImportProjectDraft({ title: '', description: '' })
+                      setAdminImportProjects(await listImportProjects(includeDeletedProjects))
+                      setImportProjectMessage(`Created ${created.title}.`)
+                    } catch (err) {
+                      setImportProjectError(err instanceof Error ? err.message : 'Could not create project')
+                    }
+                  }}
+                >
+                  <label style={{ flex: 1, minWidth: 220 }}>
+                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Title</span>
+                    <input
+                      type="text"
+                      value={importProjectDraft.title}
+                      onChange={(e) => setImportProjectDraft((d) => ({ ...d, title: e.target.value }))}
+                      required
+                      minLength={2}
+                    />
+                  </label>
+                  <label style={{ flex: 1, minWidth: 220 }}>
+                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Description</span>
+                    <input
+                      type="text"
+                      value={importProjectDraft.description}
+                      onChange={(e) => setImportProjectDraft((d) => ({ ...d, description: e.target.value }))}
+                    />
+                  </label>
+                  <button type="submit" className="primary">Create</button>
+                </form>
+                {importProjectMessage && <p style={{ color: '#059669', marginTop: 12 }}>{importProjectMessage}</p>}
+                {importProjectError && <p style={{ color: '#dc2626', marginTop: 12 }}>{importProjectError}</p>}
+              </section>
+
+              <section className="panel admin-panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">Saved projects</p>
+                    <h2>{adminImportProjects.length} project{adminImportProjects.length === 1 ? '' : 's'}</h2>
+                  </div>
+                  <FolderOpen size={22} />
+                </div>
+                <label style={{ display: 'inline-flex', gap: 6, marginBottom: 12 }}>
+                  <input
+                    type="checkbox"
+                    checked={includeDeletedProjects}
+                    onChange={(e) => setIncludeDeletedProjects(e.target.checked)}
+                  />
+                  <span>Include soft-deleted</span>
+                </label>
+                {adminImportProjects.length === 0 ? (
+                  <p>No import projects yet.</p>
+                ) : (
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Title</th>
+                        <th>Status</th>
+                        <th>Current step</th>
+                        <th>Updated</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {adminImportProjects.map((project) => (
+                        <tr key={project.id}>
+                          <td>{project.title}</td>
+                          <td>{project.status ?? 'active'}</td>
+                          <td>{project.current_step}</td>
+                          <td>{project.updated_at ? formatDateFriendly(project.updated_at) : '—'}</td>
+                          <td style={{ display: 'flex', gap: 6 }}>
+                            <button
+                              type="button"
+                              className="ghost-action small"
+                              onClick={async () => {
+                                setImportProjectMessage(null)
+                                setImportProjectError(null)
+                                try {
+                                  const cloned = await cloneImportProject(project.id)
+                                  setAdminImportProjects(await listImportProjects(includeDeletedProjects))
+                                  setImportProjectMessage(`Cloned to ${cloned.title}.`)
+                                } catch (err) {
+                                  setImportProjectError(err instanceof Error ? err.message : 'Clone failed')
+                                }
+                              }}
+                            >
+                              Clone
+                            </button>
+                            {project.status !== 'deleted' && project.status !== 'deleted_pending_retention' && (
+                              <button
+                                type="button"
+                                className="ghost-action small"
+                                onClick={async () => {
+                                  if (!window.confirm(`Soft delete ${project.title}? It can be recovered for 30 days.`)) return
+                                  setImportProjectMessage(null)
+                                  setImportProjectError(null)
+                                  try {
+                                    await softDeleteImportProject(project.id)
+                                    setAdminImportProjects(await listImportProjects(includeDeletedProjects))
+                                    setImportProjectMessage(`Soft deleted ${project.title}.`)
+                                  } catch (err) {
+                                    setImportProjectError(err instanceof Error ? err.message : 'Delete failed')
+                                  }
+                                }}
+                              >
+                                Soft delete
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </section>
             </div>
           )}
         </main>
@@ -4736,39 +7855,96 @@ function App() {
               </div>
               <Bell size={22} />
             </div>
-            <ul className="approvals-list">
-              {allPendingApprovals.slice(0, 5).map((approval) => (
-                <li className="approval-item" key={approval.id}>
-                  <div className="approval-summary">
-                    <strong>{approval.title}</strong>
-                    <span>{approval.plain_language_summary}</span>
-                    {approval.amount_usd != null && (
-                      <em>USD ${approval.amount_usd.toLocaleString()}</em>
+            <div className="decision-cards">
+              {allPendingApprovals.slice(0, 5).map((approval) => {
+                const copy = decisionCardCopy(approval.request_type)
+                const reviewPending = Boolean(approval.review_requested_at)
+                return (
+                  <article className="decision-card" key={approval.id}>
+                    <header className="decision-card-head">
+                      <div>
+                        <h3>{approval.title}</h3>
+                        <p className="decision-card-summary">{approval.plain_language_summary}</p>
+                      </div>
+                      {reviewPending && (
+                        <span className="status-chip orange">Ship Hoppa is reviewing</span>
+                      )}
+                    </header>
+                    <dl className="decision-card-grid">
+                      {approval.amount_usd != null && (
+                        <div>
+                          <dt>Amount</dt>
+                          <dd>USD ${approval.amount_usd.toLocaleString()}</dd>
+                        </div>
+                      )}
+                      {approval.due_at && (
+                        <div>
+                          <dt>Needed by</dt>
+                          <dd>{formatDateFriendly(approval.due_at)}</dd>
+                        </div>
+                      )}
+                      {approval.related_booking_id && (
+                        <div>
+                          <dt>Shipment</dt>
+                          <dd>{approval.related_booking_id}</dd>
+                        </div>
+                      )}
+                      {approval.source_reference && (
+                        <div>
+                          <dt>Source</dt>
+                          <dd>{approval.source_reference}</dd>
+                        </div>
+                      )}
+                    </dl>
+                    <div className="decision-card-rationale">
+                      <div>
+                        <strong>Why this is needed</strong>
+                        <p>{copy.why}</p>
+                      </div>
+                      <div>
+                        <strong>If you approve</strong>
+                        <p>{copy.ifApproved}</p>
+                      </div>
+                      <div>
+                        <strong>If no one acts</strong>
+                        <p>{copy.ifNoAction}</p>
+                      </div>
+                    </div>
+                    {reviewPending && approval.review_requested_reason && (
+                      <p className="decision-card-review-note">
+                        Review requested: {approval.review_requested_reason}
+                      </p>
                     )}
-                    {approval.related_booking_id && (
-                      <small>Shipment {approval.related_booking_id}</small>
-                    )}
-                  </div>
-                  <div className="approval-actions">
-                    <button
-                      className="primary-action small"
-                      type="button"
-                      onClick={() => handleApprovalDecision(approval.id, 'approve')}
-                    >
-                      <Check size={14} />
-                      Approve
-                    </button>
-                    <button
-                      className="secondary-action small"
-                      type="button"
-                      onClick={() => handleApprovalDecision(approval.id, 'reject')}
-                    >
-                      Reject
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
+                    <div className="decision-card-actions">
+                      <button
+                        className="primary-action small"
+                        type="button"
+                        onClick={() => handleApprovalDecision(approval.id, 'approve')}
+                      >
+                        <Check size={14} />
+                        Approve
+                      </button>
+                      <button
+                        className="secondary-action small"
+                        type="button"
+                        onClick={() => handleApprovalDecision(approval.id, 'reject')}
+                      >
+                        Reject
+                      </button>
+                      <button
+                        className="ghost-action small"
+                        type="button"
+                        onClick={() => handleApprovalAskReview(approval.id)}
+                        disabled={reviewPending}
+                      >
+                        <MessageCircle size={14} />
+                        {reviewPending ? 'Review requested' : 'Ask Ship Hoppa'}
+                      </button>
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
             {allPendingApprovals.length > 5 && (
               <p className="approvals-overflow">
                 +{allPendingApprovals.length - 5} more pending. Open each shipment to review.
@@ -4969,7 +8145,20 @@ function App() {
                     <p className="eyebrow">Inbox</p>
                     <h2>Forwarded supplier and partner messages.</h2>
                   </div>
-                  <Bell size={24} />
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      className="ghost-action small"
+                      onClick={() => {
+                        setExtractionPreviewOpen(true)
+                        setExtractionPreviewResult(null)
+                        setExtractionPreviewError(null)
+                      }}
+                    >
+                      Try the parser
+                    </button>
+                    <Bell size={24} />
+                  </div>
                 </div>
                 <p className="tab-intro-copy">
                   Forward emails from suppliers, forwarders, brokers, or warehouses to your Ship Hoppa
@@ -5012,6 +8201,136 @@ function App() {
                       </li>
                     ))}
                   </ul>
+                )}
+
+                {extractionPreviewOpen && (
+                  <div
+                    className="modal-backdrop"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="Try the parser"
+                    onClick={() => setExtractionPreviewOpen(false)}
+                  >
+                    <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+                      <header className="modal-head">
+                        <div>
+                          <p className="eyebrow">Try the parser</p>
+                          <h2>Paste an email or note and see what we extract.</h2>
+                        </div>
+                        <button
+                          type="button"
+                          className="ghost-action small"
+                          onClick={() => setExtractionPreviewOpen(false)}
+                        >
+                          Close
+                        </button>
+                      </header>
+                      <p className="tab-intro-copy">
+                        This is a dry run. Nothing is saved and no shipment is updated. We show the
+                        facts we would have extracted, the confidence on each, and which order we
+                        would have matched.
+                      </p>
+                      <form
+                        onSubmit={async (event) => {
+                          event.preventDefault()
+                          setExtractionPreviewError(null)
+                          if (!extractionPreviewBody.trim()) return
+                          setExtractionPreviewLoading(true)
+                          try {
+                            const result = await extractFactsPreview(
+                              extractionPreviewBody,
+                              extractionPreviewSubject || undefined,
+                            )
+                            setExtractionPreviewResult(result)
+                          } catch (err) {
+                            setExtractionPreviewError(err instanceof Error ? err.message : 'Parse failed')
+                          } finally {
+                            setExtractionPreviewLoading(false)
+                          }
+                        }}
+                      >
+                        <label style={{ display: 'block', marginBottom: 12 }}>
+                          <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Subject (optional)</span>
+                          <input
+                            type="text"
+                            value={extractionPreviewSubject}
+                            onChange={(e) => setExtractionPreviewSubject(e.target.value)}
+                            placeholder="e.g. Booking confirmation BKG-0123"
+                          />
+                        </label>
+                        <label style={{ display: 'block', marginBottom: 12 }}>
+                          <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Email or message body</span>
+                          <textarea
+                            rows={10}
+                            value={extractionPreviewBody}
+                            onChange={(e) => setExtractionPreviewBody(e.target.value)}
+                            placeholder="Paste the email or partner message text here…"
+                            required
+                            style={{ width: '100%', resize: 'vertical', fontFamily: 'inherit' }}
+                          />
+                        </label>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button type="submit" className="primary" disabled={extractionPreviewLoading}>
+                            {extractionPreviewLoading ? 'Parsing…' : 'Parse'}
+                          </button>
+                          <button
+                            type="button"
+                            className="ghost-action small"
+                            onClick={() => {
+                              setExtractionPreviewSubject('')
+                              setExtractionPreviewBody('')
+                              setExtractionPreviewResult(null)
+                              setExtractionPreviewError(null)
+                            }}
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      </form>
+                      {extractionPreviewError && (
+                        <p style={{ color: '#dc2626', marginTop: 12 }}>{extractionPreviewError}</p>
+                      )}
+                      {extractionPreviewResult && (
+                        <div style={{ marginTop: 16 }}>
+                          <p style={{ fontSize: 13, color: '#64748b' }}>
+                            {extractionPreviewResult.extracted_count} fact{extractionPreviewResult.extracted_count === 1 ? '' : 's'} found.
+                            {' '}
+                            {extractionPreviewResult.would_match_booking_id
+                              ? `Would attach to ${extractionPreviewResult.would_match_booking_id}.`
+                              : 'No matching order detected.'}
+                          </p>
+                          {extractionPreviewResult.facts.length === 0 ? (
+                            <p>No facts were extracted from this text.</p>
+                          ) : (
+                            <table className="data-table">
+                              <thead>
+                                <tr>
+                                  <th>Field</th>
+                                  <th>Value</th>
+                                  <th>Confidence</th>
+                                  <th>Source</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {extractionPreviewResult.facts.map((fact, idx) => (
+                                  <tr key={`${fact.field}-${idx}`}>
+                                    <td>{fact.field}</td>
+                                    <td>{fact.value}</td>
+                                    <td>
+                                      <span className={`status-chip ${fact.confidence === 'verified' ? 'green' : fact.confidence === 'estimated' ? 'orange' : 'gray'}`}>
+                                        {fact.confidence}
+                                      </span>
+                                    </td>
+                                    <td style={{ maxWidth: 320, fontSize: 12, color: '#64748b' }}>{fact.source_snippet}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 )}
               </section>
             )}
@@ -5279,7 +8598,7 @@ function App() {
                     </div>
                     <div className="document-review-grid">
                       <DetailTile icon={<UserRound size={18} />} label="Supplier access" value={supplierLink ? 'Link created' : 'Not invited'} />
-                      <DetailTile icon={<CalendarClock size={18} />} label="Ready date" value={formatDateShort(activeBooking?.cargo_ready_date_latest)} />
+                      <DetailTile icon={<CalendarClock size={18} />} label="Goods ready by" value={formatDateShort(activeBooking?.cargo_ready_date_latest)} />
                       <DetailTile icon={<FileText size={18} />} label="Supplier files" value={`${supplierPortal?.checklist.documents.length ?? 0}`} />
                     </div>
                     <div className="action-panel-buttons">
@@ -5291,13 +8610,245 @@ function App() {
                         <FileText size={15} />
                         Demo supplier upload
                       </button>
+                      <button
+                        className="secondary-action small"
+                        type="button"
+                        disabled={!activeBooking || supplierPreviewLoading}
+                        onClick={async () => {
+                          if (!activeBooking) return
+                          setSupplierPreviewOpen(true)
+                          setSupplierPreviewLoading(true)
+                          setSupplierPreviewError(null)
+                          setSupplierPreviewResult(null)
+                          try {
+                            const result = await getSupplierPortalPreview(activeBooking.id)
+                            setSupplierPreviewResult(result)
+                          } catch (err) {
+                            setSupplierPreviewError(err instanceof Error ? err.message : 'Could not load preview')
+                          } finally {
+                            setSupplierPreviewLoading(false)
+                          }
+                        }}
+                      >
+                        <UserRound size={15} />
+                        See what your supplier sees
+                      </button>
                       <button className="secondary-action small" type="button" onClick={() => setView('integrations')}>
                         <ArrowRight size={15} />
                         Account integrations
                       </button>
                     </div>
                   </section>
+
+                  <section className="form-section document-step">
+                    <div className="form-section-heading">
+                      <span>4</span>
+                      <div>
+                        <strong>Marketplace order</strong>
+                        <small>Capture where this order came from. We use this to keep one source of truth across Alibaba, 1688, Made-in-China, Global Sources, and direct suppliers.</small>
+                      </div>
+                    </div>
+                    {bookingMarketplaceOrders.length > 0 ? (
+                      <div className="document-review-grid">
+                        {bookingMarketplaceOrders.map((order) => (
+                          <DetailTile
+                            key={order.id}
+                            icon={<ClipboardCheck size={18} />}
+                            label={order.marketplace.replace('_', ' ')}
+                            value={order.external_order_id ?? 'No order ID captured'}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="tab-intro-copy">No marketplace order captured yet for {activeBooking?.id ?? 'this shipment'}.</p>
+                    )}
+                    {marketplaceMessage && <p style={{ color: '#059669' }}>{marketplaceMessage}</p>}
+                    {marketplaceError && <p style={{ color: '#dc2626' }}>{marketplaceError}</p>}
+                    <form
+                      style={{ display: 'grid', gap: 8 }}
+                      onSubmit={async (event) => {
+                        event.preventDefault()
+                        setMarketplaceMessage(null)
+                        setMarketplaceError(null)
+                        if (!activeBooking) return
+                        try {
+                          await recordMarketplaceOrder({
+                            booking_id: activeBooking.id,
+                            marketplace: marketplaceDraft.marketplace,
+                            external_order_id: marketplaceDraft.external_order_id || null,
+                            product_url: marketplaceDraft.product_url || null,
+                            payment_method: marketplaceDraft.payment_method || null,
+                            protection_notes: marketplaceDraft.notes || null,
+                            sync_method: 'manual',
+                          })
+                          setBookingMarketplaceOrders(await listMarketplaceOrders({ booking_id: activeBooking.id }))
+                          setMarketplaceDraft({
+                            marketplace: 'alibaba',
+                            external_order_id: '',
+                            product_url: '',
+                            payment_method: '',
+                            notes: '',
+                          })
+                          setMarketplaceMessage('Marketplace order saved.')
+                        } catch (err) {
+                          setMarketplaceError(err instanceof Error ? err.message : 'Could not save marketplace order')
+                        }
+                      }}
+                    >
+                      <div className="form-grid two">
+                        <label>
+                          <span>Source</span>
+                          <select
+                            value={marketplaceDraft.marketplace}
+                            onChange={(e) =>
+                              setMarketplaceDraft((d) => ({ ...d, marketplace: e.target.value as MarketplaceProvider }))
+                            }
+                          >
+                            <option value="alibaba">Alibaba</option>
+                            <option value="1688">1688</option>
+                            <option value="made_in_china">Made-in-China</option>
+                            <option value="global_sources">Global Sources</option>
+                            <option value="trading_company">Trading company</option>
+                            <option value="agent">Sourcing agent</option>
+                            <option value="direct_supplier">Direct supplier</option>
+                            <option value="other">Other</option>
+                          </select>
+                        </label>
+                        <label>
+                          <span>External order ID</span>
+                          <input
+                            value={marketplaceDraft.external_order_id}
+                            onChange={(e) => setMarketplaceDraft((d) => ({ ...d, external_order_id: e.target.value }))}
+                          />
+                        </label>
+                      </div>
+                      <div className="form-grid two">
+                        <label>
+                          <span>Product URL</span>
+                          <input
+                            value={marketplaceDraft.product_url}
+                            onChange={(e) => setMarketplaceDraft((d) => ({ ...d, product_url: e.target.value }))}
+                          />
+                        </label>
+                        <label>
+                          <span>Payment method</span>
+                          <input
+                            value={marketplaceDraft.payment_method}
+                            onChange={(e) => setMarketplaceDraft((d) => ({ ...d, payment_method: e.target.value }))}
+                            placeholder="e.g. Trade Assurance"
+                          />
+                        </label>
+                      </div>
+                      <label>
+                        <span>Notes</span>
+                        <input
+                          value={marketplaceDraft.notes}
+                          onChange={(e) => setMarketplaceDraft((d) => ({ ...d, notes: e.target.value }))}
+                        />
+                      </label>
+                      <button className="primary-action small" type="submit" disabled={!activeBooking}>
+                        Save marketplace order
+                      </button>
+                    </form>
+                  </section>
                 </div>
+
+                {supplierPreviewOpen && (
+                  <div
+                    className="modal-backdrop"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="Supplier portal preview"
+                    onClick={() => setSupplierPreviewOpen(false)}
+                  >
+                    <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+                      <header className="modal-head">
+                        <div>
+                          <span className="status-chip orange">Preview only</span>
+                          <h2>This is what the supplier sees on their portal.</h2>
+                        </div>
+                        <button
+                          type="button"
+                          className="ghost-action small"
+                          onClick={() => setSupplierPreviewOpen(false)}
+                        >
+                          Close
+                        </button>
+                      </header>
+                      {supplierPreviewLoading && <p>Loading preview…</p>}
+                      {supplierPreviewError && <p style={{ color: '#dc2626' }}>{supplierPreviewError}</p>}
+                      {supplierPreviewResult && (
+                        <div style={{ display: 'grid', gap: 16 }}>
+                          <section>
+                            <h3 style={{ fontSize: 15, marginBottom: 8 }}>Booking summary</h3>
+                            <dl className="decision-card-grid">
+                              <div>
+                                <dt>Order ID</dt>
+                                <dd>{supplierPreviewResult.booking.id}</dd>
+                              </div>
+                              <div>
+                                <dt>Goods</dt>
+                                <dd>{supplierPreviewResult.booking.cargo_description ?? '—'}</dd>
+                              </div>
+                              <div>
+                                <dt>Goods ready by</dt>
+                                <dd>{formatDateFriendly(supplierPreviewResult.booking.cargo_ready_date_latest)}</dd>
+                              </div>
+                              <div>
+                                <dt>Pickup city</dt>
+                                <dd>{supplierPreviewResult.booking.supplier_city}</dd>
+                              </div>
+                              <div>
+                                <dt>Volume</dt>
+                                <dd>{supplierPreviewResult.booking.cbm_estimate} CBM</dd>
+                              </div>
+                              <div>
+                                <dt>Weight</dt>
+                                <dd>{supplierPreviewResult.booking.weight_kg_estimate} kg</dd>
+                              </div>
+                              <div>
+                                <dt>Status</dt>
+                                <dd>{supplierPreviewResult.booking.status}</dd>
+                              </div>
+                            </dl>
+                          </section>
+                          <section>
+                            <h3 style={{ fontSize: 15, marginBottom: 8 }}>What the supplier is asked for</h3>
+                            <p style={{ color: '#64748b' }}>{supplierPreviewResult.supplier_instructions}</p>
+                          </section>
+                          <section>
+                            <h3 style={{ fontSize: 15, marginBottom: 8 }}>Documents on file</h3>
+                            {supplierPreviewResult.checklist.documents.length === 0 ? (
+                              <p>No documents yet.</p>
+                            ) : (
+                              <ul>
+                                {supplierPreviewResult.checklist.documents.map((doc) => (
+                                  <li key={doc.id}>
+                                    {doc.document_type} {' . '} {doc.status}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </section>
+                          <section>
+                            <h3 style={{ fontSize: 15, marginBottom: 8 }}>Recent events visible to supplier</h3>
+                            {supplierPreviewResult.events.length === 0 ? (
+                              <p>No events yet.</p>
+                            ) : (
+                              <ul>
+                                {supplierPreviewResult.events.slice(0, 8).map((event) => (
+                                  <li key={event.id}>
+                                    {event.label} {' . '} {formatDateFriendly(event.occurred_at ?? event.created_at)}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </section>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </section>
             )}
 
@@ -5676,12 +9227,12 @@ function App() {
                       />
                       <DetailTile
                         icon={<MapPin size={18} />}
-                        label="Warehouse cutoff"
+                        label="Arrive at warehouse by"
                         value={formatDateShort(match.booking.warehouse_receipt_cutoff ?? match.container.warehouse_receipt_cutoff_date)}
                       />
                       <DetailTile
                         icon={<Truck size={18} />}
-                        label="Supplier ready"
+                        label="Goods ready by"
                         value={formatDateShort(match.booking.latest_supplier_ready_date)}
                       />
                     </div>
@@ -6325,11 +9876,11 @@ function App() {
                     <div>
                       <span className="status-chip orange">{deliveryModeLabels[activeBooking?.delivery_mode ?? form.delivery_mode]}</span>
                       <h3>{activeBooking?.pickup_address ?? form.pickup_address ?? 'Pickup address needed'}</h3>
-                      <p>Pickup belongs in Ship because it controls warehouse receipt, cutoff feasibility, and container loading.</p>
+                      <p>Pickup belongs in Ship because it controls warehouse arrival, sailing feasibility, and container loading.</p>
                     </div>
                   </div>
                   <div className="hero-summary-grid">
-                    <DetailTile icon={<CalendarClock size={18} />} label="Warehouse cutoff" value={formatDateShort(activeBooking?.warehouse_receipt_cutoff ?? selectedContainer?.warehouse_receipt_cutoff_date)} />
+                    <DetailTile icon={<CalendarClock size={18} />} label="Arrive at warehouse by" value={formatDateShort(activeBooking?.warehouse_receipt_cutoff ?? selectedContainer?.warehouse_receipt_cutoff_date)} />
                     <DetailTile icon={<Truck size={18} />} label="Pickup window" value={`${formatDateShort(activeBooking?.pickup_window_start ?? form.pickup_window_start)} - ${formatDateShort(activeBooking?.pickup_window_end ?? form.pickup_window_end)}`} />
                     <DetailTile icon={<UserRound size={18} />} label="Contact" value={activeBooking?.pickup_contact_name ?? form.pickup_contact_name ?? 'TBC'} />
                   </div>
@@ -6358,14 +9909,14 @@ function App() {
                     <div className="form-section-heading">
                       <span>2</span>
                       <div>
-                        <strong>Cutoff protection</strong>
-                        <small>Pickup should only proceed if it can reach Ship Hoppa before warehouse receipt cutoff.</small>
+                        <strong>Make the sailing</strong>
+                        <small>Pickup should only proceed if cargo can reach the Ship Hoppa warehouse in time for the sailing.</small>
                       </div>
                     </div>
                     <div className="document-review-grid">
-                      <DetailTile icon={<CalendarClock size={18} />} label="Warehouse cutoff" value={formatDateShort(activeBooking?.warehouse_receipt_cutoff ?? selectedContainer?.warehouse_receipt_cutoff_date)} />
-                      <DetailTile icon={<Truck size={18} />} label="Latest supplier ready" value={formatDateShort(activeBooking?.latest_supplier_ready_date)} />
-                      <DetailTile icon={<Gauge size={18} />} label="Feasibility" value={activeBooking?.feasibility_status ? statusLabels[activeBooking.feasibility_status] : 'Not checked'} />
+                      <DetailTile icon={<CalendarClock size={18} />} label="Arrive at warehouse by" value={formatDateShort(activeBooking?.warehouse_receipt_cutoff ?? selectedContainer?.warehouse_receipt_cutoff_date)} />
+                      <DetailTile icon={<Truck size={18} />} label="Goods ready by" value={formatDateShort(activeBooking?.latest_supplier_ready_date)} />
+                      <DetailTile icon={<Gauge size={18} />} label="Can it make the sailing" value={activeBooking?.feasibility_status ? statusLabels[activeBooking.feasibility_status] : 'Not checked'} />
                     </div>
                   </section>
 
@@ -6407,6 +9958,43 @@ function App() {
                       </button>
                     </div>
                   </section>
+
+                  {activeBooking && activeBooking.delivery_mode !== 'ship_hoppa_pickup' && (
+                    <section className="form-section document-step">
+                      <div className="form-section-heading">
+                        <span>4</span>
+                        <div>
+                          <strong>Bring your warehouse into the workspace</strong>
+                          <small>
+                            Send a self-serve link your warehouse can open without an account. They confirm receipt with actual
+                            CBM, weight, and a photo, and the cargo timeline updates here.
+                          </small>
+                        </div>
+                      </div>
+                      <div className="broker-invite-block">
+                        <button
+                          className="primary-action small"
+                          type="button"
+                          onClick={handleInviteWarehouse}
+                          disabled={loading || !activeBooking}
+                        >
+                          <UserRound size={16} />
+                          Invite warehouse
+                        </button>
+                        {warehouseInviteMessage && <p className="muted">{warehouseInviteMessage}</p>}
+                        {warehouseLink && (
+                          <label className="broker-invite-url">
+                            <span>Warehouse link</span>
+                            <input
+                              readOnly
+                              value={`${globalThis.location?.origin ?? ''}/warehouse/${warehouseLink.token}`}
+                              onFocus={(event) => event.target.select()}
+                            />
+                          </label>
+                        )}
+                      </div>
+                    </section>
+                  )}
                 </div>
               </section>
             )}
@@ -6504,6 +10092,38 @@ function App() {
 	                  </div>
 	                )}
 	              </div>
+              {activeBooking?.container_id && (
+                <div className="broker-invite-block">
+                  <div>
+                    <strong>Bring your carrier into the workspace</strong>
+                    <p>
+                      Send a self-serve link your carrier can open without an account. They confirm ETA, mark loaded /
+                      departed / arrived, and upload the bill of lading. The existing ETA monitoring automation fires
+                      when arrival shifts, so you do not need to chase by email.
+                    </p>
+                  </div>
+                  <button
+                    className="primary-action small"
+                    type="button"
+                    onClick={handleInviteCarrier}
+                    disabled={loading || !activeBooking}
+                  >
+                    <Ship size={16} />
+                    Invite carrier
+                  </button>
+                  {carrierInviteMessage && <p className="muted">{carrierInviteMessage}</p>}
+                  {carrierLink && (
+                    <label className="broker-invite-url">
+                      <span>Carrier link</span>
+                      <input
+                        readOnly
+                        value={`${globalThis.location?.origin ?? ''}/carrier/${carrierLink.token}`}
+                        onFocus={(event) => event.target.select()}
+                      />
+                    </label>
+                  )}
+                </div>
+              )}
             </section>
             )}
 
@@ -6717,11 +10337,222 @@ function App() {
                     <div className="hero-summary-grid">
                       <DetailTile icon={<CircleDollarSign size={18} />} label="Invoice total" value={formatMoney(invoice?.total_usd)} />
                       <DetailTile icon={<ShieldCheck size={18} />} label="Release status" value={releaseStatus ? sourceLabel(releaseStatus.release_status) : 'Loading'} />
-                      <DetailTile icon={<Gauge size={18} />} label="Active holds" value={`${activeReleaseHolds.length}`} />
+                      <DetailTile icon={<Gauge size={18} />} label="Delivery holds" value={`${activeReleaseHolds.length}`} />
                     </div>
                   </div>
 
                   <InvoiceSheet invoice={invoice} booking={activeBooking} actionLabel="Pay invoice" loading={loading} onPay={handleMarkPaid} />
+
+                  {landedCostActual && (
+                    <section className="action-panel landed-cost-panel">
+                      <div>
+                        <span className={`status-chip ${landedCostActual.finalised_at ? 'green' : 'orange'}`}>
+                          {landedCostActual.finalised_at ? 'Final landed cost' : 'Landed cost in review'}
+                        </span>
+                        <h3>{formatMoney(landedCostActual.actual_total_usd)} actual total</h3>
+                        <p>
+                          {landedCostActual.estimated_total_usd != null
+                            ? `Estimate was ${formatMoney(landedCostActual.estimated_total_usd)}.`
+                            : 'No estimate captured yet.'}
+                          {landedCostActual.variance_amount_usd != null && (
+                            <>
+                              {' '}
+                              Variance{' '}
+                              <strong style={{ color: landedCostActual.variance_amount_usd < 0 ? '#059669' : '#dc2626' }}>
+                                {landedCostActual.variance_amount_usd >= 0 ? '+' : ''}
+                                {formatMoney(landedCostActual.variance_amount_usd)}
+                              </strong>
+                              {landedCostActual.variance_reason ? ` — ${landedCostActual.variance_reason}` : '.'}
+                            </>
+                          )}
+                        </p>
+                      </div>
+                    </section>
+                  )}
+
+                  <section className="action-panel landed-cost-panel">
+                    <div>
+                      <span className="status-chip blue">Payment proofs</span>
+                      <h3>{paymentProofs.length} proof{paymentProofs.length === 1 ? '' : 's'} on file</h3>
+                      <p>Record proof of any payment made outside Ship Hoppa: supplier deposit, freight invoice, duty, brokerage, or destination delivery. Ship Hoppa reconciles each proof against the matching invoice.</p>
+                    </div>
+                    {paymentProofs.length > 0 && (
+                      <table className="landed-cost-table">
+                        <thead>
+                          <tr>
+                            <th>Type</th>
+                            <th>Method</th>
+                            <th>Reference</th>
+                            <th style={{ textAlign: 'right' }}>Amount</th>
+                            <th>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {paymentProofs.map((proof) => (
+                            <tr key={proof.id}>
+                              <td>{proof.payment_type.replace('_', ' ')}</td>
+                              <td>{proof.payment_method.replace('_', ' ')}</td>
+                              <td>{proof.reference_number ?? '—'}</td>
+                              <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                                {proof.paid_currency} {proof.paid_amount.toLocaleString()}
+                              </td>
+                              <td>
+                                <span className={`status-chip ${
+                                  proof.reconciliation_status === 'matched' ? 'green' :
+                                  proof.reconciliation_status === 'variance' ? 'orange' :
+                                  proof.reconciliation_status === 'rejected' ? '' : 'orange'
+                                }`}>
+                                  {proof.reconciliation_status.replace('_', ' ')}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                    {paymentProofMessage && <p style={{ color: '#059669' }}>{paymentProofMessage}</p>}
+                    {paymentProofError && <p style={{ color: '#dc2626' }}>{paymentProofError}</p>}
+                    <form
+                      style={{ display: 'grid', gap: 8, marginTop: 12 }}
+                      onSubmit={async (event) => {
+                        event.preventDefault()
+                        setPaymentProofMessage(null)
+                        setPaymentProofError(null)
+                        if (!activeBooking) return
+                        const amount = Number(paymentProofDraft.paid_amount)
+                        if (!Number.isFinite(amount) || amount <= 0) {
+                          setPaymentProofError('Amount must be more than zero.')
+                          return
+                        }
+                        if (!paymentProofDraft.paid_at) {
+                          setPaymentProofError('Tell us when the payment was sent.')
+                          return
+                        }
+                        if (!paymentProofDraft.paid_by) {
+                          setPaymentProofError('Tell us who paid.')
+                          return
+                        }
+                        try {
+                          await recordPaymentProof(activeBooking.id, {
+                            payment_type: paymentProofDraft.payment_type,
+                            paid_amount: amount,
+                            paid_currency: paymentProofDraft.paid_currency || 'USD',
+                            paid_at: new Date(paymentProofDraft.paid_at).toISOString(),
+                            paid_by: paymentProofDraft.paid_by,
+                            payment_method: paymentProofDraft.payment_method,
+                            reference_number: paymentProofDraft.reference_number || null,
+                            notes: paymentProofDraft.notes || null,
+                          })
+                          setPaymentProofs(await listPaymentProofs(activeBooking.id))
+                          setPaymentProofDraft({
+                            payment_type: 'supplier_invoice',
+                            paid_amount: '',
+                            paid_currency: 'USD',
+                            paid_at: '',
+                            paid_by: '',
+                            payment_method: 'bank_transfer',
+                            reference_number: '',
+                            notes: '',
+                          })
+                          setPaymentProofMessage('Payment proof recorded. Ship Hoppa will reconcile.')
+                        } catch (err) {
+                          setPaymentProofError(err instanceof Error ? err.message : 'Could not record payment proof')
+                        }
+                      }}
+                    >
+                      <div className="form-grid two">
+                        <label>
+                          <span>Payment type</span>
+                          <select
+                            value={paymentProofDraft.payment_type}
+                            onChange={(e) =>
+                              setPaymentProofDraft((d) => ({ ...d, payment_type: e.target.value as PaymentProofType }))
+                            }
+                          >
+                            <option value="supplier_invoice">Supplier invoice</option>
+                            <option value="freight_invoice">Freight invoice</option>
+                            <option value="duty_gst">Duty + GST</option>
+                            <option value="customs_brokerage">Customs brokerage</option>
+                            <option value="destination_delivery">Destination delivery</option>
+                            <option value="other">Other</option>
+                          </select>
+                        </label>
+                        <label>
+                          <span>Method</span>
+                          <select
+                            value={paymentProofDraft.payment_method}
+                            onChange={(e) =>
+                              setPaymentProofDraft((d) => ({ ...d, payment_method: e.target.value as PaymentProofMethod }))
+                            }
+                          >
+                            <option value="bank_transfer">Bank transfer</option>
+                            <option value="card">Card</option>
+                            <option value="wise">Wise</option>
+                            <option value="ofx">OFX</option>
+                            <option value="other">Other</option>
+                          </select>
+                        </label>
+                      </div>
+                      <div className="form-grid three">
+                        <label>
+                          <span>Amount</span>
+                          <input
+                            type="number"
+                            min={0}
+                            step={0.01}
+                            value={paymentProofDraft.paid_amount}
+                            onChange={(e) => setPaymentProofDraft((d) => ({ ...d, paid_amount: e.target.value }))}
+                            required
+                          />
+                        </label>
+                        <label>
+                          <span>Currency</span>
+                          <input
+                            value={paymentProofDraft.paid_currency}
+                            onChange={(e) => setPaymentProofDraft((d) => ({ ...d, paid_currency: e.target.value.toUpperCase() }))}
+                          />
+                        </label>
+                        <label>
+                          <span>Paid on</span>
+                          <input
+                            type="date"
+                            value={paymentProofDraft.paid_at}
+                            onChange={(e) => setPaymentProofDraft((d) => ({ ...d, paid_at: e.target.value }))}
+                            required
+                          />
+                        </label>
+                      </div>
+                      <div className="form-grid two">
+                        <label>
+                          <span>Paid by</span>
+                          <input
+                            value={paymentProofDraft.paid_by}
+                            onChange={(e) => setPaymentProofDraft((d) => ({ ...d, paid_by: e.target.value }))}
+                            placeholder="Person or account that sent the funds"
+                            required
+                          />
+                        </label>
+                        <label>
+                          <span>Reference</span>
+                          <input
+                            value={paymentProofDraft.reference_number}
+                            onChange={(e) => setPaymentProofDraft((d) => ({ ...d, reference_number: e.target.value }))}
+                            placeholder="Bank reference or wire ID"
+                          />
+                        </label>
+                      </div>
+                      <label>
+                        <span>Notes</span>
+                        <input
+                          value={paymentProofDraft.notes}
+                          onChange={(e) => setPaymentProofDraft((d) => ({ ...d, notes: e.target.value }))}
+                        />
+                      </label>
+                      <button type="submit" className="primary-action small" disabled={!activeBooking}>
+                        Record payment proof
+                      </button>
+                    </form>
+                  </section>
 
                   {landedCost && landedCost.lines.length > 0 && (
                     <section className="action-panel landed-cost-panel">
@@ -6910,6 +10741,36 @@ function App() {
                     </article>
                   </div>
 
+                  <div className="broker-invite-block">
+                    <div>
+                      <strong>Bring your customs broker into the workspace</strong>
+                      <p>
+                        Send a self-serve link your broker can open without creating an account. They will see the goods,
+                        importer ABN, holds, and documents, and can submit clearance status updates back to this shipment.
+                      </p>
+                    </div>
+                    <button
+                      className="primary-action small"
+                      type="button"
+                      onClick={handleInviteBroker}
+                      disabled={loading || !activeBooking}
+                    >
+                      <UserRound size={16} />
+                      Invite broker
+                    </button>
+                    {brokerInviteMessage && <p className="muted">{brokerInviteMessage}</p>}
+                    {brokerLink && (
+                      <label className="broker-invite-url">
+                        <span>Broker link</span>
+                        <input
+                          readOnly
+                          value={`${globalThis.location?.origin ?? ''}/broker/${brokerLink.token}`}
+                          onFocus={(event) => event.target.select()}
+                        />
+                      </label>
+                    )}
+                  </div>
+
                   <div className="customs-plain-note">
                     <span className="status-chip blue">Estimate only</span>
                     <p>
@@ -6940,13 +10801,13 @@ function App() {
                         {releaseStatus?.can_release ? 'Ready to deliver' : 'Waiting for release'}
                       </span>
                       <h3>{profile.delivery_city}, {profile.delivery_country}</h3>
-                      <p>Delivery belongs in Clear because it should only book once customs, payment, and release holds are clear.</p>
+                      <p>Final delivery only books once customs, payment, and delivery holds are clear.</p>
                     </div>
                   </div>
                   <div className="hero-summary-grid">
                     <DetailTile icon={<ShieldCheck size={18} />} label="Release status" value={releaseStatus ? sourceLabel(releaseStatus.release_status) : 'Loading'} />
-                    <DetailTile icon={<Gauge size={18} />} label="Active holds" value={`${activeReleaseHolds.length}`} />
-                    <DetailTile icon={<Truck size={18} />} label="Delivery method" value={deliveryPlan ? deliveryPlanMethodLabels[deliveryPlan.delivery_method] : 'Loading'} />
+                    <DetailTile icon={<Gauge size={18} />} label="Delivery holds" value={`${activeReleaseHolds.length}`} />
+                    <DetailTile icon={<Truck size={18} />} label="Final delivery method" value={deliveryPlan ? deliveryPlanMethodLabels[deliveryPlan.delivery_method] : 'Loading'} />
                   </div>
                 </div>
                 {deliveryPlan ? (
@@ -7057,13 +10918,13 @@ function App() {
                         <span>2</span>
                         <div>
                           <strong>Release gate</strong>
-                          <small>Delivery booking stays blocked until customs, documents, payment, and review holds are clear.</small>
+                          <small>Final delivery booking stays blocked until customs, documents, payment, and review holds are clear.</small>
                         </div>
                       </div>
                       <div className="document-review-grid">
                         <DetailTile icon={<ShieldCheck size={18} />} label="Delivery status" value={sourceLabel(deliveryPlan.status)} />
-                        <DetailTile icon={<CircleDollarSign size={18} />} label="Trucking estimate" value={formatMoney(deliveryPlan.trucking_quote_usd)} />
-                        <DetailTile icon={<Gauge size={18} />} label="Release blockers" value={`${activeReleaseHolds.length}`} />
+                        <DetailTile icon={<CircleDollarSign size={18} />} label="Final delivery estimate" value={formatMoney(deliveryPlan.trucking_quote_usd)} />
+                        <DetailTile icon={<Gauge size={18} />} label="Delivery holds" value={`${activeReleaseHolds.length}`} />
                       </div>
                       <div className="hold-grid">
                         {activeReleaseHolds.length ? (
@@ -7117,6 +10978,278 @@ function App() {
                         <DetailTile icon={<FileText size={18} />} label="Proof of delivery" value={deliveryPlan.proof_of_delivery_storage_key ? 'Stored' : 'Waiting'} />
                         <DetailTile icon={<Check size={18} />} label="Delivered" value={deliveryPlan.delivered_at ? formatDateShort(deliveryPlan.delivered_at) : 'Not yet'} />
                       </div>
+                      <div className="broker-invite-block">
+                        <div>
+                          <strong>Bring your destination trucker into the workspace</strong>
+                          <p>
+                            Send a self-serve link your trucker can open without an account. They mark pickup scheduled,
+                            picked up from port, and delivered, then upload the proof of delivery. The release status gates
+                            the delivered marker so the trucker cannot close out a shipment with outstanding holds.
+                          </p>
+                        </div>
+                        <button
+                          className="primary-action small"
+                          type="button"
+                          onClick={handleInviteTrucker}
+                          disabled={loading || !activeBooking}
+                        >
+                          <Truck size={16} />
+                          Invite trucker
+                        </button>
+                        {truckerInviteMessage && <p className="muted">{truckerInviteMessage}</p>}
+                        {truckerLink && (
+                          <label className="broker-invite-url">
+                            <span>Trucker link</span>
+                            <input
+                              readOnly
+                              value={`${globalThis.location?.origin ?? ''}/trucker/${truckerLink.token}`}
+                              onFocus={(event) => event.target.select()}
+                            />
+                          </label>
+                        )}
+                      </div>
+                    </section>
+
+                    <section className="form-section document-step">
+                      <div className="form-section-heading">
+                        <span>4</span>
+                        <div>
+                          <strong>Delivery jobs</strong>
+                          <small>Each delivery leg has its own job: courier, pallet freight, port drayage, live unload, or warehouse drop. Jobs let you track multiple legs without losing the original delivery plan.</small>
+                        </div>
+                      </div>
+                      {deliveryJobs.length === 0 ? (
+                        <p className="tab-intro-copy">No delivery jobs yet for this shipment.</p>
+                      ) : (
+                        <div className="document-review-grid">
+                          {deliveryJobs.map((job) => (
+                            <DetailTile
+                              key={job.id}
+                              icon={<Truck size={18} />}
+                              label={job.mode.replace('_', ' ')}
+                              value={`${job.status.replace('_', ' ')}${job.quote_amount_usd != null ? ` . ${formatMoney(job.quote_amount_usd)}` : ''}`}
+                            />
+                          ))}
+                        </div>
+                      )}
+                      {deliveryJobs.length > 0 && (
+                        <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
+                          {deliveryJobs.map((job) => (
+                            <div key={`status-${job.id}`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span className="status-chip">{job.mode.replace('_', ' ')}</span>
+                              <select
+                                value={job.status}
+                                onChange={async (e) => {
+                                  setDeliveryJobMessage(null)
+                                  setDeliveryJobError(null)
+                                  try {
+                                    await updateDeliveryJob(job.id, { status: e.target.value as DeliveryJobStatus })
+                                    if (activeBooking) {
+                                      setDeliveryJobs(await listDeliveryJobsForBooking(activeBooking.id))
+                                    }
+                                    setDeliveryJobMessage(`Status changed to ${e.target.value.replace('_', ' ')}.`)
+                                  } catch (err) {
+                                    setDeliveryJobError(err instanceof Error ? err.message : 'Status update failed')
+                                  }
+                                }}
+                              >
+                                <option value="booked">booked</option>
+                                <option value="scheduled">scheduled</option>
+                                <option value="picked_up">picked up</option>
+                                <option value="in_transit">in transit</option>
+                                <option value="delivered">delivered</option>
+                                <option value="cancelled">cancelled</option>
+                              </select>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {deliveryJobMessage && <p style={{ color: '#059669' }}>{deliveryJobMessage}</p>}
+                      {deliveryJobError && <p style={{ color: '#dc2626' }}>{deliveryJobError}</p>}
+                      <form
+                        style={{ display: 'grid', gap: 8, marginTop: 12 }}
+                        onSubmit={async (event) => {
+                          event.preventDefault()
+                          setDeliveryJobMessage(null)
+                          setDeliveryJobError(null)
+                          if (!activeBooking) return
+                          try {
+                            await createDeliveryJob(activeBooking.id, {
+                              mode: deliveryJobDraft.mode,
+                              pickup_address: deliveryJobDraft.pickup_address || undefined,
+                              delivery_address: deliveryJobDraft.delivery_address || undefined,
+                              quote_amount_usd: deliveryJobDraft.quote_amount_usd
+                                ? Number(deliveryJobDraft.quote_amount_usd)
+                                : undefined,
+                              notes: deliveryJobDraft.notes || undefined,
+                            })
+                            setDeliveryJobs(await listDeliveryJobsForBooking(activeBooking.id))
+                            setDeliveryJobDraft({
+                              mode: 'warehouse_delivery',
+                              pickup_address: '',
+                              delivery_address: '',
+                              quote_amount_usd: '',
+                              notes: '',
+                            })
+                            setDeliveryJobMessage('Delivery job created.')
+                          } catch (err) {
+                            setDeliveryJobError(err instanceof Error ? err.message : 'Could not create delivery job')
+                          }
+                        }}
+                      >
+                        <div className="form-grid two">
+                          <label>
+                            <span>Mode</span>
+                            <select
+                              value={deliveryJobDraft.mode}
+                              onChange={(e) =>
+                                setDeliveryJobDraft((d) => ({ ...d, mode: e.target.value as DeliveryJobMode }))
+                              }
+                            >
+                              <option value="courier">Courier</option>
+                              <option value="pallet_freight">Pallet freight</option>
+                              <option value="local_truck">Local truck</option>
+                              <option value="port_drayage">Port drayage</option>
+                              <option value="live_unload">Live unload</option>
+                              <option value="warehouse_delivery">Warehouse delivery</option>
+                            </select>
+                          </label>
+                          <label>
+                            <span>Quote (USD)</span>
+                            <input
+                              type="number"
+                              min={0}
+                              step={1}
+                              value={deliveryJobDraft.quote_amount_usd}
+                              onChange={(e) => setDeliveryJobDraft((d) => ({ ...d, quote_amount_usd: e.target.value }))}
+                            />
+                          </label>
+                        </div>
+                        <div className="form-grid two">
+                          <label>
+                            <span>Pickup address</span>
+                            <input
+                              value={deliveryJobDraft.pickup_address}
+                              onChange={(e) => setDeliveryJobDraft((d) => ({ ...d, pickup_address: e.target.value }))}
+                            />
+                          </label>
+                          <label>
+                            <span>Delivery address</span>
+                            <input
+                              value={deliveryJobDraft.delivery_address}
+                              onChange={(e) => setDeliveryJobDraft((d) => ({ ...d, delivery_address: e.target.value }))}
+                            />
+                          </label>
+                        </div>
+                        <label>
+                          <span>Notes</span>
+                          <input
+                            value={deliveryJobDraft.notes}
+                            onChange={(e) => setDeliveryJobDraft((d) => ({ ...d, notes: e.target.value }))}
+                          />
+                        </label>
+                        <button type="submit" className="primary-action small" disabled={!activeBooking}>
+                          Add delivery job
+                        </button>
+                      </form>
+                    </section>
+
+                    <section className="form-section document-step">
+                      <div className="form-section-heading">
+                        <span>5</span>
+                        <div>
+                          <strong>Insurance and claims</strong>
+                          <small>If the cargo arrived damaged, short, or never arrived, draft a claim here. We submit and follow up with the insurer.</small>
+                        </div>
+                      </div>
+                      {insurancePolicy ? (
+                        <div className="document-review-grid">
+                          <DetailTile icon={<ShieldCheck size={18} />} label="Insurance" value={insurancePolicy.insurance_required ? 'In place' : 'Waived'} />
+                          <DetailTile icon={<CircleDollarSign size={18} />} label="Insured value" value={formatMoney(insurancePolicy.insured_value)} />
+                          <DetailTile icon={<FileText size={18} />} label="Provider" value={insurancePolicy.provider ?? 'Not set'} />
+                        </div>
+                      ) : (
+                        <p className="tab-intro-copy">No insurance record yet for this shipment.</p>
+                      )}
+                      {bookingClaims.length > 0 && (
+                        <div className="document-review-grid">
+                          {bookingClaims.map((claim) => (
+                            <DetailTile
+                              key={claim.id}
+                              icon={<ShieldCheck size={18} />}
+                              label={`${claim.claim_type} claim`}
+                              value={`${formatMoney(claim.claim_amount_usd)} . ${claim.claim_status.replace('_', ' ')}`}
+                            />
+                          ))}
+                        </div>
+                      )}
+                      {claimMessage && <p style={{ color: '#059669' }}>{claimMessage}</p>}
+                      {claimError && <p style={{ color: '#dc2626' }}>{claimError}</p>}
+                      <form
+                        style={{ display: 'grid', gap: 8 }}
+                        onSubmit={async (event) => {
+                          event.preventDefault()
+                          setClaimMessage(null)
+                          setClaimError(null)
+                          if (!activeBooking) return
+                          const amount = Number(claimDraft.claim_amount_usd)
+                          if (!Number.isFinite(amount) || amount <= 0) {
+                            setClaimError('Claim amount must be more than zero.')
+                            return
+                          }
+                          try {
+                            await createClaim(activeBooking.id, {
+                              claim_type: claimDraft.claim_type,
+                              claim_amount_usd: amount,
+                              notes: claimDraft.notes || null,
+                            })
+                            setBookingClaims(await listClaims(activeBooking.id))
+                            setClaimDraft({ claim_type: 'damage', claim_amount_usd: '', notes: '' })
+                            setClaimMessage('Claim drafted. Ship Hoppa will review and submit to the insurer.')
+                          } catch (err) {
+                            setClaimError(err instanceof Error ? err.message : 'Could not create claim')
+                          }
+                        }}
+                      >
+                        <div className="form-grid two">
+                          <label>
+                            <span>What went wrong</span>
+                            <select
+                              value={claimDraft.claim_type}
+                              onChange={(e) => setClaimDraft((d) => ({ ...d, claim_type: e.target.value as ClaimType }))}
+                            >
+                              <option value="damage">Damage</option>
+                              <option value="loss">Loss</option>
+                              <option value="shortage">Shortage</option>
+                              <option value="delay">Delay</option>
+                              <option value="other">Other</option>
+                            </select>
+                          </label>
+                          <label>
+                            <span>Loss amount (USD)</span>
+                            <input
+                              type="number"
+                              min={0}
+                              step={1}
+                              value={claimDraft.claim_amount_usd}
+                              onChange={(e) => setClaimDraft((d) => ({ ...d, claim_amount_usd: e.target.value }))}
+                              required
+                            />
+                          </label>
+                        </div>
+                        <label>
+                          <span>What happened</span>
+                          <textarea
+                            rows={3}
+                            value={claimDraft.notes}
+                            onChange={(e) => setClaimDraft((d) => ({ ...d, notes: e.target.value }))}
+                            placeholder="Describe what was damaged or missing, and when you noticed."
+                          />
+                        </label>
+                        <button type="submit" className="primary-action small" disabled={!activeBooking}>
+                          Draft claim
+                        </button>
+                      </form>
                     </section>
                   </div>
                 ) : (

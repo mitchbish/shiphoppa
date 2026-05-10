@@ -74,3 +74,14 @@ def require_cron(credentials: HTTPAuthorizationCredentials = Depends(security)) 
             detail="Invalid cron token",
         )
     return Principal(role=ActorRole.system, actor_id="cron")
+
+
+def require_inbound_webhook(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Principal:
+    """Authorize an inbound email or partner webhook with a shared secret."""
+    expected = os.getenv("SHIP_HOPPA_INBOUND_EMAIL_TOKEN") or "shiphoppa-inbound-dev"
+    if not credentials or credentials.credentials != expected:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid inbound webhook token",
+        )
+    return Principal(role=ActorRole.system, actor_id="inbound-webhook")

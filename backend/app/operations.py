@@ -1,4 +1,5 @@
 import base64
+import os
 import secrets
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -27,6 +28,7 @@ from .models import (
     CargoCategory,
     ChecklistStatus,
     ContactMethod,
+    Container,
     CustomsBrokerPreference,
     CustomsProfile,
     CustomsProfileUpdate,
@@ -35,6 +37,21 @@ from .models import (
     DocumentRequirement,
     DocumentStatus,
     DocumentType,
+    ContingencyOption,
+    ContingencyOptionCreate,
+    ContingencyOptionUpdate,
+    ContingencyStatus,
+    DeliveryJob,
+    DeliveryJobCreate,
+    DeliveryJobMode,
+    DeliveryJobStatus,
+    DeliveryJobUpdate,
+    PartnerCapability,
+    PartnerCapabilityCreate,
+    PartnerCapabilityUpdate,
+    PartnerProfile,
+    PartnerProfileCreate,
+    PartnerProfileUpdate,
     DeliveryMode,
     DeliveryPlan,
     DeliveryPlanStatus,
@@ -45,16 +62,32 @@ from .models import (
     GrowthAttributionEvent,
     GrowthAttributionEventType,
     ImportProject,
+    ImportProjectCreate,
     ImportProjectEvent,
     ImportProjectFile,
     ImportProjectStatus,
     ImportProjectStepData,
     ImportProjectStepStatus,
+    ImportProjectUpdate,
     ImportProjectVersion,
     ImportWorkflowType,
     Invoice,
     InvoiceLineItem,
+    ClaimRecord,
+    ClaimRecordCreate,
+    ClaimRecordUpdate,
+    ClaimStatus,
+    InsurancePolicy,
+    InsurancePolicyUpsert,
+    LandedCostActual,
+    LandedCostActualUpsert,
+    MarketplaceOrder,
+    MarketplaceOrderCreate,
     Notification,
+    PaymentProof,
+    PaymentProofCreate,
+    PaymentProofReconcileUpdate,
+    PaymentProofReconciliationStatus,
     OutboundChannel,
     OutboundMessage,
     OutboundMessageCreate,
@@ -78,6 +111,10 @@ from .models import (
     ReleaseStatus,
     ReleaseStatusResponse,
     SailingSearchResult,
+    SentinelSubscriber,
+    SentinelSubscriberStatus,
+    SupplierProfileClaim,
+    SupplierProfileClaimStatus,
     SEOOpportunity,
     SEOOpportunityCreate,
     SEOOpportunityStatus,
@@ -86,6 +123,8 @@ from .models import (
     ShipmentEvent,
     ShipmentEventCreate,
     ShipmentEventStage,
+    ShipmentSummary,
+    ShipmentWorkspace,
     SourceConfidence,
     SourceMessage,
     SourceMessageCreate,
@@ -97,6 +136,8 @@ from .models import (
     SupplierLead,
     SupplierLeadSource,
     SupplierOutreachStatus,
+    SupplierVerificationStatus,
+    SupplierVerificationUpdate,
     SupplierAccessLink,
     SupplierBookingSummary,
     SupplierPayProvider,
@@ -109,6 +150,24 @@ from .models import (
     SupplierPayMarkPaidRequest,
     SupplierPortalResponse,
     SupplierReadyRequest,
+    BrokerAccessLink,
+    BrokerBookingSummary,
+    BrokerClearanceUpdate,
+    BrokerCustomsSummary,
+    BrokerPortalResponse,
+    WarehouseAccessLink,
+    WarehouseBookingSummary,
+    WarehousePortalResponse,
+    WarehouseReceiptUpdate,
+    CarrierAccessLink,
+    CarrierBookingSummary,
+    CarrierEtaUpdate,
+    CarrierEventUpdate,
+    CarrierPortalResponse,
+    TruckerAccessLink,
+    TruckerBookingSummary,
+    TruckerPortalResponse,
+    TruckerStatusUpdate,
 )
 from .store import Store
 
@@ -677,6 +736,184 @@ def sync_project_steps_for_booking(store: Store, project: ImportProject, booking
                 updated_at=now_utc(),
             )
         store.import_project_steps[step.id] = step
+
+
+def create_import_project(
+    store: Store,
+    request: ImportProjectCreate,
+    actor_role: ActorRole,
+    actor_id: str,
+    organization_id: Optional[str] = None,
+    owner_user_id: Optional[str] = None,
+) -> ImportProject:
+    timestamp = now_utc()
+    project = ImportProject(
+        id=store.next_id("IPR"),
+        organization_id=organization_id or actor_id,
+        owner_user_id=owner_user_id or actor_id,
+        workflow_type=request.workflow_type,
+        title=request.title,
+        description=request.description,
+        summary=request.summary or "",
+        next_action=request.next_action,
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+    store.import_projects[project.id] = project
+    append_import_project_version(
+        store,
+        project.id,
+        actor_id,
+        "project_created",
+        after_summary=project.summary,
+    )
+    create_import_project_event(
+        store,
+        project.id,
+        "project_created",
+        ProjectActorType.user if actor_role == ActorRole.importer else ProjectActorType.admin,
+        actor_id,
+        metadata={"title": project.title},
+    )
+    create_audit_event(
+        store,
+        actor_role,
+        actor_id,
+        "import_project_created",
+        "import_project",
+        project.id,
+        f"Created import project '{project.title}'.",
+    )
+    return project
+
+
+def update_import_project(
+    store: Store,
+    project_id: str,
+    request: ImportProjectUpdate,
+    actor_role: ActorRole,
+    actor_id: str,
+) -> ImportProject:
+    project = store.import_projects.get(project_id)
+    if not project:
+        raise ValueError("Import project not found")
+    data = request.model_dump(exclude_unset=True)
+    if not data:
+        return project
+    before_summary = project.summary
+    for key, value in data.items():
+        setattr(project, key, value)
+    project.updated_at = now_utc()
+    if request.status == ImportProjectStatus.archived and project.archived_at is None:
+        project.archived_at = now_utc()
+    store.import_projects[project.id] = project
+    append_import_project_version(
+        store,
+        project.id,
+        actor_id,
+        "project_updated",
+        before_summary=before_summary,
+        after_summary=project.summary,
+    )
+    create_audit_event(
+        store,
+        actor_role,
+        actor_id,
+        "import_project_updated",
+        "import_project",
+        project.id,
+        f"Updated import project '{project.title}'.",
+    )
+    return project
+
+
+def clone_import_project(
+    store: Store,
+    source_project_id: str,
+    actor_role: ActorRole,
+    actor_id: str,
+    new_title: Optional[str] = None,
+) -> ImportProject:
+    source = store.import_projects.get(source_project_id)
+    if not source:
+        raise ValueError("Source import project not found")
+    timestamp = now_utc()
+    title = new_title or f"Copy of {source.title}"
+    project = ImportProject(
+        id=store.next_id("IPR"),
+        organization_id=source.organization_id,
+        owner_user_id=source.owner_user_id,
+        workflow_type=source.workflow_type,
+        workflow_version=source.workflow_version,
+        title=title,
+        description=source.description,
+        summary=source.summary,
+        current_step="intake",
+        next_action=source.next_action,
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+    store.import_projects[project.id] = project
+    append_import_project_version(
+        store,
+        project.id,
+        actor_id,
+        "project_cloned",
+        source_reference=source.id,
+        after_summary=project.summary,
+    )
+    create_import_project_event(
+        store,
+        project.id,
+        "project_cloned",
+        ProjectActorType.user if actor_role == ActorRole.importer else ProjectActorType.admin,
+        actor_id,
+        metadata={"source_project_id": source.id, "new_title": title},
+    )
+    create_audit_event(
+        store,
+        actor_role,
+        actor_id,
+        "import_project_cloned",
+        "import_project",
+        project.id,
+        f"Cloned import project from {source.id}.",
+    )
+    return project
+
+
+def soft_delete_import_project(
+    store: Store,
+    project_id: str,
+    actor_role: ActorRole,
+    actor_id: str,
+) -> ImportProject:
+    project = store.import_projects.get(project_id)
+    if not project:
+        raise ValueError("Import project not found")
+    if project.status in {ImportProjectStatus.deleted_pending_retention, ImportProjectStatus.deleted}:
+        return project
+    project.status = ImportProjectStatus.deleted_pending_retention
+    project.deleted_at = now_utc()
+    project.updated_at = now_utc()
+    store.import_projects[project.id] = project
+    append_import_project_version(
+        store,
+        project.id,
+        actor_id,
+        "project_soft_deleted",
+        after_summary=project.summary,
+    )
+    create_audit_event(
+        store,
+        actor_role,
+        actor_id,
+        "import_project_soft_deleted",
+        "import_project",
+        project.id,
+        f"Soft-deleted import project {project.id}.",
+    )
+    return project
 
 
 def ensure_import_project_for_booking(store: Store, booking: Booking, actor_id: str = "system") -> ImportProject:
@@ -1466,6 +1703,70 @@ def create_supplier_pay_request(
     return pay_request
 
 
+def clone_purchase_order(
+    store: Store,
+    source_po_id: str,
+    actor_role: ActorRole,
+    actor_id: str,
+    target_project_id: Optional[str] = None,
+    new_order_reference: Optional[str] = None,
+) -> PurchaseOrder:
+    source = store.purchase_orders.get(source_po_id)
+    if not source:
+        raise ValueError("Source purchase order not found")
+    project_id = target_project_id or source.import_project_id
+    project = store.import_projects.get(project_id)
+    if not project:
+        raise ValueError("Target import project not found")
+    timestamp = now_utc()
+    reference = new_order_reference or f"Copy of {source.order_reference}"
+    order = PurchaseOrder(
+        id=store.next_id("PO"),
+        import_project_id=project.id,
+        booking_id=None,
+        order_reference=reference,
+        buyer_company_name=source.buyer_company_name,
+        supplier_name=source.supplier_name,
+        supplier_contact_email=source.supplier_contact_email,
+        supplier_contact_phone=source.supplier_contact_phone,
+        product_summary=source.product_summary,
+        incoterm=source.incoterm,
+        currency=source.currency,
+        goods_value=source.goods_value,
+        deposit_amount=source.deposit_amount,
+        balance_amount=source.balance_amount,
+        production_due_date=None,
+        cargo_ready_target_date=None,
+        status=PurchaseOrderStatus.order_confirmed,
+        source_message_id=None,
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+    store.purchase_orders[order.id] = order
+    if order.id not in project.linked_purchase_order_ids:
+        project.linked_purchase_order_ids.append(order.id)
+    project.updated_at = timestamp
+    store.import_projects[project.id] = project
+    append_import_project_version(
+        store,
+        project.id,
+        actor_id,
+        "purchase_order_cloned",
+        source_reference=source.id,
+        after_summary=f"Cloned PO {source.order_reference} as {order.order_reference}.",
+    )
+    create_audit_event(
+        store,
+        actor_role,
+        actor_id,
+        "purchase_order_cloned",
+        "purchase_order",
+        order.id,
+        f"Cloned purchase order from {source.id}.",
+    )
+    return order
+
+
 def create_purchase_order(store: Store, request: PurchaseOrderCreate, actor_id: str) -> PurchaseOrder:
     project = project_for_purchase_order_request(store, request, actor_id)
     timestamp = now_utc()
@@ -1664,6 +1965,51 @@ def decide_approval_request(store: Store, approval_id: str, status: ApprovalStat
     return approval
 
 
+def request_approval_review(
+    store: Store,
+    approval_id: str,
+    reason: str,
+    actor_id: str,
+) -> ApprovalRequest:
+    if approval_id not in store.approval_requests:
+        raise ValueError("Approval not found")
+    approval = store.approval_requests[approval_id]
+    if approval.status != ApprovalStatus.pending:
+        raise ValueError("Approval already decided")
+    timestamp = now_utc()
+    approval.review_requested_by = actor_id
+    approval.review_requested_at = timestamp
+    approval.review_requested_reason = reason
+    store.approval_requests[approval.id] = approval
+
+    if approval.related_booking_id and approval.related_booking_id in store.bookings:
+        booking = store.bookings[approval.related_booking_id]
+        create_admin_task(
+            store,
+            booking,
+            "approval_review_requested",
+            f"Importer asked ops to review: {approval.title}",
+        )
+    create_notification(
+        store,
+        recipient_type="admin",
+        recipient_id="ops",
+        trigger="approval_review_requested",
+        message=f"Review requested on approval {approval.id}: {reason}",
+    )
+    create_audit_event(
+        store,
+        ActorRole.importer,
+        actor_id,
+        "approval_review_requested",
+        "approval_request",
+        approval.id,
+        reason or "Review requested.",
+        {"reason": reason, "actor": actor_id},
+    )
+    return approval
+
+
 def mark_supplier_pay_paid_outside_app(
     store: Store,
     supplier_pay_request_id: str,
@@ -1836,6 +2182,8 @@ def create_growth_event(
     region: Optional[str] = None,
     campaign_id: Optional[str] = None,
     shipment_id: Optional[str] = None,
+    importer_organization_id: Optional[str] = None,
+    template_key: Optional[str] = None,
     value_usd: Optional[float] = None,
 ) -> GrowthAttributionEvent:
     event = GrowthAttributionEvent(
@@ -1843,9 +2191,11 @@ def create_growth_event(
         event_type=event_type,
         supplier_lead_id=supplier_lead_id,
         shipment_id=shipment_id,
+        importer_organization_id=importer_organization_id,
         campaign_id=campaign_id,
         source=source,
         channel=channel,
+        template_key=template_key,
         category=category,
         region=region,
         value_usd=value_usd,
@@ -1853,6 +2203,229 @@ def create_growth_event(
     )
     store.growth_attribution_events[event.id] = event
     return event
+
+
+def filter_growth_attribution_events(
+    store: Store,
+    event_type: Optional[GrowthAttributionEventType] = None,
+    source: Optional[str] = None,
+    channel: Optional[str] = None,
+    template_key: Optional[str] = None,
+    category: Optional[str] = None,
+    region: Optional[str] = None,
+    supplier_lead_id: Optional[str] = None,
+    shipment_id: Optional[str] = None,
+    since: Optional[date] = None,
+    until: Optional[date] = None,
+) -> List[GrowthAttributionEvent]:
+    events = list(store.growth_attribution_events.values())
+    if event_type is not None:
+        events = [event for event in events if event.event_type == event_type]
+    if source:
+        events = [event for event in events if event.source == source]
+    if channel:
+        events = [event for event in events if event.channel == channel]
+    if template_key:
+        events = [event for event in events if event.template_key == template_key]
+    if category:
+        events = [event for event in events if event.category == category]
+    if region:
+        events = [event for event in events if event.region == region]
+    if supplier_lead_id:
+        events = [event for event in events if event.supplier_lead_id == supplier_lead_id]
+    if shipment_id:
+        events = [event for event in events if event.shipment_id == shipment_id]
+    if since:
+        events = [event for event in events if event.occurred_at.date() >= since]
+    if until:
+        events = [event for event in events if event.occurred_at.date() <= until]
+    events.sort(key=lambda item: item.occurred_at, reverse=True)
+    return events
+
+
+def summarise_growth_attribution(
+    store: Store,
+    group_by: str,
+    event_type: Optional[GrowthAttributionEventType] = None,
+    since: Optional[date] = None,
+    until: Optional[date] = None,
+) -> dict:
+    if group_by not in {"source", "channel", "template_key", "category", "region", "event_type"}:
+        raise ValueError("group_by must be one of source, channel, template_key, category, region, event_type")
+    events = filter_growth_attribution_events(
+        store,
+        event_type=event_type,
+        since=since,
+        until=until,
+    )
+    buckets: Dict[str, Dict[str, Any]] = {}
+    for event in events:
+        raw_key = getattr(event, group_by)
+        key = raw_key.value if hasattr(raw_key, "value") else (raw_key or "(none)")
+        bucket = buckets.setdefault(key, {
+            "group_key": key,
+            "event_count": 0,
+            "total_value_usd": 0.0,
+            "supplier_leads": set(),
+            "shipments": set(),
+        })
+        bucket["event_count"] += 1
+        bucket["total_value_usd"] += event.value_usd or 0
+        if event.supplier_lead_id:
+            bucket["supplier_leads"].add(event.supplier_lead_id)
+        if event.shipment_id:
+            bucket["shipments"].add(event.shipment_id)
+    rows = [
+        {
+            "group_key": bucket["group_key"],
+            "event_count": bucket["event_count"],
+            "total_value_usd": round(bucket["total_value_usd"], 2),
+            "unique_supplier_leads": len(bucket["supplier_leads"]),
+            "unique_shipments": len(bucket["shipments"]),
+        }
+        for bucket in buckets.values()
+    ]
+    rows.sort(key=lambda row: row["total_value_usd"], reverse=True)
+    return {
+        "group_by": group_by,
+        "rows": rows,
+        "total_events": sum(row["event_count"] for row in rows),
+        "total_value_usd": round(sum(row["total_value_usd"] for row in rows), 2),
+    }
+
+
+def create_supplier_claim_link(
+    store: Store,
+    lead_id: str,
+    actor_id: str,
+    expires_in_days: int = 30,
+) -> SupplierProfileClaim:
+    lead = store.supplier_leads.get(lead_id)
+    if not lead:
+        raise ValueError("Supplier lead not found")
+    if lead.verification_status != SupplierVerificationStatus.verified:
+        raise ValueError("Supplier lead is not verified")
+    for existing in store.supplier_profile_claims.values():
+        if (
+            existing.lead_id == lead_id
+            and existing.status == SupplierProfileClaimStatus.pending
+            and existing.expires_at > now_utc()
+        ):
+            return existing
+    timestamp = now_utc()
+    claim = SupplierProfileClaim(
+        id=store.next_id("CLAIM"),
+        lead_id=lead_id,
+        token=secrets.token_hex(16),
+        status=SupplierProfileClaimStatus.pending,
+        expires_at=timestamp + timedelta(days=expires_in_days),
+        created_at=timestamp,
+    )
+    store.supplier_profile_claims[claim.id] = claim
+    create_audit_event(
+        store,
+        ActorRole.admin,
+        actor_id,
+        "supplier_claim_link_created",
+        "supplier_lead",
+        lead_id,
+        f"Profile claim link generated for verified supplier lead {lead_id}.",
+        {"claim_id": claim.id, "actor": actor_id},
+    )
+    return claim
+
+
+def get_supplier_claim_by_token(store: Store, token: str) -> SupplierProfileClaim:
+    for claim in store.supplier_profile_claims.values():
+        if claim.token == token:
+            if claim.status == SupplierProfileClaimStatus.pending and claim.expires_at <= now_utc():
+                claim.status = SupplierProfileClaimStatus.expired
+                store.supplier_profile_claims[claim.id] = claim
+            return claim
+    raise ValueError("Claim not found")
+
+
+def accept_supplier_claim(
+    store: Store,
+    token: str,
+    contact_email: str,
+    contact_name: str,
+) -> SupplierProfileClaim:
+    claim = get_supplier_claim_by_token(store, token)
+    if claim.status == SupplierProfileClaimStatus.expired:
+        raise ValueError("Claim has expired")
+    if claim.status == SupplierProfileClaimStatus.claimed:
+        return claim
+    lead = store.supplier_leads.get(claim.lead_id)
+    if not lead:
+        raise ValueError("Supplier lead no longer exists")
+    timestamp = now_utc()
+    claim.status = SupplierProfileClaimStatus.claimed
+    claim.claimed_at = timestamp
+    claim.claimed_by_email = contact_email
+    claim.claimed_contact_name = contact_name
+    store.supplier_profile_claims[claim.id] = claim
+
+    lead.outreach_status = SupplierOutreachStatus.onboarded
+    if not lead.public_email:
+        lead.public_email = contact_email
+    lead.updated_at = timestamp
+    store.supplier_leads[lead.id] = lead
+
+    create_audit_event(
+        store,
+        ActorRole.system,
+        "supplier_claim",
+        "supplier_claim_accepted",
+        "supplier_lead",
+        lead.id,
+        f"Supplier {lead.company_name} accepted profile claim.",
+        {"claim_id": claim.id, "contact_email": contact_email},
+    )
+    create_growth_event(
+        store,
+        GrowthAttributionEventType.supplier_signed_up,
+        source="profile_claim",
+        supplier_lead_id=lead.id,
+    )
+    return claim
+
+
+def update_supplier_lead_verification(
+    store: Store,
+    lead_id: str,
+    request: SupplierVerificationUpdate,
+    actor_role: ActorRole,
+    actor_id: str,
+) -> SupplierLead:
+    lead = store.supplier_leads.get(lead_id)
+    if not lead:
+        raise ValueError("Supplier lead not found")
+    previous_status = lead.verification_status
+    lead.verification_status = request.verification_status
+    if request.verification_notes is not None:
+        lead.verification_notes = request.verification_notes
+    if request.verification_status == SupplierVerificationStatus.verified:
+        lead.verified_at = now_utc()
+        lead.verified_by = actor_id
+    elif request.verification_status == SupplierVerificationStatus.rejected:
+        lead.do_not_contact = True
+    lead.updated_at = now_utc()
+    store.supplier_leads[lead.id] = lead
+    create_audit_event(
+        store,
+        actor_role,
+        actor_id,
+        "supplier_lead_verification_updated",
+        "supplier_lead",
+        lead.id,
+        f"Verification status moved from {previous_status.value} to {lead.verification_status.value}.",
+        {
+            "previous_status": previous_status.value,
+            "new_status": lead.verification_status.value,
+        },
+    )
+    return lead
 
 
 def create_supplier_lead_from_discovery(
@@ -3016,11 +3589,7 @@ def supplier_instructions_for_booking(store: Store, booking: Booking) -> str:
     )
 
 
-def supplier_portal(store: Store, token: str) -> SupplierPortalResponse:
-    link = supplier_link_by_token(store, token)
-    link.last_used_at = now_utc()
-    store.supplier_links[link.id] = link
-    booking = store.bookings[link.booking_id]
+def build_supplier_portal_response(store: Store, booking: Booking) -> SupplierPortalResponse:
     ensure_booking_workspace(store, booking)
     summary = SupplierBookingSummary(
         id=booking.id,
@@ -3047,6 +3616,32 @@ def supplier_portal(store: Store, token: str) -> SupplierPortalResponse:
         checklist=checklist_for_booking(store, booking.id),
         events=events_for_booking(store, booking.id),
     )
+
+
+def supplier_portal(store: Store, token: str) -> SupplierPortalResponse:
+    link = supplier_link_by_token(store, token)
+    link.last_used_at = now_utc()
+    store.supplier_links[link.id] = link
+    booking = store.bookings[link.booking_id]
+    return build_supplier_portal_response(store, booking)
+
+
+def supplier_portal_preview(store: Store, booking_id: str, actor_id: str) -> SupplierPortalResponse:
+    if booking_id not in store.bookings:
+        raise ValueError("Booking not found")
+    booking = store.bookings[booking_id]
+    response = build_supplier_portal_response(store, booking)
+    create_audit_event(
+        store,
+        ActorRole.admin,
+        actor_id,
+        "supplier_portal_previewed",
+        "booking",
+        booking_id,
+        f"Importer or admin previewed supplier portal for booking {booking_id}.",
+        {"actor": actor_id},
+    )
+    return response
 
 
 def supplier_link_by_token(store: Store, token: str) -> SupplierAccessLink:
@@ -3084,6 +3679,498 @@ def supplier_ready(store: Store, token: str, request: SupplierReadyRequest) -> S
     )
     create_audit_event(store, ActorRole.system, "supplier-portal", "supplier_ready_confirmed", "booking", booking.id, "Supplier confirmed cargo readiness.")
     return supplier_portal(store, token)
+
+
+BROKER_ALLOWED_STATUSES = {
+    CustomsStatus.submitted,
+    CustomsStatus.queried,
+    CustomsStatus.cleared,
+}
+
+
+def create_broker_link(store: Store, booking_id: str) -> BrokerAccessLink:
+    if booking_id not in store.bookings:
+        raise ValueError("Booking not found")
+    for link in store.broker_links.values():
+        if link.booking_id == booking_id and link.active:
+            return link
+    link = BrokerAccessLink(
+        id=store.next_id("BRK"),
+        booking_id=booking_id,
+        token=secrets.token_urlsafe(24),
+        expires_at=now_utc() + timedelta(days=45),
+        created_at=now_utc(),
+    )
+    store.broker_links[link.id] = link
+    create_audit_event(store, ActorRole.admin, "ops", "broker_link_created", "booking", booking_id, f"Broker link created for {booking_id}.")
+    return link
+
+
+def broker_link_by_token(store: Store, token: str) -> BrokerAccessLink:
+    for link in store.broker_links.values():
+        if link.token == token and link.active:
+            if link.expires_at and link.expires_at < now_utc():
+                raise ValueError("Broker link has expired")
+            return link
+    raise ValueError("Broker link not found")
+
+
+def _broker_portal_response(store: Store, booking: Booking) -> BrokerPortalResponse:
+    profile = ensure_customs_profile(store, booking)
+    importer = store.importers.get(booking.importer_id)
+    company_name = importer.company_name if importer else None
+    importer_abn = profile.importer_abn or (importer.abn if importer else None)
+    booking_summary = BrokerBookingSummary(
+        id=booking.id,
+        importer_company_name=company_name,
+        importer_abn=importer_abn,
+        supplier_country=booking.supplier_country,
+        delivery_country=booking.delivery_country,
+        delivery_city=booking.delivery_city,
+        cargo_description=booking.cargo_description,
+        cargo_category=booking.cargo_category,
+        cbm_estimate=booking.cbm_estimate,
+        weight_kg_estimate=booking.weight_kg_estimate,
+        cargo_ready_date_latest=booking.cargo_ready_date_latest,
+        status=booking.status,
+    )
+    customs_summary = BrokerCustomsSummary(
+        incoterm=profile.incoterm,
+        goods_value_usd=profile.goods_value_usd,
+        currency=profile.currency,
+        hs_code=profile.hs_code,
+        biosecurity_flags=list(profile.biosecurity_flags),
+        customs_status=profile.customs_status,
+        duty_estimate_usd=profile.duty_estimate_usd,
+        gst_estimate_usd=profile.gst_estimate_usd,
+        landed_cost_estimate_usd=profile.landed_cost_estimate_usd,
+        customs_entry_number=profile.customs_entry_number,
+        duty_paid_usd=profile.duty_paid_usd,
+        gst_paid_usd=profile.gst_paid_usd,
+        broker_notes=profile.broker_notes,
+        updated_at=profile.updated_at,
+    )
+    holds = [
+        hold for hold in store.release_holds.values()
+        if hold.booking_id == booking.id and hold.status == ReleaseHoldStatus.active
+    ]
+    return BrokerPortalResponse(
+        booking=booking_summary,
+        customs=customs_summary,
+        holds=holds,
+        documents=documents_for_booking(store, booking.id),
+        events=events_for_booking(store, booking.id),
+    )
+
+
+def broker_portal(store: Store, token: str) -> BrokerPortalResponse:
+    link = broker_link_by_token(store, token)
+    link.last_used_at = now_utc()
+    store.broker_links[link.id] = link
+    booking = store.bookings[link.booking_id]
+    return _broker_portal_response(store, booking)
+
+
+def broker_clearance_update(store: Store, token: str, request: BrokerClearanceUpdate) -> BrokerPortalResponse:
+    if request.customs_status not in BROKER_ALLOWED_STATUSES:
+        raise ValueError("Broker may only set status to submitted, queried, or cleared")
+    link = broker_link_by_token(store, token)
+    booking = store.bookings[link.booking_id]
+    profile = ensure_customs_profile(store, booking)
+    profile.customs_status = request.customs_status
+    if request.customs_entry_number is not None:
+        profile.customs_entry_number = request.customs_entry_number
+    if request.duty_paid_usd is not None:
+        profile.duty_paid_usd = request.duty_paid_usd
+    if request.gst_paid_usd is not None:
+        profile.gst_paid_usd = request.gst_paid_usd
+    if request.broker_notes is not None:
+        profile.broker_notes = request.broker_notes
+    profile.updated_at = now_utc()
+    store.customs_profiles[profile.id] = profile
+    update_release_holds(store, booking)
+    update_booking_health(store, booking)
+    if request.customs_status == CustomsStatus.cleared:
+        create_shipment_event(
+            store,
+            booking.id,
+            ShipmentEventCreate(
+                stage=ShipmentEventStage.customs_cleared,
+                label="Customs cleared by broker",
+                occurred_at=now_utc(),
+                source_type=SourceType.partner_update,
+                source_name="Broker portal",
+                confidence=SourceConfidence.verified,
+                notes=request.customs_entry_number and f"Entry {request.customs_entry_number}." or None,
+            ),
+        )
+    create_audit_event(
+        store,
+        ActorRole.system,
+        "broker-portal",
+        "broker_clearance_update",
+        "booking",
+        booking.id,
+        f"Broker set customs status to {request.customs_status.value}.",
+    )
+    link.last_used_at = now_utc()
+    store.broker_links[link.id] = link
+    return _broker_portal_response(store, booking)
+
+
+def create_warehouse_link(store: Store, booking_id: str) -> WarehouseAccessLink:
+    if booking_id not in store.bookings:
+        raise ValueError("Booking not found")
+    for link in store.warehouse_links.values():
+        if link.booking_id == booking_id and link.active:
+            return link
+    link = WarehouseAccessLink(
+        id=store.next_id("WHL"),
+        booking_id=booking_id,
+        token=secrets.token_urlsafe(24),
+        expires_at=now_utc() + timedelta(days=45),
+        created_at=now_utc(),
+    )
+    store.warehouse_links[link.id] = link
+    create_audit_event(store, ActorRole.admin, "ops", "warehouse_link_created", "booking", booking_id, f"Warehouse link created for {booking_id}.")
+    return link
+
+
+def warehouse_link_by_token(store: Store, token: str) -> WarehouseAccessLink:
+    for link in store.warehouse_links.values():
+        if link.token == token and link.active:
+            if link.expires_at and link.expires_at < now_utc():
+                raise ValueError("Warehouse link has expired")
+            return link
+    raise ValueError("Warehouse link not found")
+
+
+def _warehouse_portal_response(store: Store, booking: Booking) -> WarehousePortalResponse:
+    importer = store.importers.get(booking.importer_id)
+    warehouse = store.warehouse_for_lane(booking.lane_id or "") if booking.lane_id else None
+    summary = WarehouseBookingSummary(
+        id=booking.id,
+        importer_company_name=importer.company_name if importer else None,
+        supplier_country=booking.supplier_country,
+        supplier_city=booking.supplier_city,
+        cargo_description=booking.cargo_description,
+        cargo_category=booking.cargo_category,
+        cbm_estimate=booking.cbm_estimate,
+        weight_kg_estimate=booking.weight_kg_estimate,
+        number_of_packages=booking.number_of_packages,
+        cargo_ready_date_latest=booking.cargo_ready_date_latest,
+        delivery_mode=booking.delivery_mode,
+        warehouse_receipt_cutoff=booking.warehouse_receipt_cutoff,
+        warehouse_name=warehouse.name if warehouse else None,
+        cbm_actual=booking.cbm_actual,
+        weight_kg_actual=booking.weight_kg_actual,
+        received_at_warehouse=booking.received_at_warehouse,
+        status=booking.status,
+    )
+    return WarehousePortalResponse(
+        booking=summary,
+        documents=documents_for_booking(store, booking.id),
+        events=events_for_booking(store, booking.id),
+    )
+
+
+def warehouse_portal(store: Store, token: str) -> WarehousePortalResponse:
+    link = warehouse_link_by_token(store, token)
+    link.last_used_at = now_utc()
+    store.warehouse_links[link.id] = link
+    booking = store.bookings[link.booking_id]
+    return _warehouse_portal_response(store, booking)
+
+
+def warehouse_receipt_update(store: Store, token: str, request: WarehouseReceiptUpdate) -> WarehousePortalResponse:
+    link = warehouse_link_by_token(store, token)
+    booking = store.bookings[link.booking_id]
+    if booking.delivery_mode == DeliveryMode.ship_hoppa_pickup:
+        raise PermissionError("This shipment is on Ship Hoppa pickup. The warehouse portal is not used for it.")
+    record_warehouse_measurement(
+        store,
+        booking.id,
+        request.actual_cbm,
+        request.actual_weight_kg,
+        actor_id="warehouse-portal",
+    )
+    create_shipment_event(
+        store,
+        booking.id,
+        ShipmentEventCreate(
+            stage=ShipmentEventStage.warehouse_received,
+            label="Cargo received at warehouse",
+            occurred_at=now_utc(),
+            source_type=SourceType.warehouse_event,
+            source_name="Warehouse portal",
+            confidence=SourceConfidence.confirmed,
+            notes=request.notes,
+        ),
+    )
+    create_audit_event(
+        store,
+        ActorRole.system,
+        "warehouse-portal",
+        "warehouse_receipt_confirmed",
+        "booking",
+        booking.id,
+        f"Warehouse confirmed receipt: {request.actual_cbm:.2f} CBM / {request.actual_weight_kg:.0f} kg.",
+    )
+    link.last_used_at = now_utc()
+    store.warehouse_links[link.id] = link
+    booking = store.bookings[booking.id]
+    return _warehouse_portal_response(store, booking)
+
+
+CARRIER_ALLOWED_EVENT_STAGES = frozenset({
+    ShipmentEventStage.loaded,
+    ShipmentEventStage.departed,
+    ShipmentEventStage.arrived,
+})
+
+
+def create_carrier_link(store: Store, booking_id: str) -> CarrierAccessLink:
+    if booking_id not in store.bookings:
+        raise ValueError("Booking not found")
+    for link in store.carrier_links.values():
+        if link.booking_id == booking_id and link.active:
+            return link
+    link = CarrierAccessLink(
+        id=store.next_id("CRL"),
+        booking_id=booking_id,
+        token=secrets.token_urlsafe(24),
+        expires_at=now_utc() + timedelta(days=45),
+        created_at=now_utc(),
+    )
+    store.carrier_links[link.id] = link
+    create_audit_event(store, ActorRole.admin, "ops", "carrier_link_created", "booking", booking_id, f"Carrier link created for {booking_id}.")
+    return link
+
+
+def carrier_link_by_token(store: Store, token: str) -> CarrierAccessLink:
+    for link in store.carrier_links.values():
+        if link.token == token and link.active:
+            if link.expires_at and link.expires_at < now_utc():
+                raise ValueError("Carrier link has expired")
+            return link
+    raise ValueError("Carrier link not found")
+
+
+def _carrier_portal_response(store: Store, booking: Booking) -> CarrierPortalResponse:
+    importer = store.importers.get(booking.importer_id)
+    container = store.containers.get(booking.container_id) if booking.container_id else None
+    summary = CarrierBookingSummary(
+        id=booking.id,
+        importer_company_name=importer.company_name if importer else None,
+        container_id=booking.container_id,
+        container_number=container.container_number if container else None,
+        vessel_name=container.vessel_name if container else None,
+        voyage_number=container.voyage_number if container else None,
+        carrier_name=container.carrier_name if container else None,
+        estimated_departure=container.estimated_departure if container else None,
+        estimated_arrival=container.estimated_arrival if container else None,
+        baseline_estimated_arrival=container.baseline_estimated_arrival if container else None,
+        target_sailing_date=container.target_sailing_date if container else None,
+        carrier_cutoff_date=container.carrier_cutoff_date if container else None,
+        cargo_description=booking.cargo_description,
+        cargo_category=booking.cargo_category,
+        cbm_estimate=booking.cbm_estimate,
+        weight_kg_estimate=booking.weight_kg_estimate,
+        status=booking.status,
+    )
+    return CarrierPortalResponse(
+        booking=summary,
+        documents=documents_for_booking(store, booking.id),
+        events=events_for_booking(store, booking.id),
+    )
+
+
+def carrier_portal(store: Store, token: str) -> CarrierPortalResponse:
+    link = carrier_link_by_token(store, token)
+    link.last_used_at = now_utc()
+    store.carrier_links[link.id] = link
+    booking = store.bookings[link.booking_id]
+    return _carrier_portal_response(store, booking)
+
+
+def carrier_eta_update(store: Store, token: str, request: CarrierEtaUpdate) -> CarrierPortalResponse:
+    link = carrier_link_by_token(store, token)
+    booking = store.bookings[link.booking_id]
+    if booking.status == BookingStatus.delivered:
+        raise ValueError("This booking has already been delivered. ETA updates are no longer accepted.")
+    if not booking.container_id:
+        raise ValueError("This booking is not yet on a container. ETA cannot be updated until a sailing is selected.")
+    update_container_eta(
+        store,
+        booking.container_id,
+        request.estimated_arrival,
+        actor_id="carrier-portal",
+        source="carrier_portal",
+    )
+    note = request.note.strip() if request.note else ""
+    create_audit_event(
+        store,
+        ActorRole.system,
+        "carrier-portal",
+        "carrier_eta_update",
+        "booking",
+        booking.id,
+        f"Carrier set ETA to {request.estimated_arrival}." + (f" Note: {note}" if note else ""),
+    )
+    link.last_used_at = now_utc()
+    store.carrier_links[link.id] = link
+    return _carrier_portal_response(store, booking)
+
+
+def carrier_event_update(store: Store, token: str, request: CarrierEventUpdate) -> CarrierPortalResponse:
+    if request.stage not in CARRIER_ALLOWED_EVENT_STAGES:
+        raise ValueError("Carrier may only submit loaded, departed, or arrived events.")
+    link = carrier_link_by_token(store, token)
+    booking = store.bookings[link.booking_id]
+    create_shipment_event(
+        store,
+        booking.id,
+        ShipmentEventCreate(
+            stage=request.stage,
+            label=request.label or request.stage.value.replace("_", " ").title(),
+            occurred_at=now_utc(),
+            source_type=SourceType.partner_update,
+            source_name="Carrier portal",
+            confidence=SourceConfidence.confirmed,
+            notes=request.notes,
+        ),
+    )
+    create_audit_event(
+        store,
+        ActorRole.system,
+        "carrier-portal",
+        "carrier_event_update",
+        "booking",
+        booking.id,
+        f"Carrier reported {request.stage.value}.",
+    )
+    link.last_used_at = now_utc()
+    store.carrier_links[link.id] = link
+    return _carrier_portal_response(store, booking)
+
+
+TRUCKER_ALLOWED_EVENT_STAGES = frozenset({
+    ShipmentEventStage.pickup_scheduled,
+    ShipmentEventStage.picked_up,
+    ShipmentEventStage.delivered,
+})
+
+TRUCKER_STAGE_LABELS = {
+    ShipmentEventStage.pickup_scheduled: "Pickup scheduled",
+    ShipmentEventStage.picked_up: "Cargo picked up from port",
+    ShipmentEventStage.delivered: "Delivered to importer warehouse",
+}
+
+
+def create_trucker_link(store: Store, booking_id: str) -> TruckerAccessLink:
+    if booking_id not in store.bookings:
+        raise ValueError("Booking not found")
+    for link in store.trucker_links.values():
+        if link.booking_id == booking_id and link.active:
+            return link
+    link = TruckerAccessLink(
+        id=store.next_id("TRK"),
+        booking_id=booking_id,
+        token=secrets.token_urlsafe(24),
+        expires_at=now_utc() + timedelta(days=45),
+        created_at=now_utc(),
+    )
+    store.trucker_links[link.id] = link
+    create_audit_event(store, ActorRole.admin, "ops", "trucker_link_created", "booking", booking_id, f"Trucker link created for {booking_id}.")
+    return link
+
+
+def trucker_link_by_token(store: Store, token: str) -> TruckerAccessLink:
+    for link in store.trucker_links.values():
+        if link.token == token and link.active:
+            if link.expires_at and link.expires_at < now_utc():
+                raise ValueError("Trucker link has expired")
+            return link
+    raise ValueError("Trucker link not found")
+
+
+def _trucker_portal_response(store: Store, booking: Booking) -> TruckerPortalResponse:
+    importer = store.importers.get(booking.importer_id)
+    plan = ensure_delivery_plan(store, booking)
+    release = release_status_for_booking(store, booking.id)
+    summary = TruckerBookingSummary(
+        id=booking.id,
+        importer_company_name=importer.company_name if importer else None,
+        delivery_method=plan.delivery_method,
+        destination_address=plan.destination_address,
+        destination_contact_name=plan.destination_contact_name,
+        destination_contact_phone=plan.destination_contact_phone,
+        delivery_window_start=plan.delivery_window_start,
+        delivery_window_end=plan.delivery_window_end,
+        equipment_required=list(plan.equipment_required),
+        cargo_description=booking.cargo_description,
+        cargo_category=booking.cargo_category,
+        cbm_estimate=booking.cbm_estimate,
+        weight_kg_estimate=booking.weight_kg_estimate,
+        delivery_status=plan.status,
+        booking_status=booking.status,
+    )
+    return TruckerPortalResponse(
+        booking=summary,
+        release_status=release.release_status,
+        can_deliver=release.can_release,
+        holds=release.holds,
+        documents=documents_for_booking(store, booking.id),
+        events=events_for_booking(store, booking.id),
+    )
+
+
+def trucker_portal(store: Store, token: str) -> TruckerPortalResponse:
+    link = trucker_link_by_token(store, token)
+    link.last_used_at = now_utc()
+    store.trucker_links[link.id] = link
+    booking = store.bookings[link.booking_id]
+    return _trucker_portal_response(store, booking)
+
+
+def trucker_status_update(store: Store, token: str, request: TruckerStatusUpdate) -> TruckerPortalResponse:
+    if request.stage not in TRUCKER_ALLOWED_EVENT_STAGES:
+        raise ValueError("Trucker may only submit pickup_scheduled, picked_up, or delivered events.")
+    link = trucker_link_by_token(store, token)
+    booking = store.bookings[link.booking_id]
+    if request.stage == ShipmentEventStage.delivered:
+        release = release_status_for_booking(store, booking.id)
+        if not release.can_release:
+            hold_summary = ", ".join(hold.hold_type.value for hold in release.holds) or "release blocked"
+            raise PermissionError(f"Cannot mark delivered while release is blocked: {hold_summary}.")
+        plan = ensure_delivery_plan(store, booking)
+        mark_delivery_delivered(store, plan.id, "trucker-portal")
+    create_shipment_event(
+        store,
+        booking.id,
+        ShipmentEventCreate(
+            stage=request.stage,
+            label=TRUCKER_STAGE_LABELS.get(request.stage, request.stage.value),
+            occurred_at=now_utc(),
+            source_type=SourceType.partner_update,
+            source_name="Trucker portal",
+            confidence=SourceConfidence.confirmed,
+            notes=request.notes,
+        ),
+    )
+    create_audit_event(
+        store,
+        ActorRole.system,
+        "trucker-portal",
+        "trucker_status_update",
+        "booking",
+        booking.id,
+        f"Trucker reported {request.stage.value}.",
+    )
+    link.last_used_at = now_utc()
+    store.trucker_links[link.id] = link
+    booking = store.bookings[booking.id]
+    return _trucker_portal_response(store, booking)
 
 
 def sailing_search(store: Store) -> List[SailingSearchResult]:
@@ -3145,3 +4232,944 @@ def sailing_search(store: Store) -> List[SailingSearchResult]:
             )
         )
     return sorted(results, key=lambda item: item.etd)
+
+
+def create_sentinel_subscriber(
+    store: Store,
+    phone_number: str,
+    label: Optional[str],
+    actor_id: str,
+) -> SentinelSubscriber:
+    normalized_phone = phone_number.strip()
+    if not normalized_phone:
+        raise ValueError("phone_number is required")
+    for existing in store.sentinel_subscribers.values():
+        if existing.phone_number == normalized_phone and existing.status != SentinelSubscriberStatus.opted_out:
+            return existing
+    subscriber = SentinelSubscriber(
+        id=store.next_id("SENTSUB"),
+        phone_number=normalized_phone,
+        label=label,
+        status=SentinelSubscriberStatus.pending,
+        confirmation_token=secrets.token_hex(16),
+        created_at=now_utc(),
+    )
+    store.sentinel_subscribers[subscriber.id] = subscriber
+
+    from .providers import send_sms_via_twilio
+
+    try:
+        send_sms_via_twilio(
+            normalized_phone,
+            f"Ship Hoppa Sentinel opt-in: confirm with token {subscriber.confirmation_token}.",
+        )
+    except Exception:
+        # Don't fail the API if Twilio is misconfigured; the token is still stored.
+        pass
+
+    create_audit_event(
+        store,
+        ActorRole.admin,
+        actor_id,
+        "sentinel_subscriber_created",
+        "sentinel_subscriber",
+        subscriber.id,
+        f"Sentinel SMS subscriber created for {normalized_phone}.",
+        {"phone": normalized_phone, "actor": actor_id},
+    )
+    return subscriber
+
+
+def confirm_sentinel_subscriber(store: Store, token: str) -> SentinelSubscriber:
+    for subscriber in store.sentinel_subscribers.values():
+        if subscriber.confirmation_token == token:
+            if subscriber.status == SentinelSubscriberStatus.opted_out:
+                raise ValueError("Subscriber has opted out")
+            subscriber.status = SentinelSubscriberStatus.active
+            subscriber.confirmed_at = now_utc()
+            store.sentinel_subscribers[subscriber.id] = subscriber
+            create_audit_event(
+                store,
+                ActorRole.system,
+                subscriber.id,
+                "sentinel_subscriber_confirmed",
+                "sentinel_subscriber",
+                subscriber.id,
+                f"Sentinel SMS subscriber {subscriber.phone_number} confirmed.",
+                {"phone": subscriber.phone_number},
+            )
+            return subscriber
+    raise ValueError("Confirmation token not found")
+
+
+def opt_out_sentinel_subscriber(
+    store: Store,
+    phone_number: str,
+    actor_id: str,
+) -> Optional[SentinelSubscriber]:
+    normalized_phone = phone_number.strip()
+    for subscriber in store.sentinel_subscribers.values():
+        if subscriber.phone_number == normalized_phone:
+            if subscriber.status == SentinelSubscriberStatus.opted_out:
+                return subscriber
+            subscriber.status = SentinelSubscriberStatus.opted_out
+            subscriber.opted_out_at = now_utc()
+            store.sentinel_subscribers[subscriber.id] = subscriber
+            create_audit_event(
+                store,
+                ActorRole.admin,
+                actor_id,
+                "sentinel_subscriber_opted_out",
+                "sentinel_subscriber",
+                subscriber.id,
+                f"Sentinel SMS subscriber {normalized_phone} opted out.",
+                {"phone": normalized_phone, "actor": actor_id},
+            )
+            return subscriber
+    return None
+
+
+def active_sentinel_phone_numbers(store: Store) -> List[str]:
+    active = [
+        s.phone_number
+        for s in store.sentinel_subscribers.values()
+        if s.status == SentinelSubscriberStatus.active
+    ]
+    if active:
+        return active
+    fallback = os.getenv("SHIP_HOPPA_OPS_PHONE")
+    return [fallback] if fallback else []
+
+
+def shipment_summary_for_booking(store: Store, booking: Booking) -> ShipmentSummary:
+    events = events_for_booking(store, booking.id)
+    documents = documents_for_booking(store, booking.id)
+    pending_approvals = sum(
+        1
+        for approval in store.approval_requests.values()
+        if approval.related_booking_id == booking.id and approval.status == ApprovalStatus.pending
+    )
+    invoice = invoice_for_booking(store, booking.id)
+    last_event = events[-1] if events else None
+    return ShipmentSummary(
+        booking=booking,
+        pending_approvals_count=pending_approvals,
+        documents_count=len(documents),
+        events_count=len(events),
+        has_invoice=invoice is not None,
+        last_event_stage=last_event.stage if last_event else None,
+        last_event_at=last_event.occurred_at if last_event else None,
+    )
+
+
+def list_shipment_summaries(store: Store) -> List[ShipmentSummary]:
+    bookings = sorted(
+        store.bookings.values(),
+        key=lambda item: (item.created_at, item.id),
+        reverse=True,
+    )
+    return [shipment_summary_for_booking(store, booking) for booking in bookings]
+
+
+def shipment_workspace(store: Store, booking_id: str) -> ShipmentWorkspace:
+    booking = store.bookings[booking_id]
+    container = store.containers.get(booking.container_id) if booking.container_id else None
+    documents = documents_for_booking(store, booking.id)
+    events = events_for_booking(store, booking.id)
+    invoice = invoice_for_booking(store, booking.id)
+    customs = next(
+        (profile for profile in store.customs_profiles.values() if profile.booking_id == booking.id),
+        None,
+    )
+    release = release_status_for_booking(store, booking.id)
+    approvals = sorted(
+        [a for a in store.approval_requests.values() if a.related_booking_id == booking.id],
+        key=lambda a: a.created_at,
+        reverse=True,
+    )
+    pending_approvals_count = sum(1 for a in approvals if a.status == ApprovalStatus.pending)
+    project = import_project_for_booking(store, booking.id)
+    project_id = project.id if project else None
+    project_purchase_orders = sorted(
+        [
+            order
+            for order in store.purchase_orders.values()
+            if order.booking_id == booking.id or (project_id and order.import_project_id == project_id)
+        ],
+        key=lambda order: order.created_at,
+        reverse=True,
+    )
+    purchase_order_ids = {order.id for order in project_purchase_orders}
+    production_milestones = sorted(
+        [
+            milestone
+            for milestone in store.production_milestones.values()
+            if milestone.purchase_order_id in purchase_order_ids
+        ],
+        key=lambda milestone: ((milestone.due_date or date.max), milestone.created_at),
+    )
+    quality_inspections = sorted(
+        [
+            inspection
+            for inspection in store.quality_inspections.values()
+            if inspection.purchase_order_id in purchase_order_ids
+        ],
+        key=lambda inspection: inspection.created_at,
+        reverse=True,
+    )
+    pay_requests = sorted(
+        [
+            request
+            for request in store.supplier_pay_requests.values()
+            if request.booking_id == booking.id or (project_id and request.import_project_id == project_id)
+        ],
+        key=lambda request: request.created_at,
+        reverse=True,
+    )
+    pay_request_ids = {request.id for request in pay_requests}
+    pay_quotes = sorted(
+        [quote for quote in store.supplier_pay_quotes.values() if quote.supplier_pay_request_id in pay_request_ids],
+        key=lambda quote: quote.created_at,
+        reverse=True,
+    )
+    source_messages = sorted(
+        [
+            message
+            for message in store.source_messages.values()
+            if message.matched_shipment_id == booking.id
+            or (project_id and message.matched_import_project_id == project_id)
+        ],
+        key=lambda message: message.received_at,
+        reverse=True,
+    )
+    delivery_plan = delivery_plan_for_booking(store, booking.id)
+    return ShipmentWorkspace(
+        booking=booking,
+        container=container,
+        documents=documents,
+        events=events,
+        invoice=invoice,
+        customs_profile=customs,
+        release_status=release,
+        approvals=approvals,
+        pending_approvals_count=pending_approvals_count,
+        purchase_orders=project_purchase_orders,
+        production_milestones=production_milestones,
+        quality_inspections=quality_inspections,
+        supplier_pay_requests=pay_requests,
+        supplier_pay_quotes=pay_quotes,
+        source_messages=source_messages,
+        delivery_plan=delivery_plan,
+        import_project=project,
+    )
+
+
+def create_delivery_job(
+    store: Store,
+    booking_id: str,
+    payload: DeliveryJobCreate,
+    actor_id: str,
+) -> DeliveryJob:
+    if booking_id not in store.bookings:
+        raise ValueError("Booking not found")
+    timestamp = now_utc()
+    job = DeliveryJob(
+        id=store.next_id("DJOB"),
+        booking_id=booking_id,
+        mode=payload.mode,
+        pickup_address=payload.pickup_address,
+        pickup_contact_name=payload.pickup_contact_name,
+        pickup_window_start=payload.pickup_window_start,
+        pickup_window_end=payload.pickup_window_end,
+        delivery_address=payload.delivery_address,
+        delivery_contact_name=payload.delivery_contact_name,
+        delivery_window_start=payload.delivery_window_start,
+        delivery_window_end=payload.delivery_window_end,
+        equipment_required=list(payload.equipment_required),
+        quote_amount_usd=payload.quote_amount_usd,
+        currency=payload.currency,
+        notes=payload.notes,
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+    store.delivery_jobs[job.id] = job
+    create_audit_event(
+        store,
+        ActorRole.importer,
+        actor_id,
+        "delivery_job_created",
+        "delivery_job",
+        job.id,
+        f"Delivery job created for booking {booking_id} (mode {payload.mode.value}).",
+        {"booking_id": booking_id, "mode": payload.mode.value},
+    )
+    return job
+
+
+def list_delivery_jobs_for_booking(store: Store, booking_id: str) -> List[DeliveryJob]:
+    return sorted(
+        [job for job in store.delivery_jobs.values() if job.booking_id == booking_id],
+        key=lambda job: job.created_at,
+        reverse=True,
+    )
+
+
+def update_delivery_job(
+    store: Store,
+    job_id: str,
+    payload: DeliveryJobUpdate,
+    actor_id: str,
+) -> DeliveryJob:
+    if job_id not in store.delivery_jobs:
+        raise ValueError("Delivery job not found")
+    job = store.delivery_jobs[job_id]
+    previous_status = job.status
+    update_fields = payload.model_dump(exclude_unset=True)
+    for key, value in update_fields.items():
+        setattr(job, key, value)
+    job.updated_at = now_utc()
+    store.delivery_jobs[job.id] = job
+    if "status" in update_fields and update_fields["status"] != previous_status:
+        create_audit_event(
+            store,
+            ActorRole.importer,
+            actor_id,
+            "delivery_job_status_changed",
+            "delivery_job",
+            job.id,
+            f"Delivery job status moved from {previous_status.value} to {job.status.value}.",
+            {"previous_status": previous_status.value, "new_status": job.status.value},
+        )
+    else:
+        create_audit_event(
+            store,
+            ActorRole.importer,
+            actor_id,
+            "delivery_job_updated",
+            "delivery_job",
+            job.id,
+            f"Delivery job {job.id} updated.",
+            {"fields": list(update_fields.keys())},
+        )
+    return job
+
+
+def create_partner_profile(
+    store: Store,
+    payload: PartnerProfileCreate,
+    actor_id: str,
+) -> PartnerProfile:
+    timestamp = now_utc()
+    profile = PartnerProfile(
+        id=store.next_id("PARTNER"),
+        partner_type=payload.partner_type,
+        name=payload.name,
+        contact_email=payload.contact_email,
+        contact_phone=payload.contact_phone,
+        organization_id=payload.organization_id,
+        preferred_channel=payload.preferred_channel,
+        upload_permissions=list(payload.upload_permissions),
+        notes=payload.notes,
+        active=True,
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+    store.partner_profiles[profile.id] = profile
+    create_audit_event(
+        store,
+        ActorRole.admin,
+        actor_id,
+        "partner_profile_created",
+        "partner_profile",
+        profile.id,
+        f"Partner profile created for {profile.name} ({profile.partner_type.value}).",
+        {"partner_type": profile.partner_type.value},
+    )
+    return profile
+
+
+def update_partner_profile(
+    store: Store,
+    partner_id: str,
+    payload: PartnerProfileUpdate,
+    actor_id: str,
+) -> PartnerProfile:
+    if partner_id not in store.partner_profiles:
+        raise ValueError("Partner profile not found")
+    profile = store.partner_profiles[partner_id]
+    fields = payload.model_dump(exclude_unset=True)
+    for key, value in fields.items():
+        setattr(profile, key, value)
+    profile.updated_at = now_utc()
+    store.partner_profiles[profile.id] = profile
+    create_audit_event(
+        store,
+        ActorRole.admin,
+        actor_id,
+        "partner_profile_updated",
+        "partner_profile",
+        profile.id,
+        f"Partner profile {profile.id} updated.",
+        {"fields": list(fields.keys())},
+    )
+    return profile
+
+
+def create_partner_capability(
+    store: Store,
+    partner_id: str,
+    payload: PartnerCapabilityCreate,
+    actor_id: str,
+) -> PartnerCapability:
+    if partner_id not in store.partner_profiles:
+        raise ValueError("Partner profile not found")
+    timestamp = now_utc()
+    capability = PartnerCapability(
+        id=store.next_id("PCAP"),
+        partner_id=partner_id,
+        capability_type=payload.capability_type,
+        service_regions=list(payload.service_regions),
+        service_lanes=list(payload.service_lanes),
+        equipment=list(payload.equipment),
+        cutoff_rules=payload.cutoff_rules,
+        operating_hours=payload.operating_hours,
+        escalation_contacts=list(payload.escalation_contacts),
+        average_response_hours=payload.average_response_hours,
+        average_completion_hours=payload.average_completion_hours,
+        failure_rate=payload.failure_rate,
+        cost_model=payload.cost_model,
+        active=True,
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+    store.partner_capabilities[capability.id] = capability
+    create_audit_event(
+        store,
+        ActorRole.admin,
+        actor_id,
+        "partner_capability_created",
+        "partner_capability",
+        capability.id,
+        f"Partner capability {payload.capability_type.value} added to {partner_id}.",
+        {"partner_id": partner_id, "capability_type": payload.capability_type.value},
+    )
+    return capability
+
+
+def update_partner_capability(
+    store: Store,
+    capability_id: str,
+    payload: PartnerCapabilityUpdate,
+    actor_id: str,
+) -> PartnerCapability:
+    if capability_id not in store.partner_capabilities:
+        raise ValueError("Partner capability not found")
+    capability = store.partner_capabilities[capability_id]
+    fields = payload.model_dump(exclude_unset=True)
+    for key, value in fields.items():
+        setattr(capability, key, value)
+    capability.updated_at = now_utc()
+    store.partner_capabilities[capability.id] = capability
+    create_audit_event(
+        store,
+        ActorRole.admin,
+        actor_id,
+        "partner_capability_updated",
+        "partner_capability",
+        capability.id,
+        f"Partner capability {capability.id} updated.",
+        {"fields": list(fields.keys())},
+    )
+    return capability
+
+
+def list_partner_capabilities(store: Store, partner_id: str) -> List[PartnerCapability]:
+    return sorted(
+        [c for c in store.partner_capabilities.values() if c.partner_id == partner_id],
+        key=lambda c: c.created_at,
+        reverse=True,
+    )
+
+
+def create_contingency_option(
+    store: Store,
+    booking_id: str,
+    payload: ContingencyOptionCreate,
+    actor_id: str,
+) -> ContingencyOption:
+    if booking_id not in store.bookings:
+        raise ValueError("Booking not found")
+    timestamp = now_utc()
+    option = ContingencyOption(
+        id=store.next_id("CONT"),
+        booking_id=booking_id,
+        issue_type=payload.issue_type,
+        option_type=payload.option_type,
+        plain_language_summary=payload.plain_language_summary,
+        cost_impact_usd=payload.cost_impact_usd,
+        time_impact_days=payload.time_impact_days,
+        risk_level=payload.risk_level,
+        source_evidence=payload.source_evidence,
+        approval_request_id=payload.approval_request_id,
+        status=ContingencyStatus.proposed,
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+    store.contingency_options[option.id] = option
+    create_audit_event(
+        store,
+        ActorRole.admin,
+        actor_id,
+        "contingency_option_created",
+        "contingency_option",
+        option.id,
+        f"Contingency option proposed for booking {booking_id} ({payload.option_type.value}).",
+        {
+            "booking_id": booking_id,
+            "issue_type": payload.issue_type.value,
+            "option_type": payload.option_type.value,
+        },
+    )
+    return option
+
+
+def update_contingency_option(
+    store: Store,
+    option_id: str,
+    payload: ContingencyOptionUpdate,
+    actor_id: str,
+) -> ContingencyOption:
+    if option_id not in store.contingency_options:
+        raise ValueError("Contingency option not found")
+    option = store.contingency_options[option_id]
+    previous_status = option.status
+    fields = payload.model_dump(exclude_unset=True)
+    for key, value in fields.items():
+        setattr(option, key, value)
+    option.updated_at = now_utc()
+    store.contingency_options[option.id] = option
+    if "status" in fields and fields["status"] != previous_status:
+        create_audit_event(
+            store,
+            ActorRole.admin,
+            actor_id,
+            "contingency_option_status_changed",
+            "contingency_option",
+            option.id,
+            f"Contingency option moved from {previous_status.value} to {option.status.value}.",
+            {"previous_status": previous_status.value, "new_status": option.status.value},
+        )
+    else:
+        create_audit_event(
+            store,
+            ActorRole.admin,
+            actor_id,
+            "contingency_option_updated",
+            "contingency_option",
+            option.id,
+            f"Contingency option {option.id} updated.",
+            {"fields": list(fields.keys())},
+        )
+    return option
+
+
+def list_contingency_options_for_booking(store: Store, booking_id: str) -> List[ContingencyOption]:
+    return sorted(
+        [o for o in store.contingency_options.values() if o.booking_id == booking_id],
+        key=lambda o: o.created_at,
+        reverse=True,
+    )
+
+
+def record_payment_proof(
+    store: Store,
+    booking_id: str,
+    payload: PaymentProofCreate,
+    actor_id: str,
+) -> PaymentProof:
+    if booking_id not in store.bookings:
+        raise ValueError("Booking not found")
+    timestamp = now_utc()
+    proof = PaymentProof(
+        id=store.next_id("PROOF"),
+        booking_id=booking_id,
+        invoice_id=payload.invoice_id,
+        supplier_pay_request_id=payload.supplier_pay_request_id,
+        payment_type=payload.payment_type,
+        paid_amount=payload.paid_amount,
+        paid_currency=payload.paid_currency,
+        paid_at=payload.paid_at,
+        paid_by=payload.paid_by,
+        payment_method=payload.payment_method,
+        reference_number=payload.reference_number,
+        proof_document_id=payload.proof_document_id,
+        bank_account_last_digits=payload.bank_account_last_digits,
+        notes=payload.notes,
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+    store.payment_proofs[proof.id] = proof
+    create_audit_event(
+        store,
+        ActorRole.importer,
+        actor_id,
+        "payment_proof_recorded",
+        "payment_proof",
+        proof.id,
+        f"Payment proof recorded for booking {booking_id} ({payload.payment_type.value}).",
+        {
+            "booking_id": booking_id,
+            "payment_type": payload.payment_type.value,
+            "paid_amount": payload.paid_amount,
+            "paid_currency": payload.paid_currency,
+        },
+    )
+    return proof
+
+
+def update_payment_proof_reconciliation(
+    store: Store,
+    proof_id: str,
+    payload: PaymentProofReconcileUpdate,
+    actor_id: str,
+) -> PaymentProof:
+    if proof_id not in store.payment_proofs:
+        raise ValueError("Payment proof not found")
+    proof = store.payment_proofs[proof_id]
+    previous_status = proof.reconciliation_status
+    proof.reconciliation_status = payload.reconciliation_status
+    if payload.variance_amount is not None:
+        proof.variance_amount = payload.variance_amount
+    if payload.notes is not None:
+        proof.notes = payload.notes
+    proof.reviewed_by = actor_id
+    proof.reviewed_at = now_utc()
+    proof.updated_at = now_utc()
+    store.payment_proofs[proof.id] = proof
+    create_audit_event(
+        store,
+        ActorRole.admin,
+        actor_id,
+        "payment_proof_reconciled",
+        "payment_proof",
+        proof.id,
+        f"Payment proof reconciliation moved from {previous_status.value} to {proof.reconciliation_status.value}.",
+        {
+            "previous_status": previous_status.value,
+            "new_status": proof.reconciliation_status.value,
+        },
+    )
+    return proof
+
+
+def list_payment_proofs_for_booking(store: Store, booking_id: str) -> List[PaymentProof]:
+    return sorted(
+        [p for p in store.payment_proofs.values() if p.booking_id == booking_id],
+        key=lambda p: (p.paid_at, p.id),
+        reverse=True,
+    )
+
+
+def get_landed_cost_actual_for_booking(store: Store, booking_id: str) -> Optional[LandedCostActual]:
+    return next(
+        (l for l in store.landed_cost_actuals.values() if l.booking_id == booking_id),
+        None,
+    )
+
+
+def record_landed_cost_actual(
+    store: Store,
+    booking_id: str,
+    payload: LandedCostActualUpsert,
+    actor_id: str,
+) -> LandedCostActual:
+    if booking_id not in store.bookings:
+        raise ValueError("Booking not found")
+    timestamp = now_utc()
+    existing = get_landed_cost_actual_for_booking(store, booking_id)
+    variance_amount = (
+        payload.actual_total_usd - payload.estimated_total_usd
+        if payload.estimated_total_usd is not None
+        else None
+    )
+    if existing:
+        update_fields = payload.model_dump(exclude={"finalised"})
+        for key, value in update_fields.items():
+            setattr(existing, key, value)
+        existing.variance_amount_usd = variance_amount
+        if payload.finalised:
+            existing.finalised_at = timestamp
+        existing.updated_at = timestamp
+        store.landed_cost_actuals[existing.id] = existing
+        actual = existing
+        action = "updated"
+    else:
+        actual = LandedCostActual(
+            id=store.next_id("LCACT"),
+            booking_id=booking_id,
+            estimated_total_usd=payload.estimated_total_usd,
+            actual_total_usd=payload.actual_total_usd,
+            currency=payload.currency,
+            supplier_invoice_amount=payload.supplier_invoice_amount,
+            fx_cost=payload.fx_cost,
+            international_freight=payload.international_freight,
+            platform_fee=payload.platform_fee,
+            origin_pickup=payload.origin_pickup,
+            inspection=payload.inspection,
+            warehouse_charges=payload.warehouse_charges,
+            customs_duty=payload.customs_duty,
+            gst=payload.gst,
+            broker_fees=payload.broker_fees,
+            port_charges=payload.port_charges,
+            destination_trucking=payload.destination_trucking,
+            insurance=payload.insurance,
+            storage_demurrage_detention=payload.storage_demurrage_detention,
+            adjustments=payload.adjustments,
+            variance_amount_usd=variance_amount,
+            variance_reason=payload.variance_reason,
+            finalised_at=timestamp if payload.finalised else None,
+            created_at=timestamp,
+            updated_at=timestamp,
+        )
+        store.landed_cost_actuals[actual.id] = actual
+        action = "recorded"
+    create_audit_event(
+        store,
+        ActorRole.admin,
+        actor_id,
+        f"landed_cost_actual_{action}",
+        "landed_cost_actual",
+        actual.id,
+        f"Landed cost actual {action} for booking {booking_id}.",
+        {
+            "booking_id": booking_id,
+            "actual_total_usd": payload.actual_total_usd,
+            "variance_amount_usd": variance_amount,
+            "finalised": payload.finalised,
+        },
+    )
+    return actual
+
+
+def record_marketplace_order(
+    store: Store,
+    payload: MarketplaceOrderCreate,
+    actor_id: str,
+) -> MarketplaceOrder:
+    if payload.booking_id and payload.booking_id not in store.bookings:
+        raise ValueError("Booking not found")
+    if payload.import_project_id and payload.import_project_id not in store.import_projects:
+        raise ValueError("Import project not found")
+    timestamp = now_utc()
+    order = MarketplaceOrder(
+        id=store.next_id("MORD"),
+        booking_id=payload.booking_id,
+        import_project_id=payload.import_project_id,
+        marketplace=payload.marketplace,
+        external_order_id=payload.external_order_id,
+        trade_assurance_status=payload.trade_assurance_status,
+        supplier_profile_url=payload.supplier_profile_url,
+        product_url=payload.product_url,
+        order_url=payload.order_url,
+        buyer_account_reference=payload.buyer_account_reference,
+        agreed_terms_snapshot=payload.agreed_terms_snapshot,
+        messages_snapshot_reference=payload.messages_snapshot_reference,
+        payment_method=payload.payment_method,
+        protection_notes=payload.protection_notes,
+        sync_method=payload.sync_method,
+        last_synced_at=timestamp,
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+    store.marketplace_orders[order.id] = order
+    create_audit_event(
+        store,
+        ActorRole.importer,
+        actor_id,
+        "marketplace_order_recorded",
+        "marketplace_order",
+        order.id,
+        f"Marketplace order recorded ({payload.marketplace.value}).",
+        {
+            "marketplace": payload.marketplace.value,
+            "booking_id": payload.booking_id,
+            "import_project_id": payload.import_project_id,
+            "sync_method": payload.sync_method.value,
+        },
+    )
+    return order
+
+
+def get_insurance_policy_for_booking(store: Store, booking_id: str) -> Optional[InsurancePolicy]:
+    return next(
+        (p for p in store.insurance_policies.values() if p.booking_id == booking_id),
+        None,
+    )
+
+
+def record_insurance_policy(
+    store: Store,
+    booking_id: str,
+    payload: InsurancePolicyUpsert,
+    actor_id: str,
+) -> InsurancePolicy:
+    if booking_id not in store.bookings:
+        raise ValueError("Booking not found")
+    timestamp = now_utc()
+    existing = get_insurance_policy_for_booking(store, booking_id)
+    if existing:
+        for key, value in payload.model_dump().items():
+            setattr(existing, key, value)
+        existing.updated_at = timestamp
+        store.insurance_policies[existing.id] = existing
+        action = "updated"
+        policy = existing
+    else:
+        policy = InsurancePolicy(
+            id=store.next_id("INSPOL"),
+            booking_id=booking_id,
+            insurance_required=payload.insurance_required,
+            waived_by=payload.waived_by,
+            insured_value=payload.insured_value,
+            currency=payload.currency,
+            provider=payload.provider,
+            policy_reference=payload.policy_reference,
+            premium_usd=payload.premium_usd,
+            coverage_notes=payload.coverage_notes,
+            document_id=payload.document_id,
+            created_at=timestamp,
+            updated_at=timestamp,
+        )
+        store.insurance_policies[policy.id] = policy
+        action = "recorded"
+    create_audit_event(
+        store,
+        ActorRole.admin,
+        actor_id,
+        f"insurance_policy_{action}",
+        "insurance_policy",
+        policy.id,
+        f"Insurance policy {action} for booking {booking_id}.",
+        {"booking_id": booking_id, "insurance_required": payload.insurance_required},
+    )
+    return policy
+
+
+def create_claim_record(
+    store: Store,
+    booking_id: str,
+    payload: ClaimRecordCreate,
+    actor_id: str,
+) -> ClaimRecord:
+    if booking_id not in store.bookings:
+        raise ValueError("Booking not found")
+    if (
+        payload.insurance_policy_id
+        and payload.insurance_policy_id not in store.insurance_policies
+    ):
+        raise ValueError("Insurance policy not found")
+    timestamp = now_utc()
+    claim = ClaimRecord(
+        id=store.next_id("CLAIM"),
+        booking_id=booking_id,
+        insurance_policy_id=payload.insurance_policy_id,
+        claim_type=payload.claim_type,
+        claim_status=ClaimStatus.draft,
+        claim_amount_usd=payload.claim_amount_usd,
+        evidence_document_ids=list(payload.evidence_document_ids),
+        photo_document_ids=list(payload.photo_document_ids),
+        survey_report_document_id=payload.survey_report_document_id,
+        notes=payload.notes,
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+    store.claim_records[claim.id] = claim
+    create_audit_event(
+        store,
+        ActorRole.importer,
+        actor_id,
+        "claim_created",
+        "claim_record",
+        claim.id,
+        f"Claim ({payload.claim_type.value}) opened on booking {booking_id}.",
+        {
+            "booking_id": booking_id,
+            "claim_type": payload.claim_type.value,
+            "claim_amount_usd": payload.claim_amount_usd,
+        },
+    )
+    return claim
+
+
+def update_claim_record(
+    store: Store,
+    claim_id: str,
+    payload: ClaimRecordUpdate,
+    actor_id: str,
+) -> ClaimRecord:
+    if claim_id not in store.claim_records:
+        raise ValueError("Claim not found")
+    claim = store.claim_records[claim_id]
+    previous_status = claim.claim_status
+    fields = payload.model_dump(exclude_unset=True)
+    for key, value in fields.items():
+        setattr(claim, key, value)
+    if (
+        "claim_status" in fields
+        and fields["claim_status"] == ClaimStatus.submitted
+        and claim.submitted_at is None
+    ):
+        claim.submitted_at = now_utc()
+    if "claim_status" in fields and fields["claim_status"] in {
+        ClaimStatus.approved,
+        ClaimStatus.rejected,
+        ClaimStatus.paid,
+        ClaimStatus.closed,
+    } and claim.resolved_at is None:
+        claim.resolved_at = now_utc()
+    claim.updated_at = now_utc()
+    store.claim_records[claim.id] = claim
+    if "claim_status" in fields and fields["claim_status"] != previous_status:
+        create_audit_event(
+            store,
+            ActorRole.admin,
+            actor_id,
+            "claim_status_changed",
+            "claim_record",
+            claim.id,
+            f"Claim status moved from {previous_status.value} to {claim.claim_status.value}.",
+            {"previous_status": previous_status.value, "new_status": claim.claim_status.value},
+        )
+    else:
+        create_audit_event(
+            store,
+            ActorRole.admin,
+            actor_id,
+            "claim_updated",
+            "claim_record",
+            claim.id,
+            f"Claim {claim.id} updated.",
+            {"fields": list(fields.keys())},
+        )
+    return claim
+
+
+def list_claim_records_for_booking(store: Store, booking_id: str) -> List[ClaimRecord]:
+    return sorted(
+        [c for c in store.claim_records.values() if c.booking_id == booking_id],
+        key=lambda c: (c.created_at, c.id),
+        reverse=True,
+    )
+
+
+def list_marketplace_orders(
+    store: Store,
+    booking_id: Optional[str] = None,
+    import_project_id: Optional[str] = None,
+) -> List[MarketplaceOrder]:
+    orders = list(store.marketplace_orders.values())
+    if booking_id:
+        orders = [o for o in orders if o.booking_id == booking_id]
+    if import_project_id:
+        orders = [o for o in orders if o.import_project_id == import_project_id]
+    return sorted(orders, key=lambda o: (o.created_at, o.id), reverse=True)

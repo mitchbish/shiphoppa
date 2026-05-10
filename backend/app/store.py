@@ -5,16 +5,24 @@ from .models import (
     AccountIntegration,
     AccountProfile,
     Booking,
+    BrokerAccessLink,
+    WarehouseAccessLink,
+    CarrierAccessLink,
+    TruckerAccessLink,
     AuditEvent,
     AdminTask,
     ApprovalRequest,
     AutomationRun,
     CarrierService,
     ConsolidationWarehouse,
+    ContingencyOption,
     Container,
     CustomsProfile,
+    DeliveryJob,
     DeliveryPlan,
     DocumentRequirement,
+    PartnerCapability,
+    PartnerProfile,
     GrowthAttributionEvent,
     ImportProject,
     ImportProjectEvent,
@@ -22,17 +30,24 @@ from .models import (
     ImportProjectSnapshot,
     ImportProjectStepData,
     ImportProjectVersion,
+    ClaimRecord,
     Importer,
+    InsurancePolicy,
     Invoice,
+    LandedCostActual,
     Lane,
+    MarketplaceOrder,
     Notification,
     OutboundMessage,
+    PaymentProof,
     PaymentRecord,
     ProductionMilestone,
     PurchaseOrder,
     QualityInspection,
     ReleaseHold,
     SailingOption,
+    SentinelSubscriber,
+    SupplierProfileClaim,
     SEOOpportunity,
     ShipmentDocument,
     ShipmentEvent,
@@ -63,11 +78,24 @@ class Store:
         self.shipment_documents: Dict[str, ShipmentDocument] = {}
         self.shipment_events: Dict[str, ShipmentEvent] = {}
         self.supplier_links: Dict[str, SupplierAccessLink] = {}
+        self.broker_links: Dict[str, BrokerAccessLink] = {}
+        self.warehouse_links: Dict[str, WarehouseAccessLink] = {}
+        self.carrier_links: Dict[str, CarrierAccessLink] = {}
+        self.trucker_links: Dict[str, TruckerAccessLink] = {}
         self.invoices: Dict[str, Invoice] = {}
         self.payment_records: Dict[str, PaymentRecord] = {}
         self.release_holds: Dict[str, ReleaseHold] = {}
         self.customs_profiles: Dict[str, CustomsProfile] = {}
         self.delivery_plans: Dict[str, DeliveryPlan] = {}
+        self.delivery_jobs: Dict[str, DeliveryJob] = {}
+        self.partner_profiles: Dict[str, PartnerProfile] = {}
+        self.partner_capabilities: Dict[str, PartnerCapability] = {}
+        self.contingency_options: Dict[str, ContingencyOption] = {}
+        self.payment_proofs: Dict[str, PaymentProof] = {}
+        self.landed_cost_actuals: Dict[str, LandedCostActual] = {}
+        self.marketplace_orders: Dict[str, MarketplaceOrder] = {}
+        self.insurance_policies: Dict[str, InsurancePolicy] = {}
+        self.claim_records: Dict[str, ClaimRecord] = {}
         self.admin_tasks: Dict[str, AdminTask] = {}
         self.purchase_orders: Dict[str, PurchaseOrder] = {}
         self.production_milestones: Dict[str, ProductionMilestone] = {}
@@ -91,6 +119,8 @@ class Store:
         self.notifications: Dict[str, Notification] = {}
         self.audit_events: Dict[str, AuditEvent] = {}
         self.space_opportunities: Dict[str, SpaceOpportunity] = {}
+        self.sentinel_subscribers: Dict[str, SentinelSubscriber] = {}
+        self.supplier_profile_claims: Dict[str, SupplierProfileClaim] = {}
         self.idempotency_records: Dict[str, Any] = {}
         self._counters = defaultdict(int)
 

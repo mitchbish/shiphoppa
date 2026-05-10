@@ -3,17 +3,46 @@ import type {
   AccountIntegrationProvider,
   AccountIntegrationStatus,
   AccountProfile,
+  AuditEvent,
   Booking,
   BookingPayload,
   BookingChecklistResponse,
+  BrokerAccessLink,
+  BrokerClearanceUpdate,
+  BrokerPortalResponse,
+  WarehouseAccessLink,
+  WarehousePortalResponse,
+  WarehouseReceiptUpdate,
+  CarrierAccessLink,
+  CarrierEtaUpdate,
+  CarrierEventUpdate,
+  CarrierPortalResponse,
+  TruckerAccessLink,
+  TruckerPortalResponse,
+  TruckerStatusUpdate,
   CarrierOption,
   Container,
   ConfirmBookingResponse,
+  ContingencyOption,
+  ClaimRecord,
   CustomsProfile,
   DocumentType,
   DashboardSummary,
+  InsurancePolicy,
+  DeliveryJob,
+  DeliveryJobCreatePayload,
+  DeliveryJobUpdatePayload,
   DeliveryPlan,
+  LandedCostActual,
+  MarketplaceOrder,
+  PartnerCapability,
+  PartnerProfile,
+  GrowthAttributionEvent,
+  GrowthAttributionEventType,
+  GrowthAttributionSummary,
+  PaymentProof,
   Invoice,
+  ImportProject,
   ImportProjectWorkspaceResponse,
   MatchResult,
   Notification,
@@ -24,9 +53,16 @@ import type {
   SailingSearchResult,
   SourceMessage,
   SourceMessageType,
+  SentinelSubscriber,
+  SupplierLead,
+  SupplierProfileClaim,
+  SupplierProfileClaimResponse,
+  SupplierVerificationStatus,
   ShipmentDocument,
   ShipmentEvent,
   ShipmentEventStage,
+  ShipmentSummary,
+  ShipmentWorkspace,
   SupplierAccessLink,
   SupplierPayRequest,
   SupplierPortalResponse,
@@ -49,10 +85,17 @@ function tokenFor(path: string, method: string) {
     path.startsWith('/audit-events') ||
     path.startsWith('/documents') ||
     path.startsWith('/supplier-links') ||
+    path.startsWith('/broker-links') ||
+    path.startsWith('/warehouse-links') ||
+    path.startsWith('/carrier-links') ||
+    path.startsWith('/trucker-links') ||
     path.startsWith('/invoices') ||
     path.startsWith('/release-holds') ||
     path.startsWith('/automation') ||
     path.startsWith('/admin-tasks') ||
+    path.startsWith('/sentinel/') ||
+    path.startsWith('/growth/') ||
+    path.startsWith('/partners') ||
     (path.includes('/events') && method !== 'GET') ||
     (path.includes('/customs-profile') && method !== 'GET')
   ) {
@@ -67,13 +110,16 @@ function idempotencyKey() {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const method = init?.method ?? 'GET'
-  const token = tokenFor(path, method)
-  if (!API_BASE_URL || !token) {
+  const isPublic = path.startsWith('/api/supplier-claim/')
+  const token = isPublic ? '' : tokenFor(path, method)
+  if (!API_BASE_URL || (!isPublic && !token)) {
     throw new Error('Ship Hoppa is missing its API deployment settings.')
   }
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    Authorization: `Bearer ${token}`,
+  }
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
   }
   if (method !== 'GET') {
     headers['Idempotency-Key'] = idempotencyKey()
@@ -248,6 +294,148 @@ export function uploadSupplierDocument(token: string, documentType: DocumentType
   })
 }
 
+export function createBrokerLink(bookingId: string) {
+  return request<BrokerAccessLink>('/broker-links', {
+    method: 'POST',
+    body: JSON.stringify({ booking_id: bookingId }),
+  })
+}
+
+export function getBrokerPortal(token: string) {
+  return request<BrokerPortalResponse>(`/broker/${token}`)
+}
+
+export function submitBrokerClearance(token: string, payload: BrokerClearanceUpdate) {
+  return request<BrokerPortalResponse>(`/broker/${token}/clearance`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function uploadBrokerDocument(
+  token: string,
+  documentType: DocumentType,
+  fileName: string,
+  notes?: string,
+) {
+  return request<ShipmentDocument>(`/broker/${token}/documents`, {
+    method: 'POST',
+    body: JSON.stringify({
+      document_type: documentType,
+      file_name: fileName,
+      mime_type: 'application/pdf',
+      notes: notes ?? null,
+    }),
+  })
+}
+
+export function createWarehouseLink(bookingId: string) {
+  return request<WarehouseAccessLink>('/warehouse-links', {
+    method: 'POST',
+    body: JSON.stringify({ booking_id: bookingId }),
+  })
+}
+
+export function getWarehousePortal(token: string) {
+  return request<WarehousePortalResponse>(`/warehouse/${token}`)
+}
+
+export function submitWarehouseReceipt(token: string, payload: WarehouseReceiptUpdate) {
+  return request<WarehousePortalResponse>(`/warehouse/${token}/receipt`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function uploadWarehouseDocument(
+  token: string,
+  documentType: DocumentType,
+  fileName: string,
+  notes?: string,
+) {
+  return request<ShipmentDocument>(`/warehouse/${token}/documents`, {
+    method: 'POST',
+    body: JSON.stringify({
+      document_type: documentType,
+      file_name: fileName,
+      mime_type: 'application/pdf',
+      notes: notes ?? null,
+    }),
+  })
+}
+
+export function createCarrierLink(bookingId: string) {
+  return request<CarrierAccessLink>('/carrier-links', {
+    method: 'POST',
+    body: JSON.stringify({ booking_id: bookingId }),
+  })
+}
+
+export function getCarrierPortal(token: string) {
+  return request<CarrierPortalResponse>(`/carrier/${token}`)
+}
+
+export function submitCarrierEta(token: string, payload: CarrierEtaUpdate) {
+  return request<CarrierPortalResponse>(`/carrier/${token}/eta`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function submitCarrierEvent(token: string, payload: CarrierEventUpdate) {
+  return request<CarrierPortalResponse>(`/carrier/${token}/event`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function uploadCarrierDocument(
+  token: string,
+  documentType: DocumentType,
+  fileName: string,
+  notes?: string,
+) {
+  return request<ShipmentDocument>(`/carrier/${token}/documents`, {
+    method: 'POST',
+    body: JSON.stringify({
+      document_type: documentType,
+      file_name: fileName,
+      mime_type: 'application/pdf',
+      notes: notes ?? null,
+    }),
+  })
+}
+
+export function createTruckerLink(bookingId: string) {
+  return request<TruckerAccessLink>('/trucker-links', {
+    method: 'POST',
+    body: JSON.stringify({ booking_id: bookingId }),
+  })
+}
+
+export function getTruckerPortal(token: string) {
+  return request<TruckerPortalResponse>(`/trucker/${token}`)
+}
+
+export function submitTruckerStatus(token: string, payload: TruckerStatusUpdate) {
+  return request<TruckerPortalResponse>(`/trucker/${token}/status`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function uploadTruckerPod(token: string, fileName: string, notes?: string) {
+  return request<ShipmentDocument>(`/trucker/${token}/pod`, {
+    method: 'POST',
+    body: JSON.stringify({
+      document_type: 'delivery_order',
+      file_name: fileName,
+      mime_type: 'application/pdf',
+      notes: notes ?? null,
+    }),
+  })
+}
+
 export function getInvoice(bookingId: string) {
   return request<Invoice>(`/bookings/${bookingId}/invoice`)
 }
@@ -305,6 +493,55 @@ export function markDeliveryDelivered(deliveryPlanId: string) {
 
 export function getImportProjectWorkspace(bookingId: string) {
   return request<ImportProjectWorkspaceResponse>(`/bookings/${bookingId}/import-project`)
+}
+
+export function listImportProjects(includeDeleted = false) {
+  const suffix = includeDeleted ? '?include_deleted=true' : ''
+  return request<ImportProject[]>(`/import-projects${suffix}`)
+}
+
+export function createImportProject(payload: {
+  title: string
+  description?: string
+  workflow_type?: string
+  summary?: string
+  next_action?: string
+}) {
+  return request<ImportProject>('/import-projects', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function updateImportProject(
+  projectId: string,
+  payload: Partial<{
+    title: string
+    description: string
+    summary: string
+    status: string
+    current_step: string
+    next_action: string
+    blocked_reason: string
+  }>,
+) {
+  return request<ImportProject>(`/import-projects/${projectId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function cloneImportProject(projectId: string, newTitle?: string) {
+  const suffix = newTitle ? `?new_title=${encodeURIComponent(newTitle)}` : ''
+  return request<ImportProject>(`/import-projects/${projectId}/clone${suffix}`, {
+    method: 'POST',
+  })
+}
+
+export function softDeleteImportProject(projectId: string) {
+  return request<ImportProject>(`/import-projects/${projectId}`, {
+    method: 'DELETE',
+  })
 }
 
 export function createSourceMessage(payload: {
@@ -697,6 +934,9 @@ export type ApprovalRequestRecord = {
   created_at: string
   decided_at: string | null
   decided_by: string | null
+  review_requested_by: string | null
+  review_requested_at: string | null
+  review_requested_reason: string | null
 }
 
 export function getApprovals() {
@@ -715,4 +955,321 @@ export function rejectApprovalRequest(approvalId: string, reason?: string) {
     method: 'POST',
     body: JSON.stringify({ reason: reason ?? 'Rejected' }),
   })
+}
+
+export function requestApprovalReview(approvalId: string, reason: string) {
+  return request<ApprovalRequestRecord>(`/approvals/${approvalId}/request-review`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  })
+}
+
+// --- Shipments aggregator ---
+
+export function getShipments() {
+  return request<ShipmentSummary[]>('/shipments')
+}
+
+export function getShipmentWorkspace(bookingId: string) {
+  return request<ShipmentWorkspace>(`/shipments/${bookingId}/workspace`)
+}
+
+export function getSupplierPortalPreview(bookingId: string) {
+  return request<SupplierPortalResponse>(`/bookings/${bookingId}/supplier-preview`)
+}
+
+// --- Sentinel SMS subscribers ---
+
+export function getSentinelSubscribers() {
+  return request<SentinelSubscriber[]>('/sentinel/subscribers')
+}
+
+export function createSentinelSubscriber(phone_number: string, label?: string) {
+  return request<SentinelSubscriber>('/sentinel/subscribers', {
+    method: 'POST',
+    body: JSON.stringify({ phone_number, label }),
+  })
+}
+
+export function confirmSentinelSubscriber(token: string) {
+  return request<SentinelSubscriber>('/sentinel/subscribers/confirm', {
+    method: 'POST',
+    body: JSON.stringify({ token }),
+  })
+}
+
+export function optOutSentinelSubscriber(phone_number: string) {
+  return request<SentinelSubscriber>('/sentinel/subscribers/opt-out', {
+    method: 'POST',
+    body: JSON.stringify({ phone_number }),
+  })
+}
+
+// --- Extraction preview (dry run) ---
+
+export type ExtractedFactPreview = {
+  field: string
+  value: string
+  confidence: 'verified' | 'estimated' | 'unverified'
+  source_snippet: string
+}
+
+export type ExtractionPreviewResponse = {
+  facts: ExtractedFactPreview[]
+  extracted_count: number
+  would_match_booking_id: string | null
+}
+
+export function extractFactsPreview(text: string, subject?: string) {
+  return request<ExtractionPreviewResponse>('/automation/extract-preview', {
+    method: 'POST',
+    body: JSON.stringify({ text, subject }),
+  })
+}
+
+// --- Partners + capabilities + contingencies (admin) ---
+
+export function listPartners() {
+  return request<PartnerProfile[]>('/partners')
+}
+
+export function createPartner(payload: Partial<PartnerProfile> & { partner_type: PartnerProfile['partner_type']; name: string }) {
+  return request<PartnerProfile>('/partners', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function updatePartner(partnerId: string, payload: Partial<PartnerProfile>) {
+  return request<PartnerProfile>(`/partners/${partnerId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function listPartnerCapabilities(partnerId: string) {
+  return request<PartnerCapability[]>(`/partners/${partnerId}/capabilities`)
+}
+
+export function createPartnerCapability(partnerId: string, payload: Partial<PartnerCapability> & { capability_type: PartnerCapability['capability_type'] }) {
+  return request<PartnerCapability>(`/partners/${partnerId}/capabilities`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function listContingencyOptions(bookingId: string) {
+  return request<ContingencyOption[]>(`/bookings/${bookingId}/contingency-options`)
+}
+
+export function createContingencyOption(bookingId: string, payload: Partial<ContingencyOption> & { issue_type: ContingencyOption['issue_type']; option_type: ContingencyOption['option_type']; plain_language_summary: string }) {
+  return request<ContingencyOption>(`/bookings/${bookingId}/contingency-options`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function updateContingencyOption(optionId: string, payload: Partial<ContingencyOption>) {
+  return request<ContingencyOption>(`/contingency-options/${optionId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+}
+
+// --- Insurance + claims ---
+
+export function getInsurancePolicy(bookingId: string) {
+  return request<InsurancePolicy>(`/bookings/${bookingId}/insurance-policy`)
+}
+
+export function recordInsurancePolicy(bookingId: string, payload: Partial<InsurancePolicy>) {
+  return request<InsurancePolicy>(`/bookings/${bookingId}/insurance-policy`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function listClaims(bookingId: string) {
+  return request<ClaimRecord[]>(`/bookings/${bookingId}/claims`)
+}
+
+export function createClaim(bookingId: string, payload: Partial<ClaimRecord> & { claim_type: ClaimRecord['claim_type'] }) {
+  return request<ClaimRecord>(`/bookings/${bookingId}/claims`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function updateClaim(claimId: string, payload: Partial<ClaimRecord>) {
+  return request<ClaimRecord>(`/claims/${claimId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+}
+
+// --- Marketplace orders ---
+
+export function listMarketplaceOrders(params: { booking_id?: string; import_project_id?: string } = {}) {
+  const search = new URLSearchParams()
+  if (params.booking_id) search.set('booking_id', params.booking_id)
+  if (params.import_project_id) search.set('import_project_id', params.import_project_id)
+  const suffix = search.toString()
+  return request<MarketplaceOrder[]>(`/marketplace-orders${suffix ? `?${suffix}` : ''}`)
+}
+
+export function recordMarketplaceOrder(payload: Partial<MarketplaceOrder> & { marketplace: MarketplaceOrder['marketplace'] }) {
+  return request<MarketplaceOrder>('/marketplace-orders', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+// --- Payment proofs + landed cost ---
+
+export function listPaymentProofs(bookingId: string) {
+  return request<PaymentProof[]>(`/bookings/${bookingId}/payment-proofs`)
+}
+
+export function recordPaymentProof(bookingId: string, payload: Partial<PaymentProof> & {
+  payment_type: PaymentProof['payment_type']
+  paid_amount: number
+  paid_currency: string
+  paid_at: string
+  paid_by: string
+}) {
+  return request<PaymentProof>(`/bookings/${bookingId}/payment-proofs`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function reconcilePaymentProof(proofId: string, payload: { reconciliation_status: PaymentProof['reconciliation_status']; variance_amount?: number; notes?: string }) {
+  return request<PaymentProof>(`/payment-proofs/${proofId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function getLandedCostActual(bookingId: string) {
+  return request<LandedCostActual>(`/bookings/${bookingId}/landed-cost-actual`)
+}
+
+export function recordLandedCostActual(bookingId: string, payload: Partial<LandedCostActual> & { actual_total_usd: number }) {
+  return request<LandedCostActual>(`/bookings/${bookingId}/landed-cost-actual`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+// --- Delivery jobs ---
+
+export function listDeliveryJobsForBooking(bookingId: string) {
+  return request<DeliveryJob[]>(`/bookings/${bookingId}/delivery-jobs`)
+}
+
+export function createDeliveryJob(bookingId: string, payload: DeliveryJobCreatePayload) {
+  return request<DeliveryJob>(`/bookings/${bookingId}/delivery-jobs`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function updateDeliveryJob(jobId: string, payload: DeliveryJobUpdatePayload) {
+  return request<DeliveryJob>(`/delivery-jobs/${jobId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+}
+
+// --- Supplier profile claim ---
+
+export function listSupplierLeads() {
+  return request<SupplierLead[]>('/growth/supplier-leads')
+}
+
+export function updateSupplierLeadVerification(
+  leadId: string,
+  payload: { verification_status: SupplierVerificationStatus; verification_notes?: string },
+) {
+  return request<SupplierLead>(`/growth/supplier-leads/${leadId}/verification`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function listGrowthAttributionEvents(filters: {
+  event_type?: GrowthAttributionEventType
+  source?: string
+  channel?: string
+  template_key?: string
+  category?: string
+  region?: string
+  supplier_lead_id?: string
+  shipment_id?: string
+  since?: string
+  until?: string
+  limit?: number
+} = {}) {
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== '' && value !== null) {
+      query.set(key, String(value))
+    }
+  }
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request<GrowthAttributionEvent[]>(`/growth/attribution-events${suffix}`)
+}
+
+export function getGrowthAttributionSummary(
+  group_by: 'source' | 'channel' | 'category' | 'region' | 'event_type' | 'campaign' = 'source',
+  filters: { event_type?: GrowthAttributionEventType; since?: string; until?: string } = {},
+) {
+  const query = new URLSearchParams({ group_by })
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== '' && value !== null) {
+      query.set(key, String(value))
+    }
+  }
+  return request<GrowthAttributionSummary>(`/growth/attribution-summary?${query.toString()}`)
+}
+
+export function createSupplierClaimLink(leadId: string) {
+  return request<SupplierProfileClaim>(`/growth/supplier-leads/${leadId}/claim-link`, {
+    method: 'POST',
+  })
+}
+
+export function getSupplierClaim(token: string) {
+  return request<SupplierProfileClaimResponse>(`/api/supplier-claim/${token}`)
+}
+
+export function acceptSupplierClaim(token: string, contact_email: string, contact_name: string) {
+  return request<SupplierProfileClaimResponse>(`/api/supplier-claim/${token}/accept`, {
+    method: 'POST',
+    body: JSON.stringify({ contact_email, contact_name }),
+  })
+}
+
+// --- Audit log (admin) ---
+
+export type AuditEventFilters = {
+  actor_id?: string
+  actor_role?: 'importer' | 'admin' | 'system'
+  event_type?: string
+  entity_type?: string
+  entity_id?: string
+  since?: string
+  until?: string
+  limit?: number
+}
+
+export function getAuditEvents(filters: AuditEventFilters = {}) {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== null && value !== '') {
+      params.set(key, String(value))
+    }
+  }
+  const suffix = params.toString()
+  return request<AuditEvent[]>(`/audit-events${suffix ? `?${suffix}` : ''}`)
 }

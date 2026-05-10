@@ -565,24 +565,36 @@ def report_sentinel_error(
             )
             admin_task_id = task.id
 
-    sms_result: Optional[dict] = None
+    sms_results: List[dict] = []
     if definition.sends_sms_alert and definition.severity in {SentinelSeverity.P0, SentinelSeverity.P1}:
         last_fired = _SMS_COOLDOWNS.get(code)
         now = now_utc()
         if last_fired is None or (now - last_fired).total_seconds() >= SMS_COOLDOWN_SECONDS:
-            ops_phone = os.getenv("SHIP_HOPPA_OPS_PHONE")
-            if ops_phone:
-                sms_body = f"[{code}] {definition.user_safe_message}"
-                sms_result = send_sms_via_twilio(ops_phone, sms_body)
-                if sms_result.get("sent"):
-                    _SMS_COOLDOWNS[code] = now
+            from .operations import active_sentinel_phone_numbers
+
+            phones = active_sentinel_phone_numbers(store)
+            sms_body = f"[{code}] {definition.user_safe_message}"
+            any_sent = False
+            for phone in phones:
+                try:
+                    result = send_sms_via_twilio(phone, sms_body)
+                except Exception as exc:
+                    result = {"sent": False, "error": str(exc), "phone": phone}
+                else:
+                    result = {**result, "phone": phone}
+                sms_results.append(result)
+                if result.get("sent"):
+                    any_sent = True
+            if any_sent:
+                _SMS_COOLDOWNS[code] = now
 
     return {
         "reported": True,
         "code": code,
         "severity": definition.severity.value,
         "admin_task_id": admin_task_id,
-        "sms": sms_result,
+        "sms": sms_results[0] if len(sms_results) == 1 else None,
+        "sms_results": sms_results,
     }
 
 
