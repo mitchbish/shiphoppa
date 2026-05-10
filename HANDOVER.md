@@ -1,422 +1,362 @@
 # Ship Hoppa — Handover
 
-This document is for the next agent or developer picking up the work. Read it
-end to end before making any changes.
+## Intro for the new chat
+
+You are the next Claude session picking up Ship Hoppa.
+
+**The operator (Mitch, info@medio.com.au) is asleep.** He left explicit
+instructions: work as autonomously and completely as possible. He does
+not need to sign off on plans you have properly planned, audited, and
+corrected per the planning standard in his global `CLAUDE.md`. Just
+get the work done, push as you go, and update this file as you ship.
+
+What this means in practice:
+
+- Pick the next feature from the **Progress ledger** below (anything
+  marked NOT STARTED in the "No-blocker, autonomous" section is fair
+  game). Don't wait for permission.
+- Plan in `/Users/mitchbishop/Public/Projects/Ship-Hoppa/docs/plans/<feature-name>/`
+  using the standard 5-section shape with AP1 (pre-execution) and
+  AP2 (post-execution) audits through both lenses. Apply revisions
+  in scope. No deferrals.
+- Ship in small, cohesive commits. Push after each one. Direct push
+  to `main` is sandbox-blocked, so push to the feature branch
+  `claude/reverent-maxwell-263429` and update PR #1
+  (https://github.com/mitchbish/shiphoppa/pull/1) as you add work.
+- Keep this `HANDOVER.md` ledger up to date. Every time you ship a
+  feature, move its line from NOT STARTED → DONE with the date and
+  test count.
+- The full product spec is at
+  `/Users/mitchbishop/Public/Projects/Ship-Hoppa/docs/IMPORT_AUTOMATION_BUILD_PLAN.md`
+  (4102 lines, authoritative for vision).
+
+If you hit a genuine blocker (need an external API key, need a
+service signed up at a provider, need a decision the operator must
+make), mark it BLOCKED in the progress ledger and move to the next
+NOT STARTED item. Do not wait on him.
+
+The previous Claude session shipped 11 features overnight (broker /
+warehouse / carrier / trucker portals end to end, inbound email
+webhook, saved import projects CRUD, audit log filtering, supplier
+verification state machine, growth attribution, purchase order
+clone). 228 backend tests pass. Frontend builds clean. All bundled
+in PR #1. See the ledger below for what's left.
+
+## Critical paths (full absolute paths)
+
+- **Repo root:** `/Users/mitchbishop/Public/Projects/Ship-Hoppa/`
+- **Working worktree (current branch):**
+  `/Users/mitchbishop/Public/Projects/Ship-Hoppa/.claude/worktrees/reverent-maxwell-263429/`
+  on branch `claude/reverent-maxwell-263429`. Most recent work lives
+  here. The repo's `main` branch is at the worktree's parent.
+- **Build plan:**
+  `/Users/mitchbishop/Public/Projects/Ship-Hoppa/docs/IMPORT_AUTOMATION_BUILD_PLAN.md`
+- **This file:**
+  `/Users/mitchbishop/Public/Projects/Ship-Hoppa/HANDOVER.md`
+  (also mirrored in the worktree at the same relative path)
+- **Per-feature plans:**
+  `/Users/mitchbishop/Public/Projects/Ship-Hoppa/.claude/worktrees/reverent-maxwell-263429/docs/plans/<feature-name>/`
+  (each contains `00-OVERVIEW.md`, optional per-phase docs,
+  `progress.md`, and full AP1/AP2 audit logs).
+- **Memory (persistent across chats):**
+  `/Users/mitchbishop/.claude/projects/-Users-mitchbishop-Public-Projects-Ship-Hoppa/memory/MEMORY.md`
+- **Operator's global CLAUDE.md (planning standard):**
+  `/Users/mitchbishop/.claude/CLAUDE.md`
+- **GitHub repo:** `mitchbish/shiphoppa` (the operator's GH login is
+  `mitchbish`; `gh` CLI is logged in)
+- **Open PR:** https://github.com/mitchbish/shiphoppa/pull/1
+- **Live API:** `https://ship-hoppa-api-production.up.railway.app`
 
 ## What this product is
 
-Ship Hoppa turns scattered import paperwork (supplier emails, PDF invoices,
-forwarder updates, broker notes) into one live shipment record per import.
-The goal is zero manual data entry: the importer forwards an email, Ship
-Hoppa parses, matches, and acts.
+Ship Hoppa turns scattered import paperwork (supplier emails, PDF
+invoices, forwarder updates, broker notes) into one live shipment
+record per import. Goal: zero manual data entry. The importer
+forwards an email; Ship Hoppa parses, matches, and acts.
 
-The customer portal has **three workflow phases** plus a separate Account
-area in the header (Account is not a phase, it's the settings shelf).
+The customer portal has **three workflow phases** plus a separate
+Account area in the header (Account is not a phase, it's the
+settings shelf):
 
-Workflow phases:
-
-- **Order** — supplier discovery, purchase orders, production, inspection,
-  supplier payment, order-side documents. Covers everything until cargo is
-  ready to ship.
-- **Ship** — FCL, MCL (the primary revenue mode), or LCL transport from
-  origin port to destination port, with live tracking.
+- **Order** — supplier discovery, purchase orders, production,
+  inspection, supplier payment, order-side documents. Covers
+  everything until cargo is ready to ship.
+- **Ship** — FCL, MCL (the primary revenue mode), or LCL transport
+  from origin port to destination port, with live tracking.
 - **Deliver** — from the moment the ship docks: customs, release,
   destination delivery to the importer's warehouse.
 
-Account (top-right of the header, separate from the phase nav): profile,
-integrations, help, inbox, notifications.
-
-Phase 3 was previously called "Clear". The user prefers "Deliver". Don't
-revert that.
+Phase 3 was previously called "Clear". The operator prefers
+"Deliver". Don't revert that.
 
 ## Where everything lives
 
-### Local working tree
-
-`/Users/mitchbishop/Public/Projects/Ship-Hoppa/`
-
 ```
-backend/                FastAPI + Pydantic; in-memory Store with snapshot persistence
-  app/
-    main.py             All HTTP endpoints
-    operations.py       All store-mutating business logic
-    automation.py       Lifecycle state machine, fact extraction, chase, approvals
-    invoices.py         Supplier invoice extractor (text + PDF)
-    customs.py          HS code classification helper
-    providers.py        Resend / Twilio / Wise adapters (all gated by feature flag)
-    sentinel.py         Error code registry, health checks, SMS reporter
-    templates.py        Email/SMS template registry with safe substitution
-    models.py           All Pydantic models and enums
-    store.py            In-memory dict-of-dict store (the "DB")
-    persistence.py      Optional snapshot to disk (so a restart doesn't wipe state)
-    auth.py             Bearer-token auth (importer / admin / cron principals)
-  tests/
-    test_automation.py  Most automation, invoice, inspection, ETA, provider tests
-    test_*.py           Other test files
-  requirements.txt
+/Users/mitchbishop/Public/Projects/Ship-Hoppa/
+  backend/                FastAPI + Pydantic; in-memory Store with snapshot persistence
+    app/
+      main.py             All HTTP endpoints
+      operations.py       All store-mutating business logic
+      automation.py       Lifecycle state machine, fact extraction, chase, approvals
+      invoices.py         Supplier invoice extractor (text + PDF)
+      customs.py          HS code classification helper
+      providers.py        Resend / Twilio / Wise adapters (all gated by feature flag)
+      sentinel.py         Error code registry, health checks, SMS reporter
+      templates.py        Email/SMS template registry with safe substitution
+      models.py           All Pydantic models and enums
+      store.py            In-memory dict-of-dict store (the "DB")
+      persistence.py      Optional snapshot to disk
+      auth.py             Bearer-token auth (importer / admin / cron / inbound principals)
+    tests/
+      test_*.py           28 test files; 228 tests as of 2026-05-11
 
-frontend/               React + TypeScript + Vite SPA
-  src/
-    App.tsx             ~7000 lines, single-file SPA. Customer + admin views.
-    api.ts              Frontend API client. Token routing per endpoint.
-    types.ts            Shared TypeScript types mirroring backend models.
-    App.css             All styles.
+  frontend/               React + TypeScript + Vite SPA
+    src/
+      App.tsx             ~7900 lines, single-file SPA. Customer + admin views + 4 partner portal views.
+      api.ts              Frontend API client. Token routing per endpoint.
+      types.ts            Shared TypeScript types mirroring backend models.
+      App.css             All styles.
 
-marketing/              DO NOT TOUCH. Owned by another chat session.
-index.html              DO NOT TOUCH. Owned by another chat session.
-vercel.json             DO NOT TOUCH.
-Dockerfile              Multi-stage: Node builds frontend, Python serves both.
-railway.toml            Railway service config.
+  marketing/              DO NOT TOUCH. Owned by another chat session.
+  index.html              DO NOT TOUCH. Owned by another chat session.
+  vercel.json             DO NOT TOUCH.
+  Dockerfile              Multi-stage: Node builds frontend, Python serves both.
+  railway.toml            Railway service config.
 
-docs/
-  IMPORT_AUTOMATION_BUILD_PLAN.md   Full product spec. Long. Authoritative for vision.
+  docs/
+    IMPORT_AUTOMATION_BUILD_PLAN.md   Full product spec. Authoritative for vision.
+    plans/<feature-name>/             Per-feature plans + AP1/AP2 audits + progress
 
-HANDOVER.md             This file.
+  HANDOVER.md             This file.
 ```
-
-### Memory (Claude-only persistent context)
-
-`/Users/mitchbishop/.claude/projects/-Users-mitchbishop-Public-Projects-Ship-Hoppa/memory/MEMORY.md`
-
-Read it before doing anything. Key entries:
-
-- **Session scope = app only**. This chat owns the Railway backend + frontend.
-  Another chat owns the Vercel marketing site. Never edit `marketing/`, root
-  `index.html`, or `vercel.json`.
-- **No em dashes**. The user has explicitly banned em dashes in copy. Use
-  periods, commas, or restructure the sentence.
-- **Use `npm run build` to verify frontend changes**. `tsc --noEmit` misses
-  errors that the production build catches; the user got a wave of Railway
-  build-failed emails when I relied on `tsc --noEmit`. Always run
-  `cd frontend && npm run build` before pushing.
-- **Push as you go**. Every push to `main` auto-deploys to Railway. The
-  user wants visible progress fast, not batched commits.
-- **Provider credentials**: Resend keys come from the user's Resend dashboard.
-  Twilio creds are reused from the user's Systematicly project. Wise is
-  deferred to last.
 
 ## Deployment
 
-- GitHub: `mitchbish/shiphoppa`, branch `main`. Push directly, no PR flow.
+- GitHub: `mitchbish/shiphoppa`. Direct-to-`main` push is
+  sandbox-blocked under the current safety profile, so the workflow
+  is push-to-feature-branch → PR → merge. The operator's normal
+  habit is direct pushes; only the harness blocks it.
 - Railway runs the **whole app** (backend + frontend) at
-  `https://ship-hoppa-api-production.up.railway.app`. The Dockerfile is a
-  multi-stage build. Railway auto-deploys on every push to `main`.
-- Vercel runs only the marketing site at `marketing/` and root `index.html`.
-  Different chat handles that.
-- Project on Railway is named `Ship Hoppa API`. Logged-in CLI works; you can
-  use `railway status`, `railway domain`, etc. from
-  `/Users/mitchbishop/Public/Projects/Ship-Hoppa/`.
+  `https://ship-hoppa-api-production.up.railway.app`. The Dockerfile
+  is a multi-stage build. Railway auto-deploys on every push to
+  `main`.
+- Vercel runs only the marketing site at `marketing/` and root
+  `index.html`. A different chat handles that.
+- `railway` CLI is logged in. From
+  `/Users/mitchbishop/Public/Projects/Ship-Hoppa/` you can run
+  `railway status`, `railway domain`, `railway logs`, etc.
 
-## Auth tokens (dev)
+## Auth tokens
+
+Dev (only work against local backend):
 
 - Admin: `Bearer shiphoppa-admin-dev`
 - Importer: `Bearer shiphoppa-importer-dev`
 - Cron: `Bearer shiphoppa-cron-dev`
+- Inbound webhook: `Bearer shiphoppa-inbound-dev`
 
-In production, these are environment variables (`SHIP_HOPPA_ADMIN_TOKEN`,
-`SHIP_HOPPA_IMPORTER_TOKEN`, `SHIP_HOPPA_CRON_TOKEN`). The dev tokens won't
-work against the live deploy.
+Production: tokens live in Railway env vars
+(`SHIP_HOPPA_ADMIN_TOKEN`, `SHIP_HOPPA_IMPORTER_TOKEN`,
+`SHIP_HOPPA_CRON_TOKEN`, `SHIP_HOPPA_INBOUND_EMAIL_TOKEN`). Use
+`railway run -- bash -c '... $SHIP_HOPPA_ADMIN_TOKEN ...'` to call
+production with the right token without handling it yourself.
 
-## Environment variables (Railway)
+## Environment variables on Railway
 
-Already set as of 2026-05-10:
+Already set (as of 2026-05-11):
 
 - `RESEND_API_KEY`, `RESEND_FROM_EMAIL`
 - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`
-- `SHIP_HOPPA_LIVE_PROVIDERS=true` (master switch — without this, no live
-  sends happen even if creds are present)
+- `SHIP_HOPPA_LIVE_PROVIDERS=true` (master kill switch)
 - `SHIP_HOPPA_ENV=production`
-- Persistence + tokens
+- `SHIP_HOPPA_OPS_PHONE=+61411400840` (P0/P1 SMS recipient)
+- `SHIP_HOPPA_ADMIN_TOKEN`, `SHIP_HOPPA_IMPORTER_TOKEN`,
+  `SHIP_HOPPA_CRON_TOKEN`
+- Persistence vars
 
-Not yet set:
+Not yet set (operator follow-ups):
 
-- `WISE_API_TOKEN` — deferred to last per user instruction
-- `SHIP_HOPPA_OPS_PHONE` — needed for P0/P1 Sentinel SMS alerts to fire
-
-To add an env var, run from the repo root:
-
-```bash
-railway variables --set "KEY=value"
-```
-
-Railway redeploys automatically.
+- `SHIP_HOPPA_INBOUND_EMAIL_TOKEN` — needed for `POST /inbound/email`
+  webhook auth. Until this is set + Resend Inbound (or Mailgun) is
+  configured to point at the URL, inbound emails won't ingest.
+- `WISE_API_TOKEN`, `WISE_PROFILE_ID` — deferred to last per
+  operator instruction. Adapter at
+  `backend/app/providers.py:get_fx_quote_via_wise` is ready; flip
+  the env var when the operator says go.
 
 ## Commands you'll need
 
 ```bash
-# Run the full backend test suite (must stay green)
-cd backend && python3 -m pytest tests/
+# Run the full backend test suite (must stay green; 228 as of 2026-05-11)
+cd /Users/mitchbishop/Public/Projects/Ship-Hoppa/.claude/worktrees/reverent-maxwell-263429/backend && python3 -m pytest tests/
 
-# Build the frontend the same way Railway does (use this, not tsc --noEmit)
-cd frontend && npm run build
+# Build the frontend the same way Railway does (NEVER use tsc --noEmit alone)
+cd /Users/mitchbishop/Public/Projects/Ship-Hoppa/.claude/worktrees/reverent-maxwell-263429/frontend && npm run build
 
-# Check Railway state
+# Check git state from the worktree
+cd /Users/mitchbishop/Public/Projects/Ship-Hoppa/.claude/worktrees/reverent-maxwell-263429 && git fetch && git status -sb && git log --oneline -15
+
+# Check Railway state (run from anywhere inside the repo)
 railway status
-railway domain
 railway logs
 
-# Check live health
+# Live health check
 curl https://ship-hoppa-api-production.up.railway.app/health
 ```
 
-## What's been built (state on 2026-05-11)
+## Critical rules (don'ts)
 
-228 backend tests passing. Frontend builds clean. The work since the
-2026-05-10 baseline is on branch `claude/reverent-maxwell-263429`
-and bundled into a single PR for review:
-
-**[PR #1 — Partner portals, inbound email, project CRUD, and audit polish](https://github.com/mitchbish/shiphoppa/pull/1)**
-
-Highlights:
-
-- **Broker portal** end to end. `/broker/{token}` self-serve URL,
-  customs status updates, document uploads, importer-side "Invite
-  broker" on the customs tab.
-- **Warehouse portal** end to end. `/warehouse/{token}` self-serve
-  URL, receipt confirmation with actual CBM and weight, photo
-  uploads, pickup-mode short-circuit, importer-side "Invite
-  warehouse" on the pickup tab.
-- **Carrier portal** end to end. `/carrier/{token}` self-serve URL,
-  ETA updates that feed the existing notify-and-approve automation,
-  loaded / departed / arrived milestone events, bill of lading
-  upload, importer-side "Invite carrier" on the sailings tab.
-- **Trucker portal** end to end. `/trucker/{token}` self-serve URL,
-  pickup_scheduled / picked_up / delivered status updates with the
-  delivered marker gated on release status, proof of delivery
-  upload, importer-side "Invite trucker" on the delivery tab.
-- **Inbound email webhook** at `POST /inbound/email`. Accepts Resend
-  Inbound or Mailgun JSON, creates a SourceMessage, and the existing
-  match + extraction automation runs. Auth via
-  `SHIP_HOPPA_INBOUND_EMAIL_TOKEN` env var (set on Railway before
-  pointing your provider at the URL).
-- **Saved import projects CRUD** at `/import-projects`. POST, PATCH,
-  POST clone, DELETE, plus `?include_deleted=true` filter on GET.
-  Each operation writes an audit event and a project version.
-- **Audit log filtering** at `GET /audit-events?actor_id=...&
-  actor_role=...&event_type=...&entity_type=...&entity_id=...&
-  since=...&until=...&limit=...`. Default limit 200, set 0 for all.
-- **Supplier verification state machine** at `PATCH
-  /growth/supplier-leads/{id}/verification`. New
-  SupplierVerificationStatus enum: unverified, pending_review,
-  verified, restricted, rejected. Verifying records who and when;
-  rejecting also flips do_not_contact.
-- **Growth attribution endpoints** at `GET
-  /growth/attribution-events` (filtered) and `POST` (manual record),
-  plus `GET /growth/attribution-summary?group_by=source` (or
-  channel / template_key / category / region / event_type) for the
-  irresistible adoption loop ROI.
-- **Purchase order clone** at `POST /purchase-orders/{id}/clone`.
-  Repeat orders with the same supplier no longer start from a blank
-  form. The clone copies metadata and resets booking_id, dates, and
-  status; optional `?target_project_id` and `?new_order_reference`
-  query params.
-
-What still needs you (when you wake up):
-
-1. Review and merge [PR #1](https://github.com/mitchbish/shiphoppa/pull/1)
-   to main. Direct-to-main pushes were blocked by sandbox safety, so
-   the work landed on the feature branch with a PR for you to read
-   through. Railway will redeploy on merge.
-2. Set `SHIP_HOPPA_INBOUND_EMAIL_TOKEN` on Railway and configure
-   Resend Inbound (or Mailgun) to POST to `/inbound/email` with a
-   bearer header.
-3. Set up the cron job at cron-job.org to hit
-   `/automation/cron/run` with the `SHIP_HOPPA_CRON_TOKEN` bearer
-   on a 15-minute interval. The token from the chat is the one to
-   use.
-4. Browser spot-check the four partner portals once the merge lands
-   on Railway: open each `/broker/<token>`, `/warehouse/<token>`,
-   `/carrier/<token>`, `/trucker/<token>` URL, walk through the
-   form, confirm the importer side reflects the change. The build
-   and types pass; live browser walkthrough was deferred per the
-   autonomous overnight scope.
-
-Plans, AP1/AP2 audits, and progress notes for each feature above
-live in `docs/plans/<feature-name>/`.
-
-### Earlier baseline (state on 2026-05-10)
-
-153 backend tests passing. Frontend builds clean. All shipped to Railway.
-
-### Customer portal
-
-- Phase nav: Order / Ship / Deliver, plus Account in the header
-- Account: profile, integrations, help, inbox, notifications
-- Order: supplier, production, inspection (book inspector + result flow),
-  supplier pay (paste invoice text or upload PDF, auto-match to PO,
-  auto-create approval), order docs
-- Ship: cargo (booking form), ship docs, pickup, sailings, tracking
-- Deliver: customs (with HS code suggestions and one-click accept),
-  payments (with full landed-cost table), delivery
-- Pending approvals banner at top of workspace, one-click approve/reject
-- Next-steps banner with derived lifecycle state and missing-data items
-- Notifications bell with unread count, mark-read, auto-creation on
-  approvals and status advancement
-- Tracking cards show pending-approval count per shipment
-- Smart landing: returning users go to Tracking, new users go to booking form
-- FCL spare-space recovery panel
-- Background polling every 30s for new approvals and notifications
-
-### Backend automation
-
-- Lifecycle state machine (28 states, derived from booking + events + customs)
-- Fact extraction from text (booking IDs, container numbers, ETAs, vessel,
-  voyage, CBM, weight, invoice amounts, HS codes, etc.)
-- Supplier invoice extractor (text and PDF), auto-applies to matched PO
-- Auto-extract on inbound source messages (keyword detection)
-- Auto-create approvals for customs submission, final delivery booking,
-  cargo release, sailing changes (3+ day baseline slip), invoice variance
-- Auto-advance booking status on warehouse_received / loaded / departed /
-  arrived events
-- Quality inspection booking + result flow (failed/rework creates approval,
-  passed creates notification)
-- Carrier ETA monitoring (notify on 1+ day shift, approval on 3+ day
-  baseline slip)
-- Warehouse cargo measurement variance (10% threshold creates
-  approve_invoice_variance)
-- Stale shipment checks (overdue cargo ready, cutoff risk, arrival without
-  customs, stale release holds)
-- Email template registry with safe variable substitution
-- HS code suggestions (rules-based) for customs profile
-
-### Outbound
-
-- Resend (email), Twilio (SMS), Wise (FX) adapters under
-  `backend/app/providers.py`. Two-layer safety: env vars must be set AND
-  `SHIP_HOPPA_LIVE_PROVIDERS=true`.
-- `dispatch_outbound_message` in `operations.py` sends a queued message via
-  the right provider. "Deferred" status when not configured leaves the
-  message queued for later.
-- Cron endpoint `/automation/cron/run` runs the automation cycle then
-  dispatches up to 100 queued messages per tick. Use this from a Railway cron.
-- Test endpoints `/system/test-provider/email` and `/sms` for one-shot
-  verification.
-- Sentinel reporter `report_sentinel_error` in `sentinel.py`: logs an audit
-  event, optionally creates an admin task, and fires Twilio SMS for P0/P1
-  codes with 10-minute per-code cooldown.
-
-### Admin
-
-- Exception queue with auto-generated admin tasks (resolve / waive / open
-  shipment)
-- Automation panel with run-all button and stale alerts
-- System health endpoint with provider readiness
-- Sentinel error code registry (`SH-XYYY` format)
-
-## Critical things to NOT do
-
-1. **Don't touch `marketing/`, root `index.html`, `vercel.json`.** Another
-   chat owns the Vercel marketing site. If `git status` shows changes there,
-   `git checkout` them before committing.
-2. **Don't use em dashes** in any copy you write (UI strings, marketing,
-   comments, commit messages).
-3. **Don't trust `tsc --noEmit` to catch frontend errors.** Always run
-   `npm run build` before pushing. Use the same command Railway uses.
-4. **Don't internal-codename anything.** The user has been clear: status
-   updates and commit messages should be plain English, not "F11 lands
-   3855776 in lib/foo.ts:42".
+1. **Don't touch `marketing/`, root `index.html`, or `vercel.json`.**
+   Another chat owns the Vercel marketing site. If `git status`
+   shows changes there, `git checkout` them before committing.
+2. **Don't use em dashes** in any copy you write (UI strings,
+   marketing, comments, commit messages). Use periods, commas, or
+   restructure the sentence.
+3. **Don't trust `tsc --noEmit` to catch frontend errors.** Always
+   run `npm run build` before pushing.
+4. **Don't internal-codename anything.** Status updates and commit
+   messages should be plain English.
 5. **Don't batch commits.** Push as you finish each cohesive change.
-   Railway redeploys per push and the user expects to see live progress.
-6. **Don't read another project's `.env` files** to harvest credentials.
-   The sandbox blocks it for good reason. Tell the user to copy via
-   Railway dashboard or paste them in chat themselves.
-7. **Don't write secrets to memory or repo files.** Memory and repo are
-   readable; credentials go to Railway env vars only.
+6. **Don't read another project's `.env` files** to harvest
+   credentials. Sandbox blocks it for good reason.
+7. **Don't write secrets to memory or repo files.** Memory and repo
+   are readable; credentials go to Railway env vars only.
+8. **Don't use direct push to `main`.** It's sandbox-blocked. Push
+   to the feature branch and update PR #1.
+9. **Don't skip the planning standard.** Every Tier 2+ feature gets
+   a plan in `docs/plans/<feature-name>/` with AP1 audit before
+   execution and AP2 audit before tick. No deferrals; fix in scope
+   or mark BLOCKED.
 
-## Next steps (priority-ordered)
+## Progress ledger
 
-### 1. Verify live providers actually send (5 minutes)
+Each row references the section in
+`/Users/mitchbishop/Public/Projects/Ship-Hoppa/docs/IMPORT_AUTOMATION_BUILD_PLAN.md`
+(by line number in parentheses). Pick anything in the
+"No-blocker, autonomous" section that's NOT STARTED and ship it.
 
-```bash
-# Email test (replace with your actual address)
-curl -X POST https://ship-hoppa-api-production.up.railway.app/system/test-provider/email \
-  -H "Authorization: Bearer $SHIP_HOPPA_ADMIN_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"to":"you@example.com","subject":"Live test","body":"Hello from production."}'
+### Foundation — DONE
 
-# SMS test
-curl -X POST https://ship-hoppa-api-production.up.railway.app/system/test-provider/sms \
-  -H "Authorization: Bearer $SHIP_HOPPA_ADMIN_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"to":"+61...","body":"Ship Hoppa SMS test"}'
-```
+| Feature | Status | Plan ref | Code path |
+|---|---|---|---|
+| Customer portal three-phase IA (Order / Ship / Deliver + Account) | DONE 2026-05-10 | Customer Phase Architecture (line 28-76) | `frontend/src/App.tsx` |
+| Account profile + integrations + help | DONE 2026-05-10 | Step 1 Account Foundation (line 93-107) | `backend/app/operations.py` (account_*), `frontend/src/App.tsx` |
+| Order phase: supplier, production, inspection, supplier pay, docs | DONE 2026-05-10 | Step 2 Order Phase (line 108-132) | `backend/app/operations.py`, `frontend/src/App.tsx` |
+| Ship phase: cargo, ship docs, pickup, sailings, tracking | DONE 2026-05-10 | Step 3 Ship Phase (line 133-156) | `backend/app/operations.py`, `frontend/src/App.tsx` |
+| Deliver phase: customs, payments, delivery | DONE 2026-05-10 | Step 4 Clear Phase (line 157-172) | `backend/app/operations.py`, `frontend/src/App.tsx` |
+| Lifecycle state machine (28 states) | DONE 2026-05-10 | Step 5 Automation (line 174-181) | `backend/app/automation.py` |
+| Fact extraction from text | DONE 2026-05-10 | Phase 2 (line 2531-2566) | `backend/app/automation.py`, `backend/app/invoices.py` |
+| Resend / Twilio outbound + Sentinel SMS reporter | DONE 2026-05-10 | Production-Grade Standard (line 201-225) | `backend/app/providers.py`, `backend/app/sentinel.py` |
+| HS code rules-based suggester | DONE 2026-05-10 | Customs source strategy (line 2077-2088) | `backend/app/customs.py` |
+| Cron-driven automation cycle endpoint | DONE 2026-05-10 | Step 5 Automation (line 174-181) | `POST /automation/cron/run` in `backend/app/main.py` |
 
-If either returns `"sent": false`, check `/system/providers` to see which
-flag is wrong. The user has confirmed env vars are set; if a send fails
-it's likely the Resend domain isn't verified yet.
+### Overnight delivery 2026-05-11 — DONE (PR #1)
 
-### 2. Set `SHIP_HOPPA_OPS_PHONE` to enable P0/P1 alerts
+| Feature | Status | Plan ref | Code path | Plan dir |
+|---|---|---|---|---|
+| Broker portal (backend + frontend) | DONE 2026-05-11 | Phase 6 Customs/broker (line 161-164, 3732+) | `backend/app/operations.py:create_broker_link..broker_clearance_update`, endpoints `/broker-links` + `/broker/{token}/*`, `frontend/src/App.tsx:BrokerPortalView` | `docs/plans/broker-portal/` |
+| Warehouse portal (backend + frontend) | DONE 2026-05-11 | Phase 3 warehouse + Step 3 Ship (line 137-148) | `backend/app/operations.py:create_warehouse_link..warehouse_receipt_update`, endpoints `/warehouse-links` + `/warehouse/{token}/*`, `frontend/src/App.tsx:WarehousePortalView` | `docs/plans/warehouse-portal/` |
+| Carrier portal (backend + frontend) | DONE 2026-05-11 | Step 3 Ship: Sailings/Tracking (line 149-156) | `backend/app/operations.py:create_carrier_link..carrier_event_update`, endpoints `/carrier-links` + `/carrier/{token}/*`, `frontend/src/App.tsx:CarrierPortalView` | `docs/plans/carrier-portal/` |
+| Trucker portal (backend + frontend) | DONE 2026-05-11 | Phase 5 Destination trucking (line 3644-3679) + Step 4 Clear: Delivery (line 169-172) | `backend/app/operations.py:create_trucker_link..trucker_status_update`, endpoints `/trucker-links` + `/trucker/{token}/*`, `frontend/src/App.tsx:TruckerPortalView` | `docs/plans/trucker-portal/` |
+| Inbound email webhook | DONE 2026-05-11 | Email ingestion spec (line 2006-2044), Phase 2 Inbox intake (line 2531-2566) | `backend/app/main.py:inbound_email`, `backend/app/auth.py:require_inbound_webhook` | `docs/plans/email-ingestion/` |
+| Saved import projects CRUD | DONE 2026-05-11 | Phase -2 Saved import projects (foundation, line 1939-1987) | `backend/app/operations.py:create_import_project..soft_delete_import_project`, endpoints `/import-projects` POST/PATCH/clone/DELETE | `docs/plans/import-projects-crud/` |
+| Audit log filtering | DONE 2026-05-11 | Production-Grade audit standard (line 209-225) | `backend/app/main.py:audit_events` query params | (no separate plan; ad-hoc commit) |
+| Supplier verification state machine | DONE 2026-05-11 | Supplier acquisition strategy (line 408-863), Compliance (line 412) | `backend/app/operations.py:update_supplier_lead_verification`, `PATCH /growth/supplier-leads/{id}/verification` | (no separate plan; ad-hoc commit) |
+| Growth attribution events + summary | DONE 2026-05-11 | Activation Metrics (line 393-407), Adoption loop (line 261-310) | `backend/app/operations.py:filter_growth_attribution_events..summarise_growth_attribution`, `/growth/attribution-events` GET/POST + `/growth/attribution-summary` | (no separate plan; ad-hoc commit) |
+| Purchase order clone | DONE 2026-05-11 | Step 2 Order Phase Production (line 117-119), repeat-order ergonomics | `backend/app/operations.py:clone_purchase_order`, `POST /purchase-orders/{id}/clone` | (no separate plan; ad-hoc commit) |
 
-Without this env var, the Sentinel reporter logs P0/P1 errors but never
-fires the SMS. To set it:
+### No-blocker, autonomous — NOT STARTED (the new chat picks from here)
 
-```bash
-cd /Users/mitchbishop/Public/Projects/Ship-Hoppa
-railway variables --set "SHIP_HOPPA_OPS_PHONE=+61..."
-```
+These can ship without operator action. All have clear seams in the
+existing code; sizing is a rough guess.
 
-### 3. Wire a Railway cron to hit `/automation/cron/run` every 15 min
+| Feature | Plan ref | Adjacent code | Difficulty |
+|---|---|---|---|
+| **GET `/shipments` aggregator endpoints** — list of shipments + a workspace endpoint that bundles booking + container + documents + events + invoice + customs + release + approvals into one payload (cuts importer-side N requests to 1) | Phase 1 Reframe around shipments (line 3513-3515) | GET `/bookings` exists; reuse `events_for_booking`, `documents_for_booking`, `release_status_for_booking` | Small |
+| **Approval `request-review` endpoint** — escalate a pending approval to admin without approving or rejecting it | Phase 3 Approval queue (line 3583-3586) | GET `/approvals`, POST `/approvals/{id}/approve` and `/reject` exist | Small |
+| **Supplier portal preview** — admin/importer-side read-only "see what your supplier sees" view that doesn't need a token | Supplier-side wedge (line 260-286) | Supplier portal at `/supplier/{token}` exists | Small |
+| **Frontend admin tab for audit filtering** — wire the new query params on `/audit-events` to a real admin UI with input fields and a results table | Production-Grade audit standard (line 209-225) | Backend filtering ships, admin tab is thin | Small |
+| **Frontend admin tab for growth attribution + supplier verification + import projects CRUD** — three small admin views surfacing endpoints already shipped | Adoption loop (line 261-310), Supplier acquisition (line 408-863) | Backend ships; admin UI is missing | Medium |
+| **Approval decision cards UI** — proper visual cards in the approvals tab showing what's being approved, amount, due date, source docs, risk level, approve/reject buttons (currently a thin list) | Phase 3 Approval queue (line 3567-3603) | Approvals tab stub exists in `frontend/src/App.tsx` | Small |
+| **Snapshot / version restore endpoint** — let an importer roll back an `ImportProject` to an earlier version | Phase -2 Saved import projects (line 1939-1987) | `ImportProjectVersion` and `ImportProjectSnapshot` models exist; soft-delete shipped | Medium |
+| **Supplier profile claim workflow** — once a `SupplierLead` is verified, generate a token link the supplier can use to claim and edit their auto-created profile | Supplier-side wedge (line 260-310, 408-863) | Supplier verification state machine ships | Medium |
+| **Delivery job model + endpoints** — wraps `DeliveryPlan` with scheduling, tracking, POD, local-carrier matching | Model spec (line 2968-2982), Phase 5 (line 3644-3679) | `DeliveryPlan` exists; trucker portal exists | Medium |
+| **Partner capability + contingency option engine (skeleton)** — model `PartnerCapability` (response speed, hours, SLAs) and `ContingencyOption` (better sailing, cheaper trucking, warehouse swap); detection + decision-card generation can come later | Phase 1-2 foundational (line 1939-1987), Specs (line 1939-1987) | `PartnerProfile`, `SupplierVerification`, `ManualApprovalRequest` exist | Large (skeleton can be Medium) |
+| **Payment proof + landed cost reconciliation skeleton** — `PaymentProof`, `FXQuote`, `LandedCostActual` models + upload-proof flow + variance detection. Wise integration can come later | Phase 6 Payment/duty/landed cost (line 3732-3849), model spec (line 3056-3094) | Invoice + supplier pay + landed cost estimate exist | Large (skeleton can be Medium) |
+| **Marketplace order import UI (Alibaba auto-fill stub)** — frontend stub that looks like an Alibaba paste-or-import flow, even with a no-op adapter for now | Step 2 Order Supplier (line 110-115), Account Integrations (line 102-106) | Alibaba integration model exists | Medium |
+| **Email extraction preview screen** — show what Ship Hoppa inferred from a forwarded email before applying it | Phase 2 Inbox intake (line 2531-2566) | Extraction runs automatically; result is on `SourceMessage` | Small |
+| **Sentinel SMS opt-in pattern** — let multiple ops phones subscribe with confirmation tokens, instead of one hard-coded recipient | Sentinel health checks (line 213, 220) | Sentinel reporter writes to `SHIP_HOPPA_OPS_PHONE` only | Small |
+| **Frontend audit log viewer enhancements** — admin tab with filtering by actor, event type, shipment, since/until | Production-Grade audit standard (line 209-225) | Backend filtering ships | Small |
 
-This is the missing piece for the system to be fully self-running. The
-endpoint exists but nothing fires it on a schedule.
+### Operator-blocked — BLOCKED on external setup
 
-In Railway: Add a new service (or use the existing one with a different
-command), schedule a cron job that runs:
+Don't start these without explicit go-ahead OR until the operator
+provides credentials.
 
-```bash
-curl -X POST https://ship-hoppa-api-production.up.railway.app/automation/cron/run \
-  -H "Authorization: Bearer $SHIP_HOPPA_CRON_TOKEN"
-```
+| Feature | Plan ref | What's needed | Difficulty |
+|---|---|---|---|
+| Wise FX quote integration | SupplierPayRequest workflow (line 3001-3030), model spec (line 3031-3055) | `WISE_API_TOKEN`, `WISE_PROFILE_ID` env vars on Railway. Operator said "do this last" | Small (adapter ready) |
+| Microsoft 365 / Outlook OAuth inbox sync | Phase 2 Inbox intake (line 2531-2566), Email ingestion spec (line 2006-2044) | Azure AD app registration, OAuth consent, scheduled poller | Large |
+| Google Workspace / Gmail OAuth inbox sync | Same as above | Google OAuth consent screen, polling | Large |
+| Real ABF tariff API connector (Australia) | Customs source strategy (line 2077-2088), Launch Country Scope: Australia (line 196) | ABF API credentials, fallback chain, regulatory scope | Large |
+| Real US tariff connector | Customs source strategy (line 2077-2088), Launch Country Scope: US (line 197) | USITC HTS data feed or third-party API | Large |
+| Real sailing data feeds (CMA CGM, Maersk, MSC) | Phase 5+ contingency automation (around line 3644+) | Carrier API credentials, real-time event processing | Large |
+| Image-only PDF OCR for supplier invoices | Phase 2 (line 2531-2566) | Tesseract or external OCR; Dockerfile system dependency | Medium |
+| Cron-job.org wiring for `/automation/cron/run` | Phase 5 Automation (line 174-181) | Operator to configure cron-job.org with `SHIP_HOPPA_CRON_TOKEN` bearer | Tiny (operator action) |
+| `SHIP_HOPPA_INBOUND_EMAIL_TOKEN` + Resend Inbound DNS | Email ingestion spec (line 2006-2044) | Operator sets env var + configures Resend dashboard | Tiny (operator action) |
 
-### 4. Wise API integration (deferred)
+### Big bets — NOT STARTED, large scope
 
-User said "WE will do the Wire API last." Don't start this without
-explicit go-ahead. When the time comes:
+These are weeks of work and benefit from operator scoping before
+investing. Skeletons can be shipped autonomously; the full systems
+need a real conversation.
 
-- Sign up for Wise Business API
-- Set `WISE_API_TOKEN` and optionally `WISE_PROFILE_ID` on Railway
-- The adapter at `backend/app/providers.py:get_fx_quote_via_wise` is ready;
-  it'll start returning real quotes once the env var is set and the
-  master switch is on
-- Wire `generate_supplier_pay_quotes` in `operations.py` to call Wise
-  instead of using its hard-coded synthetic rates
+| Feature | Plan ref | Scope |
+|---|---|---|
+| Supplier discovery enrichment pipeline (Alibaba, 1688, Made-in-China scraping + AI scoring) | Supplier acquisition strategy (line 408-863), Phase 7 backlog | Crawlers, enrichment, lead scoring, compliance filtering, outreach generation in EN + ZH, dedup. Models exist (`SupplierLead`, `SupplierDiscoveryRun`, `SEOOpportunity`); enrichment logic is missing |
+| Real customs tariff integration (multi-country, with rules-based fallback) | Customs source strategy (line 2077-2088) | Multiple country APIs, regulatory scope, fallback chain (live → rules → manual review) |
+| Real sailing data feeds + better-sailing contingency engine | Phase 5+ (around line 3644+) | Carrier APIs, baseline ETA tracking, automatic sailing-change detection, contingency option matching |
+| Full payment proof + landed cost reconciliation (with Wise) | Phase 6 (line 3732-3849), model spec (line 3056-3094) | Multi-currency reconciliation state machine, variance rules, accounting export |
+| Free supplier workspace (full deliverable, not just the portal) | Phase -0.5 Free supplier workspace (line 3412-3470) | New domain: company profile, upload staging, task tracking, buyer-facing status page, importer invite generation, supplier task automation |
 
-### 5. Big still-missing features
+### Polish + UI gaps — NOT STARTED
 
-In the build plan but not yet built:
+These are smaller follow-ups that compound the value of features
+already shipped.
 
-- **Supplier discovery enrichment pipeline**. The models exist
-  (`SupplierLead`, `SupplierDiscoveryRun`, `SEOOpportunity`) and the seed
-  data references them, but there's no actual enrichment logic. Plan
-  expects: fetch lead from a source, enrich via web scrape or third-party
-  API, score, queue for outreach.
-- **Real customs source connectors**. `backend/app/customs.py` has a
-  rules-based HS suggester but no live ABF / US tariff API integration.
-  When the time comes, wire it as a fallback path: try the live API first,
-  fall back to the rules table if it fails.
-- **Image-only PDF support**. Current `extract_invoice_from_pdf` uses
-  `pypdf` text extraction which fails on scanned PDFs. Adding Tesseract
-  OCR would handle these but adds a system dependency to the Dockerfile.
-- **Supplier portal polish**. Suppliers can already use the portal via
-  a token link, but the importer-side preview ("see what your supplier
-  sees") doesn't exist yet.
-- **Audit log viewer enhancements**. The admin Audit tab exists but is
-  thin. Filtering by actor, event type, and shipment would be useful.
+| Feature | Plan ref | What it adds |
+|---|---|---|
+| Frontend audit-log filter UI | Production-Grade audit standard (line 209-225) | Admin tab inputs for the new query params |
+| Frontend admin tab for growth attribution dashboard | Adoption loop (line 261-310) | Visual ROI per source/channel/template chart |
+| Frontend admin tab for supplier verification | Supplier acquisition (line 408-863) | Inbox-style queue of leads pending review |
+| Chinese-language landing pages for supplier acquisition | Supplier acquisition (line 815-834, 1299) | `/cn/suppliers` plus category pages, WeChat-ready copy |
+| Real binary file upload across portals | Production-Grade Standard (line 209-225) | Replaces placeholder JSON-only doc upload with multipart/binary |
+| Shared `PartnerPortal` React component refactor | Internal architecture | Extract common shape from broker/warehouse/carrier/trucker portals (3+ instances now warrants the abstraction) |
+| Rate limiting on token-based portals | Security best practice | Generic limiter shared across all four partner portals |
+| Add `partner_update` `SourceType` enum value | Internal cleanup | Broker / carrier / trucker currently use `forwarder_confirmation` as a closest fit |
 
-## How to start as the next agent
+## How to start as the new chat
 
 1. Read this file end to end (you just did).
-2. Read `MEMORY.md` at the path above.
-3. `cd /Users/mitchbishop/Public/Projects/Ship-Hoppa`
-4. `git fetch && git status -sb` to see if anything's drifted.
-5. `git log --oneline -10` to see what was last shipped.
-6. `cd backend && python3 -m pytest tests/` to confirm 153 tests pass.
-7. `cd ../frontend && npm run build` to confirm clean frontend build.
-8. Then start the user's task. Push as you go.
+2. Read `MEMORY.md` at
+   `/Users/mitchbishop/.claude/projects/-Users-mitchbishop-Public-Projects-Ship-Hoppa/memory/MEMORY.md`.
+3. `cd /Users/mitchbishop/Public/Projects/Ship-Hoppa/.claude/worktrees/reverent-maxwell-263429`
+4. `git fetch && git status -sb` — should be clean on
+   `claude/reverent-maxwell-263429`.
+5. `git log --oneline -15` — see what was last shipped.
+6. `cd backend && python3 -m pytest tests/ -q` — confirm 228 pass.
+7. `cd ../frontend && npm run build` — confirm clean build.
+8. Pick the next item from the **No-blocker, autonomous** section
+   above. Plan it in
+   `/Users/mitchbishop/Public/Projects/Ship-Hoppa/.claude/worktrees/reverent-maxwell-263429/docs/plans/<feature-name>/`.
+   Run AP1. Execute. Run AP2. Tick exit criteria. Commit. Push.
+9. Update this `HANDOVER.md` ledger: move the row from NOT STARTED
+   to DONE with the date and the new test count.
+10. Update PR #1 description so the new feature shows up in the
+    summary.
+11. Repeat.
 
-If the user asks you to do something that touches `marketing/` or
-`index.html`, refuse and remind them another chat owns that. If they
-ask you to commit a credential anywhere, refuse and tell them to put it
-in Railway env vars.
+If the operator wakes up and asks you something different, drop
+what you're doing and follow his lead. Otherwise, keep shipping.
 
 End of handover.
