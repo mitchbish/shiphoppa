@@ -287,6 +287,18 @@ Each row references the section in
 | `partner_update` SourceType enum value (cleanup) | DONE 2026-05-11 | Internal cleanup | Broker/carrier/trucker portal events now emit `source_type=partner_update`; `forwarder_confirmation` reserved for actual forwarder events. Frontend `SourceType` type updated. | (no separate plan; ad-hoc commit) |
 | Cron-job.org wiring (was operator-blocked, unblocked) | DONE 2026-05-11 | Phase 5 Automation (line 174-181) | cron-job.org Job 7583175 hits `POST /automation/cron/run` every 15 minutes; `SHIP_HOPPA_CRON_TOKEN` rotated and matched between Railway and cron-job.org | (ops change, no code; verified HTTP 200 in cron-job.org history) |
 
+### Overnight delivery 2026-05-11 (second wave) — DONE (PR #1)
+
+| Feature | Status | Plan ref | Code path |
+|---|---|---|---|
+| Approval decision cards UI | DONE 2026-05-11 | Phase 3 Approval queue (line 3567-3603), Actions Must Be Decision Cards (line 2216) | `frontend/src/App.tsx` approvals-banner block now renders a `decision-card` per pending approval with Why / If approved / If no one acts copy and an Ask Ship Hoppa button calling `requestApprovalReview` |
+| Sentinel SMS subscribers admin tab | DONE 2026-05-11 | Sentinel health checks (line 213, 220) | `frontend/src/App.tsx` `adminView === 'sentinel'` block, add/confirm/opt-out flow against `/sentinel/subscribers` |
+| Growth + Suppliers + Imports admin tabs | DONE 2026-05-11 | Adoption loop, Supplier acquisition, Phase -2 saved import projects | `frontend/src/App.tsx` `adminView === 'growth' \| 'suppliers' \| 'projects'` blocks; new typed clients in `frontend/src/api.ts` for `/growth/attribution-events`, `/growth/attribution-summary`, `/growth/supplier-leads`, `/import-projects` |
+| Email extraction preview modal | DONE 2026-05-11 | Phase 2 Inbox intake (line 2531-2566) | Try the parser modal in the customer Inbox, calls `extractFactsPreview` and shows facts table with confidence chips |
+| Supplier portal preview button | DONE 2026-05-11 | Supplier-side wedge (line 260-310) | See what your supplier sees button on the customer Supplier tab opens a modal driven by `getSupplierPortalPreview` |
+| Public supplier-claim landing page | DONE 2026-05-11 | Supplier-side wedge (line 408-863) | New `SupplierClaimView` SPA route at `/supplier-claim/{token}`. API moved to `/api/supplier-claim/{token}`; api client treats path as public; backend tests updated |
+| Plain-language sweep across customer portal | DONE 2026-05-11 | Plain Language Rule (line 988), Decision Cards (line 2216) | Customer-facing labels: Warehouse cutoff → Arrive at warehouse by, Cargo ready → Goods ready by, Active holds / Release blockers → Delivery holds, Trucking estimate → Final delivery estimate, Rush service tier → Priority |
+
 ### No-blocker, autonomous — NOT STARTED (the new chat picks from here)
 
 These can ship without operator action. All have clear seams in the
@@ -294,9 +306,10 @@ existing code; sizing is a rough guess.
 
 | Feature | Plan ref | Adjacent code | Difficulty |
 |---|---|---|---|
-| **Frontend admin tab for growth attribution + supplier verification + import projects CRUD** — three small admin views surfacing endpoints already shipped | Adoption loop (line 261-310), Supplier acquisition (line 408-863) | Backend ships; admin UI is missing | Medium |
-| **Approval decision cards UI** — proper visual cards in the approvals tab showing what's being approved, amount, due date, source docs, risk level, approve/reject buttons (currently a thin list) | Phase 3 Approval queue (line 3567-3603) | Approvals tab stub exists in `frontend/src/App.tsx` | Small |
+| **Customer shipment workspace cards for the wave-3 records** (DeliveryJob, PaymentProof, LandedCostActual, InsurancePolicy, ClaimRecord, MarketplaceOrder) | Phase 5/6, model spec lines | Backends ship; UI cards still missing | Medium |
+| **Admin Partners directory + ContingencyOption cards** | Model spec (line 2712-2759), Exception Recovery | Backends ship; admin UI missing | Medium |
 | **Snapshot / version restore endpoint** — let an importer roll back an `ImportProject` to an earlier version | Phase -2 Saved import projects (line 1939-1987) | `ImportProjectVersion` and `ImportProjectSnapshot` models exist; soft-delete shipped | Medium |
+| **IA reframe to Today / Imports / Inbox / Approvals / Money / Space / Company** | Target Information Architecture (line 1031) | Existing Order/Ship/Deliver nav can coexist while migrating | Large |
 
 ### Operator-blocked — BLOCKED on external setup
 
