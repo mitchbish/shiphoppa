@@ -101,6 +101,12 @@ import {
   updateDeliveryJob,
   listPaymentProofs,
   recordPaymentProof,
+  listPartners,
+  createPartner,
+  listPartnerCapabilities,
+  createPartnerCapability,
+  listContingencyOptions,
+  updateContingencyOption,
   getSentinelSubscribers,
   createSentinelSubscriber,
   confirmSentinelSubscriber,
@@ -165,6 +171,13 @@ import type {
   LandedCostActual,
   MarketplaceOrder,
   MarketplaceProvider,
+  ContingencyOption,
+  ContingencyStatus,
+  PartnerCapability,
+  PartnerCapabilityType,
+  PartnerCommunicationChannel,
+  PartnerProfile,
+  PartnerType,
   PaymentProof,
   PaymentProofMethod,
   PaymentProofType,
@@ -250,6 +263,7 @@ type AdminView =
   | 'growth'
   | 'suppliers'
   | 'projects'
+  | 'partners'
 type TrackingStage = ShipmentEvent['stage']
 type MapPoint = { lat: number; lng: number }
 type MapPlotPoint = { x: number; y: number }
@@ -3984,6 +3998,41 @@ function App() {
   })
   const [paymentProofMessage, setPaymentProofMessage] = useState<string | null>(null)
   const [paymentProofError, setPaymentProofError] = useState<string | null>(null)
+  const [partners, setPartners] = useState<PartnerProfile[]>([])
+  const [partnerTypeFilter, setPartnerTypeFilter] = useState<PartnerType | 'all'>('all')
+  const [activePartnerId, setActivePartnerId] = useState<string | null>(null)
+  const [partnerCapabilities, setPartnerCapabilities] = useState<PartnerCapability[]>([])
+  const [partnerDraft, setPartnerDraft] = useState<{
+    name: string
+    partner_type: PartnerType
+    contact_email: string
+    contact_phone: string
+    preferred_channel: PartnerCommunicationChannel
+    notes: string
+  }>({
+    name: '',
+    partner_type: 'broker',
+    contact_email: '',
+    contact_phone: '',
+    preferred_channel: 'email',
+    notes: '',
+  })
+  const [capabilityDraft, setCapabilityDraft] = useState<{
+    capability_type: PartnerCapabilityType
+    service_regions: string
+    service_lanes: string
+    operating_hours: string
+  }>({
+    capability_type: 'customs_brokerage',
+    service_regions: '',
+    service_lanes: '',
+    operating_hours: '',
+  })
+  const [partnerMessage, setPartnerMessage] = useState<string | null>(null)
+  const [partnerError, setPartnerError] = useState<string | null>(null)
+  const [contingencyOptions, setContingencyOptions] = useState<ContingencyOption[]>([])
+  const [contingencyMessage, setContingencyMessage] = useState<string | null>(null)
+  const [contingencyError, setContingencyError] = useState<string | null>(null)
   const [inboxMessages, setInboxMessages] = useState<SourceMessage[]>([])
   const [landedCost, setLandedCost] = useState<LandedCostSummary | null>(null)
   const [notifications, setNotifications] = useState<Notification[]>([])
@@ -4176,7 +4225,22 @@ function App() {
         setImportProjectError(err instanceof Error ? err.message : 'Could not load import projects')
       })
     }
+    if (adminView === 'partners') {
+      listPartners().then(setPartners).catch((err) => {
+        setPartnerError(err instanceof Error ? err.message : 'Could not load partners')
+      })
+    }
   }, [workspaceMode, adminView, growthGroupBy, includeDeletedProjects])
+
+  useEffect(() => {
+    if (workspaceMode !== 'admin' || adminView !== 'partners' || !activePartnerId) {
+      setPartnerCapabilities([])
+      return
+    }
+    listPartnerCapabilities(activePartnerId).then(setPartnerCapabilities).catch((err) => {
+      setPartnerError(err instanceof Error ? err.message : 'Could not load capabilities')
+    })
+  }, [workspaceMode, adminView, activePartnerId])
 
   useEffect(() => {
     if (view === 'inbox') {
@@ -4218,6 +4282,14 @@ function App() {
       getLandedCostActual(activeBooking.id).then(setLandedCostActual).catch(() => setLandedCostActual(null))
     }
   }, [view, activeBooking?.id])
+
+  useEffect(() => {
+    if (workspaceMode !== 'admin' || adminView !== 'exceptions' || !activeBooking) {
+      setContingencyOptions([])
+      return
+    }
+    listContingencyOptions(activeBooking.id).then(setContingencyOptions).catch(() => setContingencyOptions([]))
+  }, [workspaceMode, adminView, activeBooking?.id])
 
   useEffect(() => {
     if (view === 'customs' && activeBooking) {
@@ -5175,6 +5247,7 @@ function App() {
     { view: 'customs', label: 'Customs', icon: <ShieldCheck size={17} /> },
     { view: 'automation', label: 'Automation', icon: <RefreshCw size={17} /> },
     { view: 'projects', label: 'Imports', icon: <FolderOpen size={17} /> },
+    { view: 'partners', label: 'Partners', icon: <UserRound size={17} /> },
     { view: 'suppliers', label: 'Suppliers', icon: <UserCheck size={17} /> },
     { view: 'growth', label: 'Growth', icon: <LineChart size={17} /> },
     { view: 'sentinel', label: 'Sentinel SMS', icon: <MessageCircle size={17} /> },
@@ -5259,6 +5332,12 @@ function App() {
       summary: 'Import projects across all customers. Use this to clone a known-good project or recover one that was soft deleted.',
       automation: 'Automated: import projects save and version automatically. Clone or soft delete only when a project needs admin help.',
     },
+    partners: {
+      eyebrow: 'Partners',
+      title: 'Directory of brokers, truckers, warehouses, and forwarders',
+      summary: 'Each partner has capabilities such as customs brokerage or local delivery, with regions, lanes, and equipment. Used to route the right partner per shipment.',
+      automation: 'Automated: partners with active capabilities are matched to shipments by region and lane. Add a partner to start routing to them.',
+    },
   }
   const adminTabAudit: { view: AdminView; label: string; necessary: string; human: string }[] = [
     {
@@ -5338,6 +5417,12 @@ function App() {
       label: 'Imports',
       necessary: 'Yes. Cloning a known-good import is the fastest way to start a repeat order.',
       human: 'Clone, rename, or soft delete an import project on a customer request.',
+    },
+    {
+      view: 'partners',
+      label: 'Partners',
+      necessary: 'Yes. Routing a shipment to the right broker or trucker depends on this directory.',
+      human: 'Add a partner, attach a capability, and update contact details when a partner moves.',
     },
   ]
   const customerPhases: CustomerPhase[] = [
@@ -6047,6 +6132,94 @@ function App() {
                 )}
               </section>
 
+              {activeBooking && (
+                <section className="panel admin-panel full">
+                  <div className="panel-heading">
+                    <div>
+                      <p className="eyebrow">Contingency options</p>
+                      <h2>{contingencyOptions.length} option{contingencyOptions.length === 1 ? '' : 's'} for {activeBooking.id}</h2>
+                    </div>
+                    <PackageCheck size={22} />
+                  </div>
+                  {contingencyMessage && <p style={{ color: '#059669' }}>{contingencyMessage}</p>}
+                  {contingencyError && <p style={{ color: '#dc2626' }}>{contingencyError}</p>}
+                  {contingencyOptions.length === 0 ? (
+                    <p>No contingency options proposed for this shipment.</p>
+                  ) : (
+                    <div className="decision-cards">
+                      {contingencyOptions.map((option) => (
+                        <article className="decision-card" key={option.id}>
+                          <header className="decision-card-head">
+                            <div>
+                              <h3>{option.option_type.replace(/_/g, ' ')}</h3>
+                              <p className="decision-card-summary">{option.plain_language_summary}</p>
+                            </div>
+                            <span
+                              className={`status-chip ${
+                                option.risk_level === 'high' ? '' :
+                                option.risk_level === 'medium' ? 'orange' : 'green'
+                              }`}
+                            >
+                              {option.risk_level} risk
+                            </span>
+                          </header>
+                          <dl className="decision-card-grid">
+                            <div>
+                              <dt>Issue</dt>
+                              <dd>{option.issue_type.replace(/_/g, ' ')}</dd>
+                            </div>
+                            {option.cost_impact_usd != null && (
+                              <div>
+                                <dt>Cost impact</dt>
+                                <dd>USD ${option.cost_impact_usd.toLocaleString()}</dd>
+                              </div>
+                            )}
+                            {option.time_impact_days != null && (
+                              <div>
+                                <dt>Time impact</dt>
+                                <dd>{option.time_impact_days} day{option.time_impact_days === 1 ? '' : 's'}</dd>
+                              </div>
+                            )}
+                            <div>
+                              <dt>Status</dt>
+                              <dd>{option.status}</dd>
+                            </div>
+                          </dl>
+                          {option.source_evidence && (
+                            <p style={{ fontSize: 13, color: '#64748b' }}>{option.source_evidence}</p>
+                          )}
+                          <div className="decision-card-actions">
+                            {(['approved', 'rejected', 'applied'] as ContingencyStatus[]).map((nextStatus) => (
+                              <button
+                                key={nextStatus}
+                                type="button"
+                                className={nextStatus === 'approved' ? 'primary-action small' : nextStatus === 'rejected' ? 'secondary-action small' : 'ghost-action small'}
+                                disabled={option.status === nextStatus}
+                                onClick={async () => {
+                                  setContingencyMessage(null)
+                                  setContingencyError(null)
+                                  try {
+                                    await updateContingencyOption(option.id, { status: nextStatus })
+                                    if (activeBooking) {
+                                      setContingencyOptions(await listContingencyOptions(activeBooking.id))
+                                    }
+                                    setContingencyMessage(`Marked ${option.option_type.replace(/_/g, ' ')} as ${nextStatus}.`)
+                                  } catch (err) {
+                                    setContingencyError(err instanceof Error ? err.message : 'Could not update option')
+                                  }
+                                }}
+                              >
+                                {nextStatus === 'approved' ? 'Approve' : nextStatus === 'rejected' ? 'Reject' : 'Mark applied'}
+                              </button>
+                            ))}
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              )}
+
               <section className="panel admin-panel full">
                 <div className="panel-heading">
                   <div>
@@ -6659,6 +6832,323 @@ function App() {
                   </div>
                 )}
               </section>
+            </div>
+          )}
+
+          {adminView === 'partners' && (
+            <div className="workspace admin-workspace">
+              <section className="panel admin-panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">Add a partner</p>
+                    <h2>Drop a broker, trucker, warehouse, or forwarder into the directory.</h2>
+                  </div>
+                  <UserRound size={22} />
+                </div>
+                <form
+                  style={{ display: 'grid', gap: 12 }}
+                  onSubmit={async (event) => {
+                    event.preventDefault()
+                    setPartnerMessage(null)
+                    setPartnerError(null)
+                    if (!partnerDraft.name.trim()) return
+                    try {
+                      await createPartner({
+                        name: partnerDraft.name.trim(),
+                        partner_type: partnerDraft.partner_type,
+                        contact_email: partnerDraft.contact_email || null,
+                        contact_phone: partnerDraft.contact_phone || null,
+                        preferred_channel: partnerDraft.preferred_channel,
+                        notes: partnerDraft.notes || null,
+                      })
+                      setPartners(await listPartners())
+                      setPartnerDraft({
+                        name: '',
+                        partner_type: 'broker',
+                        contact_email: '',
+                        contact_phone: '',
+                        preferred_channel: 'email',
+                        notes: '',
+                      })
+                      setPartnerMessage('Partner added.')
+                    } catch (err) {
+                      setPartnerError(err instanceof Error ? err.message : 'Could not add partner')
+                    }
+                  }}
+                >
+                  <div className="form-grid two">
+                    <label>
+                      <span>Name</span>
+                      <input
+                        value={partnerDraft.name}
+                        onChange={(e) => setPartnerDraft((d) => ({ ...d, name: e.target.value }))}
+                        required
+                      />
+                    </label>
+                    <label>
+                      <span>Type</span>
+                      <select
+                        value={partnerDraft.partner_type}
+                        onChange={(e) =>
+                          setPartnerDraft((d) => ({ ...d, partner_type: e.target.value as PartnerType }))
+                        }
+                      >
+                        <option value="supplier">Supplier</option>
+                        <option value="courier">Courier</option>
+                        <option value="broker">Broker</option>
+                        <option value="forwarder">Forwarder</option>
+                        <option value="warehouse">Warehouse</option>
+                        <option value="destination_agent">Destination agent</option>
+                        <option value="trucker">Trucker</option>
+                        <option value="inspection">Inspection</option>
+                        <option value="customs">Customs</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div className="form-grid three">
+                    <label>
+                      <span>Contact email</span>
+                      <input
+                        type="email"
+                        value={partnerDraft.contact_email}
+                        onChange={(e) => setPartnerDraft((d) => ({ ...d, contact_email: e.target.value }))}
+                      />
+                    </label>
+                    <label>
+                      <span>Contact phone</span>
+                      <input
+                        type="tel"
+                        value={partnerDraft.contact_phone}
+                        onChange={(e) => setPartnerDraft((d) => ({ ...d, contact_phone: e.target.value }))}
+                      />
+                    </label>
+                    <label>
+                      <span>Preferred channel</span>
+                      <select
+                        value={partnerDraft.preferred_channel}
+                        onChange={(e) =>
+                          setPartnerDraft((d) => ({ ...d, preferred_channel: e.target.value as PartnerCommunicationChannel }))
+                        }
+                      >
+                        <option value="email">Email</option>
+                        <option value="sms">SMS</option>
+                        <option value="whatsapp">WhatsApp</option>
+                        <option value="wechat">WeChat</option>
+                        <option value="portal">Portal</option>
+                      </select>
+                    </label>
+                  </div>
+                  <label>
+                    <span>Notes</span>
+                    <input
+                      value={partnerDraft.notes}
+                      onChange={(e) => setPartnerDraft((d) => ({ ...d, notes: e.target.value }))}
+                    />
+                  </label>
+                  <button type="submit" className="primary">Add partner</button>
+                </form>
+                {partnerMessage && <p style={{ color: '#059669', marginTop: 8 }}>{partnerMessage}</p>}
+                {partnerError && <p style={{ color: '#dc2626', marginTop: 8 }}>{partnerError}</p>}
+              </section>
+
+              <section className="panel admin-panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">Partners</p>
+                    <h2>{partners.length} partner{partners.length === 1 ? '' : 's'}</h2>
+                  </div>
+                  <label>
+                    <span style={{ fontSize: 12, color: '#64748b' }}>Type filter</span>
+                    <select
+                      value={partnerTypeFilter}
+                      onChange={(e) => setPartnerTypeFilter(e.target.value as PartnerType | 'all')}
+                    >
+                      <option value="all">All</option>
+                      <option value="supplier">Supplier</option>
+                      <option value="courier">Courier</option>
+                      <option value="broker">Broker</option>
+                      <option value="forwarder">Forwarder</option>
+                      <option value="warehouse">Warehouse</option>
+                      <option value="destination_agent">Destination agent</option>
+                      <option value="trucker">Trucker</option>
+                      <option value="inspection">Inspection</option>
+                      <option value="customs">Customs</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </label>
+                </div>
+                {partners.length === 0 ? (
+                  <p>No partners in the directory yet.</p>
+                ) : (
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Contact</th>
+                        <th>Channel</th>
+                        <th>Active</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {partners
+                        .filter((p) => partnerTypeFilter === 'all' || p.partner_type === partnerTypeFilter)
+                        .map((partner) => (
+                          <tr key={partner.id} style={{ background: activePartnerId === partner.id ? '#fff8f3' : undefined }}>
+                            <td><strong>{partner.name}</strong></td>
+                            <td>{partner.partner_type.replace('_', ' ')}</td>
+                            <td>
+                              {partner.contact_email ?? '—'}
+                              {partner.contact_phone && <><br />{partner.contact_phone}</>}
+                            </td>
+                            <td>{partner.preferred_channel}</td>
+                            <td>
+                              <span className={`status-chip ${partner.active ? 'green' : ''}`}>
+                                {partner.active ? 'Active' : 'Inactive'}
+                              </span>
+                            </td>
+                            <td>
+                              <button
+                                type="button"
+                                className="ghost-action small"
+                                onClick={() =>
+                                  setActivePartnerId((current) => (current === partner.id ? null : partner.id))
+                                }
+                              >
+                                {activePartnerId === partner.id ? 'Hide capabilities' : 'View capabilities'}
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                )}
+              </section>
+
+              {activePartnerId && (
+                <section className="panel admin-panel">
+                  <div className="panel-heading">
+                    <div>
+                      <p className="eyebrow">Capabilities</p>
+                      <h2>{partners.find((p) => p.id === activePartnerId)?.name ?? 'Partner'}</h2>
+                    </div>
+                    <PackageCheck size={22} />
+                  </div>
+                  {partnerCapabilities.length === 0 ? (
+                    <p>No capabilities yet for this partner.</p>
+                  ) : (
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Capability</th>
+                          <th>Regions</th>
+                          <th>Lanes</th>
+                          <th>Hours</th>
+                          <th>Active</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {partnerCapabilities.map((cap) => (
+                          <tr key={cap.id}>
+                            <td>{cap.capability_type.replace('_', ' ')}</td>
+                            <td>{cap.service_regions.join(', ') || '—'}</td>
+                            <td>{cap.service_lanes.join(', ') || '—'}</td>
+                            <td>{cap.operating_hours ?? '—'}</td>
+                            <td>
+                              <span className={`status-chip ${cap.active ? 'green' : ''}`}>
+                                {cap.active ? 'Active' : 'Inactive'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                  <h3 style={{ fontSize: 14, marginTop: 16 }}>Add a capability</h3>
+                  <form
+                    style={{ display: 'grid', gap: 8 }}
+                    onSubmit={async (event) => {
+                      event.preventDefault()
+                      setPartnerMessage(null)
+                      setPartnerError(null)
+                      if (!activePartnerId) return
+                      try {
+                        await createPartnerCapability(activePartnerId, {
+                          capability_type: capabilityDraft.capability_type,
+                          service_regions: capabilityDraft.service_regions
+                            .split(',')
+                            .map((s) => s.trim())
+                            .filter(Boolean),
+                          service_lanes: capabilityDraft.service_lanes
+                            .split(',')
+                            .map((s) => s.trim())
+                            .filter(Boolean),
+                          operating_hours: capabilityDraft.operating_hours || null,
+                        })
+                        setPartnerCapabilities(await listPartnerCapabilities(activePartnerId))
+                        setCapabilityDraft({
+                          capability_type: 'customs_brokerage',
+                          service_regions: '',
+                          service_lanes: '',
+                          operating_hours: '',
+                        })
+                        setPartnerMessage('Capability added.')
+                      } catch (err) {
+                        setPartnerError(err instanceof Error ? err.message : 'Could not add capability')
+                      }
+                    }}
+                  >
+                    <div className="form-grid two">
+                      <label>
+                        <span>Capability</span>
+                        <select
+                          value={capabilityDraft.capability_type}
+                          onChange={(e) =>
+                            setCapabilityDraft((d) => ({ ...d, capability_type: e.target.value as PartnerCapabilityType }))
+                          }
+                        >
+                          <option value="supplier_production">Supplier production</option>
+                          <option value="origin_pickup">Origin pickup</option>
+                          <option value="inspection">Inspection</option>
+                          <option value="warehouse_receipt">Warehouse receipt</option>
+                          <option value="customs_brokerage">Customs brokerage</option>
+                          <option value="port_drayage">Port drayage</option>
+                          <option value="local_delivery">Local delivery</option>
+                          <option value="freight_forwarding">Freight forwarding</option>
+                          <option value="payment_support">Payment support</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>Operating hours</span>
+                        <input
+                          value={capabilityDraft.operating_hours}
+                          onChange={(e) => setCapabilityDraft((d) => ({ ...d, operating_hours: e.target.value }))}
+                          placeholder="e.g. Mon-Fri 09:00-17:00 AEST"
+                        />
+                      </label>
+                    </div>
+                    <label>
+                      <span>Service regions (comma separated)</span>
+                      <input
+                        value={capabilityDraft.service_regions}
+                        onChange={(e) => setCapabilityDraft((d) => ({ ...d, service_regions: e.target.value }))}
+                        placeholder="VIC, NSW, QLD"
+                      />
+                    </label>
+                    <label>
+                      <span>Service lanes (comma separated)</span>
+                      <input
+                        value={capabilityDraft.service_lanes}
+                        onChange={(e) => setCapabilityDraft((d) => ({ ...d, service_lanes: e.target.value }))}
+                        placeholder="CN-AU, CN-US"
+                      />
+                    </label>
+                    <button type="submit" className="primary-action small">Add capability</button>
+                  </form>
+                </section>
+              )}
             </div>
           )}
 
