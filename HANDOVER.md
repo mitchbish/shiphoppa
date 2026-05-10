@@ -161,7 +161,7 @@ curl https://ship-hoppa-api-production.up.railway.app/health
 
 ## What's been built (state on 2026-05-11)
 
-223 backend tests passing. Frontend builds clean. The work since the
+228 backend tests passing. Frontend builds clean. The work since the
 2026-05-10 baseline is on branch `claude/reverent-maxwell-263429`
 and bundled into a single PR for review:
 
@@ -205,6 +205,11 @@ Highlights:
   plus `GET /growth/attribution-summary?group_by=source` (or
   channel / template_key / category / region / event_type) for the
   irresistible adoption loop ROI.
+- **Purchase order clone** at `POST /purchase-orders/{id}/clone`.
+  Repeat orders with the same supplier no longer start from a blank
+  form. The clone copies metadata and resets booking_id, dates, and
+  status; optional `?target_project_id` and `?new_order_reference`
+  query params.
 
 What still needs you (when you wake up):
 
