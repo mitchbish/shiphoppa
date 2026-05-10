@@ -39,8 +39,12 @@ The previous Claude session shipped 11 features overnight (broker /
 warehouse / carrier / trucker portals end to end, inbound email
 webhook, saved import projects CRUD, audit log filtering, supplier
 verification state machine, growth attribution, purchase order
-clone). 228 backend tests pass. Frontend builds clean. All bundled
-in PR #1. See the ledger below for what's left.
+clone). The 2026-05-11 session then shipped another 8 (cron-job.org
+wiring + 7 code features: shipments aggregator, approval request-
+review, supplier portal preview, Sentinel SMS opt-in, email
+extraction preview, audit log filter UI, supplier profile claim).
+269 backend tests pass. Frontend builds clean. All bundled in PR #1.
+See the ledger below for what's left.
 
 ## Critical paths (full absolute paths)
 
@@ -187,7 +191,7 @@ Not yet set (operator follow-ups):
 ## Commands you'll need
 
 ```bash
-# Run the full backend test suite (must stay green; 228 as of 2026-05-11)
+# Run the full backend test suite (must stay green; 269 as of 2026-05-11)
 cd /Users/mitchbishop/Public/Projects/Ship-Hoppa/.claude/worktrees/reverent-maxwell-263429/backend && python3 -m pytest tests/
 
 # Build the frontend the same way Railway does (NEVER use tsc --noEmit alone)
@@ -343,7 +347,7 @@ already shipped.
 4. `git fetch && git status -sb` — should be clean on
    `claude/reverent-maxwell-263429`.
 5. `git log --oneline -15` — see what was last shipped.
-6. `cd backend && python3 -m pytest tests/ -q` — confirm 228 pass.
+6. `cd backend && python3 -m pytest tests/ -q` — confirm 269 pass.
 7. `cd ../frontend && npm run build` — confirm clean build.
 8. Pick the next item from the **No-blocker, autonomous** section
    above. Plan it in
