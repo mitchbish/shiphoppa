@@ -161,9 +161,13 @@ curl https://ship-hoppa-api-production.up.railway.app/health
 
 ## What's been built (state on 2026-05-11)
 
-216 backend tests passing. Frontend builds clean. The work since the
-2026-05-10 baseline is on branch `claude/reverent-maxwell-263429`,
-ready for review and merge to main:
+223 backend tests passing. Frontend builds clean. The work since the
+2026-05-10 baseline is on branch `claude/reverent-maxwell-263429`
+and bundled into a single PR for review:
+
+**[PR #1 — Partner portals, inbound email, project CRUD, and audit polish](https://github.com/mitchbish/shiphoppa/pull/1)**
+
+Highlights:
 
 - **Broker portal** end to end. `/broker/{token}` self-serve URL,
   customs status updates, document uploads, importer-side "Invite
@@ -196,12 +200,18 @@ ready for review and merge to main:
   SupplierVerificationStatus enum: unverified, pending_review,
   verified, restricted, rejected. Verifying records who and when;
   rejecting also flips do_not_contact.
+- **Growth attribution endpoints** at `GET
+  /growth/attribution-events` (filtered) and `POST` (manual record),
+  plus `GET /growth/attribution-summary?group_by=source` (or
+  channel / template_key / category / region / event_type) for the
+  irresistible adoption loop ROI.
 
 What still needs you (when you wake up):
 
-1. Merge `claude/reverent-maxwell-263429` to main when you've had a
-   look. The push permission was denied for direct-to-main, so the
-   feature branch is what's pushed.
+1. Review and merge [PR #1](https://github.com/mitchbish/shiphoppa/pull/1)
+   to main. Direct-to-main pushes were blocked by sandbox safety, so
+   the work landed on the feature branch with a PR for you to read
+   through. Railway will redeploy on merge.
 2. Set `SHIP_HOPPA_INBOUND_EMAIL_TOKEN` on Railway and configure
    Resend Inbound (or Mailgun) to POST to `/inbound/email` with a
    bearer header.
