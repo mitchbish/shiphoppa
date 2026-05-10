@@ -2433,6 +2433,16 @@ function App() {
     setView('tracking')
   }, [bookings.length, workspaceMode, view])
 
+  // Poll for new approvals and notifications every 30s while customer view is active
+  useEffect(() => {
+    if (workspaceMode !== 'customer') return
+    const interval = setInterval(() => {
+      getApprovals().then(setAllApprovals).catch(() => {})
+      getNotifications().then(setNotifications).catch(() => {})
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [workspaceMode])
+
   const selectedContainer = useMemo(() => {
     if (match?.container) {
       return containers.find((container) => container.id === match.container?.id) ?? match.container
