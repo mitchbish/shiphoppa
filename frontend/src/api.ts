@@ -929,3 +929,25 @@ export function optOutSentinelSubscriber(phone_number: string) {
     body: JSON.stringify({ phone_number }),
   })
 }
+
+// --- Extraction preview (dry run) ---
+
+export type ExtractedFactPreview = {
+  field: string
+  value: string
+  confidence: 'verified' | 'estimated' | 'unverified'
+  source_snippet: string
+}
+
+export type ExtractionPreviewResponse = {
+  facts: ExtractedFactPreview[]
+  extracted_count: number
+  would_match_booking_id: string | null
+}
+
+export function extractFactsPreview(text: string, subject?: string) {
+  return request<ExtractionPreviewResponse>('/automation/extract-preview', {
+    method: 'POST',
+    body: JSON.stringify({ text, subject }),
+  })
+}

@@ -28,6 +28,7 @@ from .automation import (
     check_stale_shipments,
     derive_lifecycle_state,
     detect_missing_data,
+    extract_facts_from_text,
     next_action_for_state,
     run_automation_for_booking,
     run_extraction_for_message,
@@ -1735,6 +1736,37 @@ def extract_message_facts(message_id: str, _principal: Principal = Depends(requi
     facts = run_extraction_for_message(store, message)
     persist_store()
     return facts
+
+
+class ExtractionPreviewRequest(BaseModel):
+    text: str
+    subject: Optional[str] = None
+
+
+class ExtractionPreviewResponse(BaseModel):
+    facts: List[ExtractedFact]
+    extracted_count: int
+    would_match_booking_id: Optional[str] = None
+
+
+@app.post("/automation/extract-preview", response_model=ExtractionPreviewResponse)
+def extract_preview(
+    payload: ExtractionPreviewRequest,
+    _principal: Principal = Depends(require_importer),
+) -> ExtractionPreviewResponse:
+    text = f"{payload.subject or ''}\n{payload.text}".strip()
+    facts = extract_facts_from_text(text)
+    booking_id_fact = next((f for f in facts if f.field == "booking_id"), None)
+    would_match = (
+        booking_id_fact.value
+        if booking_id_fact and booking_id_fact.value in store.bookings
+        else None
+    )
+    return ExtractionPreviewResponse(
+        facts=facts,
+        extracted_count=len(facts),
+        would_match_booking_id=would_match,
+    )
 
 
 # --- Supplier invoice extractor ---
