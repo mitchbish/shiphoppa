@@ -3152,7 +3152,7 @@ function App() {
       id: 'order',
       number: '1',
       label: 'Order',
-      summary: 'Supplier and production',
+      summary: 'Place the order, run production, inspect, get cargo ready to ship',
       defaultView: 'supplier',
       views: [
         { view: 'supplier', label: 'Supplier', icon: <UserRound size={16} /> },
@@ -3166,7 +3166,7 @@ function App() {
       id: 'ship',
       number: '2',
       label: 'Ship',
-      summary: 'Container, sailing, journey',
+      summary: 'FCL, MCL or LCL transport from origin port to destination port',
       defaultView: 'book',
       views: [
         { view: 'book', label: 'Cargo', icon: <PackageCheck size={16} /> },
@@ -3179,8 +3179,8 @@ function App() {
     {
       id: 'clear',
       number: '3',
-      label: 'Clear',
-      summary: 'Payments, customs, release',
+      label: 'Deliver',
+      summary: 'From the moment the ship docks to arrival at your warehouse',
       defaultView: 'money',
       views: [
         { view: 'customs', label: 'Customs', icon: <ShieldCheck size={16} /> },
