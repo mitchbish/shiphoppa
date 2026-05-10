@@ -358,7 +358,7 @@ def audit_events(_principal: Principal = Depends(require_admin)) -> List[AuditEv
 
 
 @app.get("/source-messages", response_model=List[SourceMessage])
-def source_messages(_principal: Principal = Depends(require_admin)) -> List[SourceMessage]:
+def source_messages(_principal: Principal = Depends(require_importer)) -> List[SourceMessage]:
     return sorted(store.source_messages.values(), key=lambda item: item.received_at, reverse=True)
 
 

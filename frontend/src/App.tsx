@@ -63,6 +63,7 @@ import {
   getApprovals,
   approveApprovalRequest,
   rejectApprovalRequest,
+  getSourceMessages,
   supplierReady,
   updateAccountIntegration,
   updateAccountProfile,
@@ -111,6 +112,7 @@ type View =
   | 'supplier'
   | 'integrations'
   | 'help'
+  | 'inbox'
   | 'production'
   | 'inspection'
   | 'supplier_pay'
@@ -2253,6 +2255,7 @@ function App() {
   const [adminTasks, setAdminTasks] = useState<AdminTask[]>([])
   const [adminTaskSummary, setAdminTaskSummary] = useState<AdminTaskSummary | null>(null)
   const [allApprovals, setAllApprovals] = useState<ApprovalRequestRecord[]>([])
+  const [inboxMessages, setInboxMessages] = useState<SourceMessage[]>([])
   const [adminEmail, setAdminEmail] = useState('ops@shiphoppa.example')
   const [adminPassword, setAdminPassword] = useState('')
   const [adminLoginError, setAdminLoginError] = useState<string | null>(null)
@@ -2378,6 +2381,12 @@ function App() {
       getAdminTaskSummary().then(setAdminTaskSummary).catch(() => {})
     }
   }, [workspaceMode, adminView])
+
+  useEffect(() => {
+    if (view === 'inbox') {
+      getSourceMessages().then(setInboxMessages).catch(() => {})
+    }
+  }, [view])
 
   const selectedContainer = useMemo(() => {
     if (match?.container) {
@@ -4333,6 +4342,15 @@ function App() {
             <CircleHelp size={18} />
             Help
           </button>
+          <button
+            className={`customer-help-button ${view === 'inbox' ? 'active' : ''}`}
+            type="button"
+            onClick={() => setView('inbox')}
+            aria-label="Inbox: forwarded supplier and partner messages"
+          >
+            <Bell size={18} />
+            Inbox
+          </button>
         </div>
         <div className="customer-nav-shell">
           <nav className="phase-nav" aria-label="Order fulfilment phases">
@@ -4615,6 +4633,60 @@ function App() {
                     </div>
                   ))}
                 </div>
+              </section>
+            )}
+
+            {view === 'inbox' && (
+              <section className="panel tracking-panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">Inbox</p>
+                    <h2>Forwarded supplier and partner messages.</h2>
+                  </div>
+                  <Bell size={24} />
+                </div>
+                <p className="tab-intro-copy">
+                  Forward emails from suppliers, forwarders, brokers, or warehouses to your Ship Hoppa
+                  inbox. Ship Hoppa parses each message, extracts shipment facts, and attaches them to
+                  the right order automatically.
+                </p>
+
+                {inboxMessages.length === 0 ? (
+                  <div className="empty-state">
+                    <Bell size={42} />
+                    <p>No forwarded messages yet. Once you forward your first supplier email, it will appear here.</p>
+                  </div>
+                ) : (
+                  <ul className="inbox-list">
+                    {inboxMessages.map((message) => (
+                      <li className="inbox-item" key={message.id}>
+                        <div className="inbox-row">
+                          <div className="inbox-meta">
+                            <strong>{message.subject || '(no subject)'}</strong>
+                            <span>From: {message.from_address}</span>
+                            <small>{formatDateFriendly(message.received_at)}</small>
+                          </div>
+                          <span className={`status-chip ${message.extraction_status === 'matched' ? 'green' : message.extraction_status === 'needs_review' ? 'orange' : 'gray'}`}>
+                            {sourceLabel(message.extraction_status)}
+                          </span>
+                        </div>
+                        {message.body && (
+                          <p className="inbox-body">{message.body.length > 240 ? `${message.body.slice(0, 240)}…` : message.body}</p>
+                        )}
+                        {message.attachment_names && message.attachment_names.length > 0 && (
+                          <div className="inbox-attachments">
+                            {message.attachment_names.map((name) => (
+                              <span className="inbox-attachment" key={name}>
+                                <FileText size={13} />
+                                {name}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </section>
             )}
 

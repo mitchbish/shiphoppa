@@ -317,6 +317,10 @@ export function createSourceMessage(payload: {
   })
 }
 
+export function getSourceMessages() {
+  return request<SourceMessage[]>('/source-messages')
+}
+
 export function createPurchaseOrder(payload: {
   booking_id: string
   order_reference: string
