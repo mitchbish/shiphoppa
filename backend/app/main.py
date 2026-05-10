@@ -141,6 +141,7 @@ from .operations import (
     create_shipment_event,
     create_supplier_link,
     create_purchase_order,
+    clone_purchase_order,
     detect_fcl_spare_space,
     dispatch_outbound_message,
     landed_cost_summary,
@@ -770,6 +771,28 @@ def get_purchase_order(purchase_order_id: str, _principal: Principal = Depends(r
     if purchase_order_id not in store.purchase_orders:
         raise HTTPException(status_code=404, detail="Purchase order not found")
     return store.purchase_orders[purchase_order_id]
+
+
+@app.post("/purchase-orders/{purchase_order_id}/clone", response_model=PurchaseOrder, status_code=201)
+def clone_po(
+    purchase_order_id: str,
+    target_project_id: Optional[str] = None,
+    new_order_reference: Optional[str] = None,
+    principal: Principal = Depends(require_importer),
+) -> PurchaseOrder:
+    try:
+        return persist_result(
+            clone_purchase_order(
+                store,
+                purchase_order_id,
+                principal.role,
+                principal.actor_id,
+                target_project_id=target_project_id,
+                new_order_reference=new_order_reference,
+            )
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 # --- Quality inspection ---

@@ -1666,6 +1666,70 @@ def create_supplier_pay_request(
     return pay_request
 
 
+def clone_purchase_order(
+    store: Store,
+    source_po_id: str,
+    actor_role: ActorRole,
+    actor_id: str,
+    target_project_id: Optional[str] = None,
+    new_order_reference: Optional[str] = None,
+) -> PurchaseOrder:
+    source = store.purchase_orders.get(source_po_id)
+    if not source:
+        raise ValueError("Source purchase order not found")
+    project_id = target_project_id or source.import_project_id
+    project = store.import_projects.get(project_id)
+    if not project:
+        raise ValueError("Target import project not found")
+    timestamp = now_utc()
+    reference = new_order_reference or f"Copy of {source.order_reference}"
+    order = PurchaseOrder(
+        id=store.next_id("PO"),
+        import_project_id=project.id,
+        booking_id=None,
+        order_reference=reference,
+        buyer_company_name=source.buyer_company_name,
+        supplier_name=source.supplier_name,
+        supplier_contact_email=source.supplier_contact_email,
+        supplier_contact_phone=source.supplier_contact_phone,
+        product_summary=source.product_summary,
+        incoterm=source.incoterm,
+        currency=source.currency,
+        goods_value=source.goods_value,
+        deposit_amount=source.deposit_amount,
+        balance_amount=source.balance_amount,
+        production_due_date=None,
+        cargo_ready_target_date=None,
+        status=PurchaseOrderStatus.order_confirmed,
+        source_message_id=None,
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+    store.purchase_orders[order.id] = order
+    if order.id not in project.linked_purchase_order_ids:
+        project.linked_purchase_order_ids.append(order.id)
+    project.updated_at = timestamp
+    store.import_projects[project.id] = project
+    append_import_project_version(
+        store,
+        project.id,
+        actor_id,
+        "purchase_order_cloned",
+        source_reference=source.id,
+        after_summary=f"Cloned PO {source.order_reference} as {order.order_reference}.",
+    )
+    create_audit_event(
+        store,
+        actor_role,
+        actor_id,
+        "purchase_order_cloned",
+        "purchase_order",
+        order.id,
+        f"Cloned purchase order from {source.id}.",
+    )
+    return order
+
+
 def create_purchase_order(store: Store, request: PurchaseOrderCreate, actor_id: str) -> PurchaseOrder:
     project = project_for_purchase_order_request(store, request, actor_id)
     timestamp = now_utc()
