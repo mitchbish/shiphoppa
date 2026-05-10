@@ -349,7 +349,7 @@ def booking_import_project(booking_id: str, _principal: Principal = Depends(requ
 
 
 @app.get("/notifications", response_model=List[Notification])
-def notifications(_principal: Principal = Depends(require_admin)) -> List[Notification]:
+def notifications(_principal: Principal = Depends(require_importer)) -> List[Notification]:
     return sorted(store.notifications.values(), key=lambda item: item.created_at, reverse=True)
 
 

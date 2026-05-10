@@ -55,6 +55,7 @@ import {
   runReleaseChecks,
   runAllAutomation,
   getShipmentState,
+  getMissingData,
   getStaleChecks,
   getAdminTasks,
   getAdminTaskSummary,
@@ -79,6 +80,7 @@ import type {
   ApprovalRequestRecord,
   AutomationRunAllResult,
   LandedCostSummary,
+  MissingDataItem as APIMissingDataItem,
   ShipmentStateResponse,
   StaleCheckAlert,
 } from './api'
@@ -105,6 +107,7 @@ import type {
   ReleaseStatusResponse,
   SailingSearchResult,
   ShipmentEvent,
+  SourceMessage,
   SupplierAccessLink,
   SupplierPortalResponse,
 } from './types'
@@ -939,6 +942,10 @@ function viewIntroCopy(view: View, phase: CustomerPhase) {
     help: {
       title: 'Help and handoffs.',
       summary: 'See what Ship Hoppa automates, what the supplier needs to do, and what is waiting on the importer.',
+    },
+    inbox: {
+      title: 'Inbox.',
+      summary: 'Forwarded supplier emails, partner updates, and uploaded source documents with extraction status.',
     },
     admin: {
       title: 'Admin.',
@@ -2393,6 +2400,15 @@ function App() {
     }
   }, [view])
 
+  const selectedContainer = useMemo(() => {
+    if (match?.container) {
+      return containers.find((container) => container.id === match.container?.id) ?? match.container
+    }
+    return containers[0] ?? null
+  }, [containers, match])
+
+  const activeBooking = bookings.find((booking) => booking.id === activeOpsBookingId) ?? match?.booking ?? bookings[0] ?? null
+
   useEffect(() => {
     if (view === 'money' && activeBooking) {
       getLandedCostSummary(activeBooking.id).then(setLandedCost).catch(() => setLandedCost(null))
@@ -2409,14 +2425,6 @@ function App() {
     getMissingData(activeBooking.id).then(setActiveMissingData).catch(() => setActiveMissingData([]))
   }, [activeBooking?.id])
 
-  const selectedContainer = useMemo(() => {
-    if (match?.container) {
-      return containers.find((container) => container.id === match.container?.id) ?? match.container
-    }
-    return containers[0] ?? null
-  }, [containers, match])
-
-  const activeBooking = bookings.find((booking) => booking.id === activeOpsBookingId) ?? match?.booking ?? bookings[0] ?? null
   const orderSwitcherBookings = useMemo(() => {
     if (!activeBooking || bookings.some((booking) => booking.id === activeBooking.id)) return bookings
     return [activeBooking, ...bookings]
@@ -4724,9 +4732,9 @@ function App() {
                         {message.body && (
                           <p className="inbox-body">{message.body.length > 240 ? `${message.body.slice(0, 240)}…` : message.body}</p>
                         )}
-                        {message.attachment_names && message.attachment_names.length > 0 && (
+                        {message.attachments && message.attachments.length > 0 && (
                           <div className="inbox-attachments">
-                            {message.attachment_names.map((name) => (
+                            {message.attachments.map((name: string) => (
                               <span className="inbox-attachment" key={name}>
                                 <FileText size={13} />
                                 {name}

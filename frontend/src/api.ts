@@ -16,6 +16,7 @@ import type {
   Invoice,
   ImportProjectWorkspaceResponse,
   MatchResult,
+  Notification,
   ProductionMilestone,
   PurchaseOrder,
   ReleaseCheckResult,
@@ -45,7 +46,6 @@ function tokenFor(path: string, method: string) {
     path === '/bookings' && method === 'GET' ||
     path.startsWith('/containers') ||
     path.startsWith('/ops') ||
-    path.startsWith('/notifications') ||
     path.startsWith('/audit-events') ||
     path.startsWith('/documents') ||
     path.startsWith('/supplier-links') ||
@@ -345,6 +345,12 @@ export type LandedCostSummary = {
 
 export function getLandedCostSummary(bookingId: string) {
   return request<LandedCostSummary>(`/bookings/${bookingId}/landed-cost`)
+}
+
+// --- Notifications ---
+
+export function getNotifications() {
+  return request<Notification[]>('/notifications')
 }
 
 export function createPurchaseOrder(payload: {
