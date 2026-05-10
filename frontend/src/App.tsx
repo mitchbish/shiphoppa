@@ -96,6 +96,11 @@ import {
   createClaim,
   listMarketplaceOrders,
   recordMarketplaceOrder,
+  listDeliveryJobsForBooking,
+  createDeliveryJob,
+  updateDeliveryJob,
+  listPaymentProofs,
+  recordPaymentProof,
   getSentinelSubscribers,
   createSentinelSubscriber,
   confirmSentinelSubscriber,
@@ -150,6 +155,9 @@ import type {
 import type {
   ClaimRecord,
   ClaimType,
+  DeliveryJob,
+  DeliveryJobMode,
+  DeliveryJobStatus,
   GrowthAttributionEvent,
   GrowthAttributionSummary,
   ImportProject,
@@ -157,6 +165,9 @@ import type {
   LandedCostActual,
   MarketplaceOrder,
   MarketplaceProvider,
+  PaymentProof,
+  PaymentProofMethod,
+  PaymentProofType,
   SentinelSubscriber,
   SupplierLead,
   SupplierProfileClaimResponse,
@@ -3935,6 +3946,44 @@ function App() {
   })
   const [marketplaceMessage, setMarketplaceMessage] = useState<string | null>(null)
   const [marketplaceError, setMarketplaceError] = useState<string | null>(null)
+  const [deliveryJobs, setDeliveryJobs] = useState<DeliveryJob[]>([])
+  const [deliveryJobDraft, setDeliveryJobDraft] = useState<{
+    mode: DeliveryJobMode
+    pickup_address: string
+    delivery_address: string
+    quote_amount_usd: string
+    notes: string
+  }>({
+    mode: 'warehouse_delivery',
+    pickup_address: '',
+    delivery_address: '',
+    quote_amount_usd: '',
+    notes: '',
+  })
+  const [deliveryJobMessage, setDeliveryJobMessage] = useState<string | null>(null)
+  const [deliveryJobError, setDeliveryJobError] = useState<string | null>(null)
+  const [paymentProofs, setPaymentProofs] = useState<PaymentProof[]>([])
+  const [paymentProofDraft, setPaymentProofDraft] = useState<{
+    payment_type: PaymentProofType
+    paid_amount: string
+    paid_currency: string
+    paid_at: string
+    paid_by: string
+    payment_method: PaymentProofMethod
+    reference_number: string
+    notes: string
+  }>({
+    payment_type: 'supplier_invoice',
+    paid_amount: '',
+    paid_currency: 'USD',
+    paid_at: '',
+    paid_by: '',
+    payment_method: 'bank_transfer',
+    reference_number: '',
+    notes: '',
+  })
+  const [paymentProofMessage, setPaymentProofMessage] = useState<string | null>(null)
+  const [paymentProofError, setPaymentProofError] = useState<string | null>(null)
   const [inboxMessages, setInboxMessages] = useState<SourceMessage[]>([])
   const [landedCost, setLandedCost] = useState<LandedCostSummary | null>(null)
   const [notifications, setNotifications] = useState<Notification[]>([])
@@ -4180,6 +4229,13 @@ function App() {
     if (view === 'delivery' && activeBooking) {
       getInsurancePolicy(activeBooking.id).then(setInsurancePolicy).catch(() => setInsurancePolicy(null))
       listClaims(activeBooking.id).then(setBookingClaims).catch(() => setBookingClaims([]))
+      listDeliveryJobsForBooking(activeBooking.id).then(setDeliveryJobs).catch(() => setDeliveryJobs([]))
+    }
+  }, [view, activeBooking?.id])
+
+  useEffect(() => {
+    if (view === 'money' && activeBooking) {
+      listPaymentProofs(activeBooking.id).then(setPaymentProofs).catch(() => setPaymentProofs([]))
     }
   }, [view, activeBooking?.id])
 
@@ -9824,6 +9880,190 @@ function App() {
                     </section>
                   )}
 
+                  <section className="action-panel landed-cost-panel">
+                    <div>
+                      <span className="status-chip blue">Payment proofs</span>
+                      <h3>{paymentProofs.length} proof{paymentProofs.length === 1 ? '' : 's'} on file</h3>
+                      <p>Record proof of any payment made outside Ship Hoppa: supplier deposit, freight invoice, duty, brokerage, or destination delivery. Ship Hoppa reconciles each proof against the matching invoice.</p>
+                    </div>
+                    {paymentProofs.length > 0 && (
+                      <table className="landed-cost-table">
+                        <thead>
+                          <tr>
+                            <th>Type</th>
+                            <th>Method</th>
+                            <th>Reference</th>
+                            <th style={{ textAlign: 'right' }}>Amount</th>
+                            <th>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {paymentProofs.map((proof) => (
+                            <tr key={proof.id}>
+                              <td>{proof.payment_type.replace('_', ' ')}</td>
+                              <td>{proof.payment_method.replace('_', ' ')}</td>
+                              <td>{proof.reference_number ?? '—'}</td>
+                              <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                                {proof.paid_currency} {proof.paid_amount.toLocaleString()}
+                              </td>
+                              <td>
+                                <span className={`status-chip ${
+                                  proof.reconciliation_status === 'matched' ? 'green' :
+                                  proof.reconciliation_status === 'variance' ? 'orange' :
+                                  proof.reconciliation_status === 'rejected' ? '' : 'orange'
+                                }`}>
+                                  {proof.reconciliation_status.replace('_', ' ')}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                    {paymentProofMessage && <p style={{ color: '#059669' }}>{paymentProofMessage}</p>}
+                    {paymentProofError && <p style={{ color: '#dc2626' }}>{paymentProofError}</p>}
+                    <form
+                      style={{ display: 'grid', gap: 8, marginTop: 12 }}
+                      onSubmit={async (event) => {
+                        event.preventDefault()
+                        setPaymentProofMessage(null)
+                        setPaymentProofError(null)
+                        if (!activeBooking) return
+                        const amount = Number(paymentProofDraft.paid_amount)
+                        if (!Number.isFinite(amount) || amount <= 0) {
+                          setPaymentProofError('Amount must be more than zero.')
+                          return
+                        }
+                        if (!paymentProofDraft.paid_at) {
+                          setPaymentProofError('Tell us when the payment was sent.')
+                          return
+                        }
+                        if (!paymentProofDraft.paid_by) {
+                          setPaymentProofError('Tell us who paid.')
+                          return
+                        }
+                        try {
+                          await recordPaymentProof(activeBooking.id, {
+                            payment_type: paymentProofDraft.payment_type,
+                            paid_amount: amount,
+                            paid_currency: paymentProofDraft.paid_currency || 'USD',
+                            paid_at: new Date(paymentProofDraft.paid_at).toISOString(),
+                            paid_by: paymentProofDraft.paid_by,
+                            payment_method: paymentProofDraft.payment_method,
+                            reference_number: paymentProofDraft.reference_number || null,
+                            notes: paymentProofDraft.notes || null,
+                          })
+                          setPaymentProofs(await listPaymentProofs(activeBooking.id))
+                          setPaymentProofDraft({
+                            payment_type: 'supplier_invoice',
+                            paid_amount: '',
+                            paid_currency: 'USD',
+                            paid_at: '',
+                            paid_by: '',
+                            payment_method: 'bank_transfer',
+                            reference_number: '',
+                            notes: '',
+                          })
+                          setPaymentProofMessage('Payment proof recorded. Ship Hoppa will reconcile.')
+                        } catch (err) {
+                          setPaymentProofError(err instanceof Error ? err.message : 'Could not record payment proof')
+                        }
+                      }}
+                    >
+                      <div className="form-grid two">
+                        <label>
+                          <span>Payment type</span>
+                          <select
+                            value={paymentProofDraft.payment_type}
+                            onChange={(e) =>
+                              setPaymentProofDraft((d) => ({ ...d, payment_type: e.target.value as PaymentProofType }))
+                            }
+                          >
+                            <option value="supplier_invoice">Supplier invoice</option>
+                            <option value="freight_invoice">Freight invoice</option>
+                            <option value="duty_gst">Duty + GST</option>
+                            <option value="customs_brokerage">Customs brokerage</option>
+                            <option value="destination_delivery">Destination delivery</option>
+                            <option value="other">Other</option>
+                          </select>
+                        </label>
+                        <label>
+                          <span>Method</span>
+                          <select
+                            value={paymentProofDraft.payment_method}
+                            onChange={(e) =>
+                              setPaymentProofDraft((d) => ({ ...d, payment_method: e.target.value as PaymentProofMethod }))
+                            }
+                          >
+                            <option value="bank_transfer">Bank transfer</option>
+                            <option value="card">Card</option>
+                            <option value="wise">Wise</option>
+                            <option value="ofx">OFX</option>
+                            <option value="other">Other</option>
+                          </select>
+                        </label>
+                      </div>
+                      <div className="form-grid three">
+                        <label>
+                          <span>Amount</span>
+                          <input
+                            type="number"
+                            min={0}
+                            step={0.01}
+                            value={paymentProofDraft.paid_amount}
+                            onChange={(e) => setPaymentProofDraft((d) => ({ ...d, paid_amount: e.target.value }))}
+                            required
+                          />
+                        </label>
+                        <label>
+                          <span>Currency</span>
+                          <input
+                            value={paymentProofDraft.paid_currency}
+                            onChange={(e) => setPaymentProofDraft((d) => ({ ...d, paid_currency: e.target.value.toUpperCase() }))}
+                          />
+                        </label>
+                        <label>
+                          <span>Paid on</span>
+                          <input
+                            type="date"
+                            value={paymentProofDraft.paid_at}
+                            onChange={(e) => setPaymentProofDraft((d) => ({ ...d, paid_at: e.target.value }))}
+                            required
+                          />
+                        </label>
+                      </div>
+                      <div className="form-grid two">
+                        <label>
+                          <span>Paid by</span>
+                          <input
+                            value={paymentProofDraft.paid_by}
+                            onChange={(e) => setPaymentProofDraft((d) => ({ ...d, paid_by: e.target.value }))}
+                            placeholder="Person or account that sent the funds"
+                            required
+                          />
+                        </label>
+                        <label>
+                          <span>Reference</span>
+                          <input
+                            value={paymentProofDraft.reference_number}
+                            onChange={(e) => setPaymentProofDraft((d) => ({ ...d, reference_number: e.target.value }))}
+                            placeholder="Bank reference or wire ID"
+                          />
+                        </label>
+                      </div>
+                      <label>
+                        <span>Notes</span>
+                        <input
+                          value={paymentProofDraft.notes}
+                          onChange={(e) => setPaymentProofDraft((d) => ({ ...d, notes: e.target.value }))}
+                        />
+                      </label>
+                      <button type="submit" className="primary-action small" disabled={!activeBooking}>
+                        Record payment proof
+                      </button>
+                    </form>
+                  </section>
+
                   {landedCost && landedCost.lines.length > 0 && (
                     <section className="action-panel landed-cost-panel">
                       <div>
@@ -10283,6 +10523,150 @@ function App() {
                     <section className="form-section document-step">
                       <div className="form-section-heading">
                         <span>4</span>
+                        <div>
+                          <strong>Delivery jobs</strong>
+                          <small>Each delivery leg has its own job: courier, pallet freight, port drayage, live unload, or warehouse drop. Jobs let you track multiple legs without losing the original delivery plan.</small>
+                        </div>
+                      </div>
+                      {deliveryJobs.length === 0 ? (
+                        <p className="tab-intro-copy">No delivery jobs yet for this shipment.</p>
+                      ) : (
+                        <div className="document-review-grid">
+                          {deliveryJobs.map((job) => (
+                            <DetailTile
+                              key={job.id}
+                              icon={<Truck size={18} />}
+                              label={job.mode.replace('_', ' ')}
+                              value={`${job.status.replace('_', ' ')}${job.quote_amount_usd != null ? ` . ${formatMoney(job.quote_amount_usd)}` : ''}`}
+                            />
+                          ))}
+                        </div>
+                      )}
+                      {deliveryJobs.length > 0 && (
+                        <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
+                          {deliveryJobs.map((job) => (
+                            <div key={`status-${job.id}`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span className="status-chip">{job.mode.replace('_', ' ')}</span>
+                              <select
+                                value={job.status}
+                                onChange={async (e) => {
+                                  setDeliveryJobMessage(null)
+                                  setDeliveryJobError(null)
+                                  try {
+                                    await updateDeliveryJob(job.id, { status: e.target.value as DeliveryJobStatus })
+                                    if (activeBooking) {
+                                      setDeliveryJobs(await listDeliveryJobsForBooking(activeBooking.id))
+                                    }
+                                    setDeliveryJobMessage(`Status changed to ${e.target.value.replace('_', ' ')}.`)
+                                  } catch (err) {
+                                    setDeliveryJobError(err instanceof Error ? err.message : 'Status update failed')
+                                  }
+                                }}
+                              >
+                                <option value="booked">booked</option>
+                                <option value="scheduled">scheduled</option>
+                                <option value="picked_up">picked up</option>
+                                <option value="in_transit">in transit</option>
+                                <option value="delivered">delivered</option>
+                                <option value="cancelled">cancelled</option>
+                              </select>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {deliveryJobMessage && <p style={{ color: '#059669' }}>{deliveryJobMessage}</p>}
+                      {deliveryJobError && <p style={{ color: '#dc2626' }}>{deliveryJobError}</p>}
+                      <form
+                        style={{ display: 'grid', gap: 8, marginTop: 12 }}
+                        onSubmit={async (event) => {
+                          event.preventDefault()
+                          setDeliveryJobMessage(null)
+                          setDeliveryJobError(null)
+                          if (!activeBooking) return
+                          try {
+                            await createDeliveryJob(activeBooking.id, {
+                              mode: deliveryJobDraft.mode,
+                              pickup_address: deliveryJobDraft.pickup_address || undefined,
+                              delivery_address: deliveryJobDraft.delivery_address || undefined,
+                              quote_amount_usd: deliveryJobDraft.quote_amount_usd
+                                ? Number(deliveryJobDraft.quote_amount_usd)
+                                : undefined,
+                              notes: deliveryJobDraft.notes || undefined,
+                            })
+                            setDeliveryJobs(await listDeliveryJobsForBooking(activeBooking.id))
+                            setDeliveryJobDraft({
+                              mode: 'warehouse_delivery',
+                              pickup_address: '',
+                              delivery_address: '',
+                              quote_amount_usd: '',
+                              notes: '',
+                            })
+                            setDeliveryJobMessage('Delivery job created.')
+                          } catch (err) {
+                            setDeliveryJobError(err instanceof Error ? err.message : 'Could not create delivery job')
+                          }
+                        }}
+                      >
+                        <div className="form-grid two">
+                          <label>
+                            <span>Mode</span>
+                            <select
+                              value={deliveryJobDraft.mode}
+                              onChange={(e) =>
+                                setDeliveryJobDraft((d) => ({ ...d, mode: e.target.value as DeliveryJobMode }))
+                              }
+                            >
+                              <option value="courier">Courier</option>
+                              <option value="pallet_freight">Pallet freight</option>
+                              <option value="local_truck">Local truck</option>
+                              <option value="port_drayage">Port drayage</option>
+                              <option value="live_unload">Live unload</option>
+                              <option value="warehouse_delivery">Warehouse delivery</option>
+                            </select>
+                          </label>
+                          <label>
+                            <span>Quote (USD)</span>
+                            <input
+                              type="number"
+                              min={0}
+                              step={1}
+                              value={deliveryJobDraft.quote_amount_usd}
+                              onChange={(e) => setDeliveryJobDraft((d) => ({ ...d, quote_amount_usd: e.target.value }))}
+                            />
+                          </label>
+                        </div>
+                        <div className="form-grid two">
+                          <label>
+                            <span>Pickup address</span>
+                            <input
+                              value={deliveryJobDraft.pickup_address}
+                              onChange={(e) => setDeliveryJobDraft((d) => ({ ...d, pickup_address: e.target.value }))}
+                            />
+                          </label>
+                          <label>
+                            <span>Delivery address</span>
+                            <input
+                              value={deliveryJobDraft.delivery_address}
+                              onChange={(e) => setDeliveryJobDraft((d) => ({ ...d, delivery_address: e.target.value }))}
+                            />
+                          </label>
+                        </div>
+                        <label>
+                          <span>Notes</span>
+                          <input
+                            value={deliveryJobDraft.notes}
+                            onChange={(e) => setDeliveryJobDraft((d) => ({ ...d, notes: e.target.value }))}
+                          />
+                        </label>
+                        <button type="submit" className="primary-action small" disabled={!activeBooking}>
+                          Add delivery job
+                        </button>
+                      </form>
+                    </section>
+
+                    <section className="form-section document-step">
+                      <div className="form-section-heading">
+                        <span>5</span>
                         <div>
                           <strong>Insurance and claims</strong>
                           <small>If the cargo arrived damaged, short, or never arrived, draft a claim here. We submit and follow up with the insurer.</small>
