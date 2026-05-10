@@ -117,6 +117,9 @@ from .models import (
     CarrierPortalResponse,
     InboundEmailWebhook,
     SourceMessageType,
+    ImportProjectCreate,
+    ImportProjectStatus,
+    ImportProjectUpdate,
 )
 from .customs import HSCodeSuggestion, best_suggestion, suggest_hs_code
 from .invoices import ParsedInvoice, extract_invoice_from_pdf, extract_invoice_from_text
@@ -173,6 +176,10 @@ from .operations import (
     carrier_portal,
     carrier_eta_update,
     carrier_event_update,
+    create_import_project,
+    update_import_project,
+    clone_import_project,
+    soft_delete_import_project,
     update_account_integration,
     update_account_profile,
     update_customs_profile,
@@ -379,8 +386,59 @@ def bookings(_principal: Principal = Depends(require_admin)) -> List[Booking]:
 
 
 @app.get("/import-projects", response_model=List[ImportProject])
-def import_projects(_principal: Principal = Depends(require_importer)) -> List[ImportProject]:
-    return sorted(store.import_projects.values(), key=lambda item: item.updated_at, reverse=True)
+def import_projects(
+    include_deleted: bool = False,
+    _principal: Principal = Depends(require_importer),
+) -> List[ImportProject]:
+    deleted_statuses = {ImportProjectStatus.deleted_pending_retention, ImportProjectStatus.deleted}
+    projects = [
+        project for project in store.import_projects.values()
+        if include_deleted or project.status not in deleted_statuses
+    ]
+    return sorted(projects, key=lambda item: item.updated_at, reverse=True)
+
+
+@app.post("/import-projects", response_model=ImportProject, status_code=201)
+def post_import_project(
+    payload: ImportProjectCreate,
+    principal: Principal = Depends(require_importer),
+) -> ImportProject:
+    return persist_result(create_import_project(store, payload, principal.role, principal.actor_id))
+
+
+@app.patch("/import-projects/{project_id}", response_model=ImportProject)
+def patch_import_project(
+    project_id: str,
+    payload: ImportProjectUpdate,
+    principal: Principal = Depends(require_importer),
+) -> ImportProject:
+    try:
+        return persist_result(update_import_project(store, project_id, payload, principal.role, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post("/import-projects/{project_id}/clone", response_model=ImportProject, status_code=201)
+def post_clone_import_project(
+    project_id: str,
+    principal: Principal = Depends(require_importer),
+    new_title: Optional[str] = None,
+) -> ImportProject:
+    try:
+        return persist_result(clone_import_project(store, project_id, principal.role, principal.actor_id, new_title))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.delete("/import-projects/{project_id}", response_model=ImportProject)
+def delete_import_project(
+    project_id: str,
+    principal: Principal = Depends(require_importer),
+) -> ImportProject:
+    try:
+        return persist_result(soft_delete_import_project(store, project_id, principal.role, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 @app.get("/import-projects/{project_id}", response_model=ImportProjectWorkspaceResponse)

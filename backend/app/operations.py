@@ -45,11 +45,13 @@ from .models import (
     GrowthAttributionEvent,
     GrowthAttributionEventType,
     ImportProject,
+    ImportProjectCreate,
     ImportProjectEvent,
     ImportProjectFile,
     ImportProjectStatus,
     ImportProjectStepData,
     ImportProjectStepStatus,
+    ImportProjectUpdate,
     ImportProjectVersion,
     ImportWorkflowType,
     Invoice,
@@ -691,6 +693,184 @@ def sync_project_steps_for_booking(store: Store, project: ImportProject, booking
                 updated_at=now_utc(),
             )
         store.import_project_steps[step.id] = step
+
+
+def create_import_project(
+    store: Store,
+    request: ImportProjectCreate,
+    actor_role: ActorRole,
+    actor_id: str,
+    organization_id: Optional[str] = None,
+    owner_user_id: Optional[str] = None,
+) -> ImportProject:
+    timestamp = now_utc()
+    project = ImportProject(
+        id=store.next_id("IPR"),
+        organization_id=organization_id or actor_id,
+        owner_user_id=owner_user_id or actor_id,
+        workflow_type=request.workflow_type,
+        title=request.title,
+        description=request.description,
+        summary=request.summary or "",
+        next_action=request.next_action,
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+    store.import_projects[project.id] = project
+    append_import_project_version(
+        store,
+        project.id,
+        actor_id,
+        "project_created",
+        after_summary=project.summary,
+    )
+    create_import_project_event(
+        store,
+        project.id,
+        "project_created",
+        ProjectActorType.user if actor_role == ActorRole.importer else ProjectActorType.admin,
+        actor_id,
+        metadata={"title": project.title},
+    )
+    create_audit_event(
+        store,
+        actor_role,
+        actor_id,
+        "import_project_created",
+        "import_project",
+        project.id,
+        f"Created import project '{project.title}'.",
+    )
+    return project
+
+
+def update_import_project(
+    store: Store,
+    project_id: str,
+    request: ImportProjectUpdate,
+    actor_role: ActorRole,
+    actor_id: str,
+) -> ImportProject:
+    project = store.import_projects.get(project_id)
+    if not project:
+        raise ValueError("Import project not found")
+    data = request.model_dump(exclude_unset=True)
+    if not data:
+        return project
+    before_summary = project.summary
+    for key, value in data.items():
+        setattr(project, key, value)
+    project.updated_at = now_utc()
+    if request.status == ImportProjectStatus.archived and project.archived_at is None:
+        project.archived_at = now_utc()
+    store.import_projects[project.id] = project
+    append_import_project_version(
+        store,
+        project.id,
+        actor_id,
+        "project_updated",
+        before_summary=before_summary,
+        after_summary=project.summary,
+    )
+    create_audit_event(
+        store,
+        actor_role,
+        actor_id,
+        "import_project_updated",
+        "import_project",
+        project.id,
+        f"Updated import project '{project.title}'.",
+    )
+    return project
+
+
+def clone_import_project(
+    store: Store,
+    source_project_id: str,
+    actor_role: ActorRole,
+    actor_id: str,
+    new_title: Optional[str] = None,
+) -> ImportProject:
+    source = store.import_projects.get(source_project_id)
+    if not source:
+        raise ValueError("Source import project not found")
+    timestamp = now_utc()
+    title = new_title or f"Copy of {source.title}"
+    project = ImportProject(
+        id=store.next_id("IPR"),
+        organization_id=source.organization_id,
+        owner_user_id=source.owner_user_id,
+        workflow_type=source.workflow_type,
+        workflow_version=source.workflow_version,
+        title=title,
+        description=source.description,
+        summary=source.summary,
+        current_step="intake",
+        next_action=source.next_action,
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+    store.import_projects[project.id] = project
+    append_import_project_version(
+        store,
+        project.id,
+        actor_id,
+        "project_cloned",
+        source_reference=source.id,
+        after_summary=project.summary,
+    )
+    create_import_project_event(
+        store,
+        project.id,
+        "project_cloned",
+        ProjectActorType.user if actor_role == ActorRole.importer else ProjectActorType.admin,
+        actor_id,
+        metadata={"source_project_id": source.id, "new_title": title},
+    )
+    create_audit_event(
+        store,
+        actor_role,
+        actor_id,
+        "import_project_cloned",
+        "import_project",
+        project.id,
+        f"Cloned import project from {source.id}.",
+    )
+    return project
+
+
+def soft_delete_import_project(
+    store: Store,
+    project_id: str,
+    actor_role: ActorRole,
+    actor_id: str,
+) -> ImportProject:
+    project = store.import_projects.get(project_id)
+    if not project:
+        raise ValueError("Import project not found")
+    if project.status in {ImportProjectStatus.deleted_pending_retention, ImportProjectStatus.deleted}:
+        return project
+    project.status = ImportProjectStatus.deleted_pending_retention
+    project.deleted_at = now_utc()
+    project.updated_at = now_utc()
+    store.import_projects[project.id] = project
+    append_import_project_version(
+        store,
+        project.id,
+        actor_id,
+        "project_soft_deleted",
+        after_summary=project.summary,
+    )
+    create_audit_event(
+        store,
+        actor_role,
+        actor_id,
+        "import_project_soft_deleted",
+        "import_project",
+        project.id,
+        f"Soft-deleted import project {project.id}.",
+    )
+    return project
 
 
 def ensure_import_project_for_booking(store: Store, booking: Booking, actor_id: str = "system") -> ImportProject:

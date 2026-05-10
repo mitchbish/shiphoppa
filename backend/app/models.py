@@ -1200,6 +1200,24 @@ class ImportProject(BaseModel):
     deleted_at: Optional[datetime] = None
 
 
+class ImportProjectCreate(BaseModel):
+    title: str = Field(..., min_length=2)
+    description: Optional[str] = None
+    workflow_type: ImportWorkflowType = ImportWorkflowType.standard_import
+    summary: Optional[str] = None
+    next_action: Optional[str] = None
+
+
+class ImportProjectUpdate(BaseModel):
+    title: Optional[str] = Field(default=None, min_length=2)
+    description: Optional[str] = None
+    summary: Optional[str] = None
+    status: Optional[ImportProjectStatus] = None
+    current_step: Optional[str] = None
+    next_action: Optional[str] = None
+    blocked_reason: Optional[str] = None
+
+
 class ImportProjectStepData(BaseModel):
     id: str
     import_project_id: str
