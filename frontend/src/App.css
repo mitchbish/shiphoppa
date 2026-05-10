@@ -4903,3 +4903,28 @@ textarea:focus {
 .tracking-order-attention {
   margin-top: 8px;
 }
+
+/* --- Spare-space FCL panel --- */
+.space-opportunity-panel {
+  border: 1px dashed #2F7D5B;
+  background: #f3faf6;
+}
+
+.space-opportunity-card {
+  padding: 14px;
+  display: grid;
+  gap: 14px;
+}
+
+.space-opportunity-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.space-opportunity-card.listed {
+  background: #fff;
+  border: 1px solid #c8e0d3;
+  border-radius: 8px;
+  padding: 16px;
+}

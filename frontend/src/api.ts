@@ -347,6 +347,42 @@ export function getLandedCostSummary(bookingId: string) {
   return request<LandedCostSummary>(`/bookings/${bookingId}/landed-cost`)
 }
 
+// --- FCL spare-space ---
+
+export type SpaceOpportunity = {
+  id: string
+  booking_id: string
+  container_id: string | null
+  opportunity_type: string
+  total_container_cbm: number
+  booked_cbm: number
+  protected_buffer_cbm: number
+  recoverable_cbm: number
+  estimated_recovery_usd: number
+  status: 'detected' | 'awaiting_owner_approval' | 'listed' | 'matched' | 'closed' | 'declined'
+  owner_actor_id: string
+  detected_at: string
+  listed_at: string | null
+  closed_at: string | null
+  notes: string | null
+}
+
+export function getSpaceOpportunities(bookingId: string) {
+  return request<SpaceOpportunity[]>(`/bookings/${bookingId}/space-opportunities`)
+}
+
+export function detectSpaceOpportunity(bookingId: string) {
+  return request<SpaceOpportunity | null>(`/bookings/${bookingId}/space-opportunities/detect`, {
+    method: 'POST',
+  })
+}
+
+export function listSpaceOpportunity(opportunityId: string) {
+  return request<SpaceOpportunity>(`/space-opportunities/${opportunityId}/list`, {
+    method: 'POST',
+  })
+}
+
 // --- Notifications ---
 
 export function getNotifications() {

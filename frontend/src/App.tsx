@@ -68,6 +68,9 @@ import {
   getLandedCostSummary,
   getNotifications,
   markAllNotificationsRead,
+  getSpaceOpportunities,
+  detectSpaceOpportunity,
+  listSpaceOpportunity,
   supplierReady,
   updateAccountIntegration,
   updateAccountProfile,
@@ -82,6 +85,7 @@ import type {
   ApprovalRequestRecord,
   AutomationRunAllResult,
   LandedCostSummary,
+  SpaceOpportunity,
   MissingDataItem as APIMissingDataItem,
   ShipmentStateResponse,
   StaleCheckAlert,
@@ -1561,6 +1565,71 @@ function TrackingOrderCard({
   )
 }
 
+function SpareSpacePanel({
+  opportunities,
+  onDetect,
+  onList,
+}: {
+  opportunities: SpaceOpportunity[]
+  onDetect: () => void
+  onList: (opportunityId: string) => void
+}) {
+  const active = opportunities.find((o) => o.status === 'detected' || o.status === 'awaiting_owner_approval')
+  const listed = opportunities.find((o) => o.status === 'listed')
+
+  return (
+    <section className="panel space-opportunity-panel">
+      <div className="panel-heading">
+        <div>
+          <p className="eyebrow">Spare container space</p>
+          <h2>Recover unused FCL capacity</h2>
+        </div>
+        <PackageCheck size={22} />
+      </div>
+      {!active && !listed && (
+        <div className="empty-state">
+          <PackageCheck size={36} />
+          <p>If this is an FCL shipment with spare room, Ship Hoppa can list the unused space for other importers without exposing your cargo details.</p>
+          <button className="secondary-action" type="button" onClick={onDetect}>
+            <PackageCheck size={15} />
+            Check for spare space
+          </button>
+        </div>
+      )}
+      {active && (
+        <div className="space-opportunity-card">
+          <div className="space-opportunity-grid">
+            <DetailTile icon={<PackageCheck size={18} />} label="Container size" value={`${active.total_container_cbm} CBM`} />
+            <DetailTile icon={<Gauge size={18} />} label="Your cargo" value={`${active.booked_cbm} CBM`} />
+            <DetailTile icon={<ShieldCheck size={18} />} label="Buffer" value={`${active.protected_buffer_cbm} CBM`} />
+            <DetailTile icon={<CircleDollarSign size={18} />} label="Recoverable" value={`${active.recoverable_cbm} CBM`} />
+            <DetailTile icon={<Receipt size={18} />} label="Estimated revenue" value={`USD ${active.estimated_recovery_usd.toLocaleString()}`} />
+          </div>
+          <p>
+            Your cargo loads first and stays priority. Spare space only goes to compatible cargo that
+            still meets the carrier cutoff.
+          </p>
+          <button
+            className="primary-action"
+            type="button"
+            onClick={() => onList(active.id)}
+          >
+            <Check size={15} />
+            List spare space
+          </button>
+        </div>
+      )}
+      {listed && !active && (
+        <div className="space-opportunity-card listed">
+          <span className="status-chip green">Listed</span>
+          <h3>{listed.recoverable_cbm} CBM listed</h3>
+          <p>Other importers can now see this listing in the spare-space marketplace. We will notify you when a match is confirmed.</p>
+        </div>
+      )}
+    </section>
+  )
+}
+
 function ShipmentJourneyMap({
   booking,
   container,
@@ -2287,6 +2356,7 @@ function App() {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [activeShipmentState, setActiveShipmentState] = useState<ShipmentStateResponse | null>(null)
   const [activeMissingData, setActiveMissingData] = useState<APIMissingDataItem[]>([])
+  const [spaceOpportunities, setSpaceOpportunities] = useState<SpaceOpportunity[]>([])
   const [adminEmail, setAdminEmail] = useState('ops@shiphoppa.example')
   const [adminPassword, setAdminPassword] = useState('')
   const [adminLoginError, setAdminLoginError] = useState<string | null>(null)
@@ -2462,11 +2532,39 @@ function App() {
     if (!activeBooking) {
       setActiveShipmentState(null)
       setActiveMissingData([])
+      setSpaceOpportunities([])
       return
     }
     getShipmentState(activeBooking.id).then(setActiveShipmentState).catch(() => setActiveShipmentState(null))
     getMissingData(activeBooking.id).then(setActiveMissingData).catch(() => setActiveMissingData([]))
+    getSpaceOpportunities(activeBooking.id).then(setSpaceOpportunities).catch(() => setSpaceOpportunities([]))
   }, [activeBooking?.id])
+
+  async function handleDetectSpareSpace() {
+    if (!activeBooking) return
+    try {
+      const result = await detectSpaceOpportunity(activeBooking.id)
+      if (result) {
+        const refreshed = await getSpaceOpportunities(activeBooking.id)
+        setSpaceOpportunities(refreshed)
+      } else {
+        setError('No spare capacity detected. This shipment is not FCL or is already full.')
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not detect spare space')
+    }
+  }
+
+  async function handleListSpareSpace(opportunityId: string) {
+    if (!activeBooking) return
+    try {
+      await listSpaceOpportunity(opportunityId)
+      const refreshed = await getSpaceOpportunities(activeBooking.id)
+      setSpaceOpportunities(refreshed)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not list spare space')
+    }
+  }
 
   const orderSwitcherBookings = useMemo(() => {
     if (!activeBooking || bookings.some((booking) => booking.id === activeBooking.id)) return bookings
@@ -6227,6 +6325,11 @@ function App() {
 		                  {activeBooking && (
 		                    <div className="tracking-detail-stack">
 		                      <ShipmentJourneyMap booking={activeBooking} container={activeContainer} events={events} sailing={activeSailing} />
+		                      <SpareSpacePanel
+		                        opportunities={spaceOpportunities}
+		                        onDetect={handleDetectSpareSpace}
+		                        onList={handleListSpareSpace}
+		                      />
 		                    </div>
 	                  )}
                   </div>
