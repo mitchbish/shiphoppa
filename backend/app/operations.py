@@ -2081,6 +2081,100 @@ FCL_PROTECTED_BUFFER_CBM = 4.0  # leave room for stuffing and last-minute volume
 FCL_RECOVERABLE_RATE_USD_PER_CBM = 95.0  # rough internal rate for spare-space sales
 
 
+def match_invoice_to_purchase_order(
+    store: Store, parsed_invoice, hint_booking_id: Optional[str] = None,
+) -> Optional[PurchaseOrder]:
+    """
+    Best-effort match of a ParsedInvoice to an existing PurchaseOrder.
+
+    Strategy (first match wins):
+      1. PO reference from the invoice text matches a PurchaseOrder.order_reference.
+      2. The hint booking has exactly one PurchaseOrder.
+      3. Supplier-name match against any PO and the booking range.
+    """
+    if parsed_invoice.purchase_order_reference:
+        for po in store.purchase_orders.values():
+            if po.order_reference and po.order_reference.upper() == parsed_invoice.purchase_order_reference.upper():
+                return po
+
+    if hint_booking_id:
+        candidates = [po for po in store.purchase_orders.values() if po.booking_id == hint_booking_id]
+        if len(candidates) == 1:
+            return candidates[0]
+
+    if parsed_invoice.beneficiary_name or parsed_invoice.supplier_name:
+        target = (parsed_invoice.beneficiary_name or parsed_invoice.supplier_name or "").lower()
+        for po in store.purchase_orders.values():
+            if po.supplier_name and po.supplier_name.lower() in target:
+                return po
+
+    return None
+
+
+def apply_parsed_invoice(
+    store: Store,
+    parsed_invoice,
+    actor_id: str,
+    hint_booking_id: Optional[str] = None,
+    source_message_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Apply a ParsedInvoice to the store. If a PO match is found and the
+    invoice has a total_amount and currency, create a SupplierPayRequest
+    plus its approval. Returns a result dict describing what happened.
+    """
+    matched_po = match_invoice_to_purchase_order(store, parsed_invoice, hint_booking_id)
+    result: Dict[str, Any] = {
+        "matched_purchase_order_id": matched_po.id if matched_po else None,
+        "supplier_pay_request_id": None,
+        "approval_request_id": None,
+    }
+
+    if not matched_po or parsed_invoice.total_amount is None or not parsed_invoice.currency:
+        return result
+
+    # Avoid duplicate SupplierPayRequest for the same invoice number on the same PO
+    invoice_ref = parsed_invoice.invoice_number or parsed_invoice.proforma_number
+    if invoice_ref:
+        existing = next(
+            (
+                sp for sp in store.supplier_pay_requests.values()
+                if sp.purchase_order_id == matched_po.id
+                and sp.supplier_invoice_reference == invoice_ref
+            ),
+            None,
+        )
+        if existing:
+            result["supplier_pay_request_id"] = existing.id
+            return result
+
+    # Decide payment stage from the matched PO state
+    paid_stage_count = sum(
+        1 for sp in store.supplier_pay_requests.values()
+        if sp.purchase_order_id == matched_po.id and sp.marked_paid_at
+    )
+    payment_stage = SupplierPayStage.deposit if paid_stage_count == 0 else SupplierPayStage.balance
+
+    pay_request = create_supplier_pay_request(
+        store,
+        matched_po.id,
+        SupplierPayRequestCreate(
+            payment_stage=payment_stage,
+            amount=parsed_invoice.total_amount,
+            currency=parsed_invoice.currency,
+            supplier_invoice_reference=invoice_ref,
+            notes=f"Extracted from invoice{f' (source: {source_message_id})' if source_message_id else ''}.",
+            bank_details_fingerprint=parsed_invoice.account_number_last4 or parsed_invoice.iban_last4,
+            bank_details_changed=False,
+        ),
+        actor_id=actor_id,
+    )
+
+    result["supplier_pay_request_id"] = pay_request.id
+    result["approval_request_id"] = pay_request.approval_request_id
+    return result
+
+
 def detect_fcl_spare_space(store: Store, booking_id: str) -> Optional[SpaceOpportunity]:
     """
     Detect whether an FCL booking has spare capacity that could be sold to

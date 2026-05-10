@@ -758,3 +758,134 @@ class TestSpaceOpportunity:
         list_response = client.post(f"/space-opportunities/{opp_id}/list", headers=IMPORTER_HEADERS)
         assert list_response.status_code == 200
         assert list_response.json()["status"] == "listed"
+
+
+class TestSupplierInvoiceExtraction:
+    INVOICE_TEXT = """
+    INVOICE No: INV-2026-0042
+    Issued: 2026-05-01
+    Due Date: 2026-05-15
+    PO Number: SH-2026-0044
+    Total: USD 4,250.00
+    Beneficiary: Foshan Tiles Co Ltd
+    Bank: HSBC Hong Kong
+    Account No: 1234-5678-9012
+    SWIFT: HSBCHKHHHKH
+    """
+
+    def test_extracts_invoice_number(self) -> None:
+        from app.invoices import extract_invoice_from_text
+        parsed = extract_invoice_from_text(self.INVOICE_TEXT)
+        assert parsed.invoice_number == "INV-2026-0042"
+
+    def test_extracts_amount_and_currency(self) -> None:
+        from app.invoices import extract_invoice_from_text
+        parsed = extract_invoice_from_text(self.INVOICE_TEXT)
+        assert parsed.total_amount == 4250.00
+        assert parsed.currency == "USD"
+
+    def test_extracts_due_date(self) -> None:
+        from app.invoices import extract_invoice_from_text
+        parsed = extract_invoice_from_text(self.INVOICE_TEXT)
+        assert parsed.due_date is not None
+        assert parsed.due_date.isoformat() == "2026-05-15"
+
+    def test_extracts_po_reference(self) -> None:
+        from app.invoices import extract_invoice_from_text
+        parsed = extract_invoice_from_text(self.INVOICE_TEXT)
+        assert parsed.purchase_order_reference == "SH-2026-0044"
+
+    def test_extracts_bank_and_masks_account(self) -> None:
+        from app.invoices import extract_invoice_from_text
+        parsed = extract_invoice_from_text(self.INVOICE_TEXT)
+        assert parsed.swift_code == "HSBCHKHHHKH"
+        assert parsed.account_number_last4 == "9012"
+        assert parsed.bank_name and "HSBC" in parsed.bank_name
+
+    def test_handles_alternate_currency_format(self) -> None:
+        from app.invoices import extract_invoice_from_text
+        parsed = extract_invoice_from_text("Total: 18000.00 RMB\nDue date: 2026-06-01")
+        assert parsed.total_amount == 18000.00
+        assert parsed.currency == "CNY"
+
+    def test_empty_text_returns_empty_parse(self) -> None:
+        from app.invoices import extract_invoice_from_text
+        parsed = extract_invoice_from_text("")
+        assert parsed.invoice_number is None
+        assert parsed.total_amount is None
+
+    def test_parse_text_endpoint(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        response = client.post(
+            "/invoices/parse-text",
+            headers=IMPORTER_HEADERS,
+            json={"text": self.INVOICE_TEXT},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["parsed"]["invoice_number"] == "INV-2026-0042"
+        assert body["parsed"]["total_amount"] == 4250.00
+        assert "applied" not in body  # apply was False
+
+    def test_parse_text_with_apply_creates_pay_request(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        booking_id = create_booking()
+        # Create a matching PO
+        po_response = client.post(
+            "/purchase-orders",
+            headers=IMPORTER_HEADERS,
+            json={
+                "booking_id": booking_id,
+                "order_reference": "SH-2026-0044",
+                "buyer_company_name": "Test Imports Pty Ltd",
+                "supplier_name": "Foshan Tiles Co Ltd",
+                "product_summary": "ceramic tiles",
+                "goods_value": 4250,
+                "deposit_amount": 1275,
+                "balance_amount": 2975,
+            },
+        )
+        assert po_response.status_code == 201
+
+        response = client.post(
+            "/invoices/parse-text",
+            headers=IMPORTER_HEADERS,
+            json={"text": self.INVOICE_TEXT, "booking_id": booking_id, "apply": True},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["applied"]["matched_purchase_order_id"] is not None
+        assert body["applied"]["supplier_pay_request_id"] is not None
+        assert body["applied"]["approval_request_id"] is not None
+        sp = store.supplier_pay_requests[body["applied"]["supplier_pay_request_id"]]
+        assert sp.amount == 4250.00
+        assert sp.currency == "USD"
+        assert sp.supplier_invoice_reference == "INV-2026-0042"
+
+    def test_extract_from_source_message_endpoint(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        create_booking()
+        msg = client.post(
+            "/source-messages",
+            headers=IMPORTER_HEADERS,
+            json={
+                "source_type": "forwarded_email",
+                "from_address": "supplier@factory.cn",
+                "to_addresses": ["pay@shiphoppa.com"],
+                "subject": "Invoice INV-2026-0042 for your order",
+                "body": self.INVOICE_TEXT,
+            },
+        )
+        assert msg.status_code == 201
+        message_id = msg.json()["id"]
+        extract = client.post(
+            f"/source-messages/{message_id}/extract-invoice",
+            headers=IMPORTER_HEADERS,
+        )
+        assert extract.status_code == 200
+        body = extract.json()
+        assert body["parsed"]["invoice_number"] == "INV-2026-0042"
+        assert body["parsed"]["total_amount"] == 4250.00

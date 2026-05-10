@@ -4,6 +4,7 @@ from datetime import date
 from typing import Callable, List, Optional, TypeVar
 
 from fastapi import Depends, FastAPI, Header, HTTPException
+from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -99,7 +100,9 @@ from .models import (
     SupplierReadyRequest,
     SystemHealthResponse,
 )
+from .invoices import ParsedInvoice, extract_invoice_from_text
 from .operations import (
+    apply_parsed_invoice,
     approve_space_opportunity_listing,
     checklist_for_booking,
     complete_production_milestone,
@@ -930,6 +933,56 @@ def extract_message_facts(message_id: str, _principal: Principal = Depends(requi
     facts = run_extraction_for_message(store, message)
     persist_store()
     return facts
+
+
+# --- Supplier invoice extractor ---
+
+
+class InvoiceParseTextRequest(BaseModel):
+    text: str
+    booking_id: Optional[str] = None
+    apply: bool = False
+
+
+@app.post("/invoices/parse-text")
+def parse_invoice_text(
+    payload: InvoiceParseTextRequest, principal: Principal = Depends(require_importer)
+) -> dict:
+    parsed = extract_invoice_from_text(payload.text)
+    result: dict = {"parsed": parsed.model_dump(mode="json")}
+    if payload.apply:
+        applied = apply_parsed_invoice(
+            store, parsed, principal.actor_id, hint_booking_id=payload.booking_id
+        )
+        result["applied"] = applied
+        persist_store()
+    return result
+
+
+@app.post("/source-messages/{message_id}/extract-invoice")
+def extract_invoice_from_message(
+    message_id: str,
+    apply: bool = False,
+    booking_id: Optional[str] = None,
+    principal: Principal = Depends(require_importer),
+) -> dict:
+    message = store.source_messages.get(message_id)
+    if not message:
+        raise HTTPException(status_code=404, detail="Source message not found")
+    text = f"{message.subject or ''}\n{message.body or ''}"
+    parsed = extract_invoice_from_text(text)
+    result: dict = {"message_id": message_id, "parsed": parsed.model_dump(mode="json")}
+    if apply:
+        applied = apply_parsed_invoice(
+            store,
+            parsed,
+            principal.actor_id,
+            hint_booking_id=booking_id,
+            source_message_id=message_id,
+        )
+        result["applied"] = applied
+        persist_store()
+    return result
 
 
 @app.post("/automation/apply-facts/{booking_id}")
