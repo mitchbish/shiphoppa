@@ -31,8 +31,10 @@ import type {
   DeliveryJobCreatePayload,
   DeliveryJobUpdatePayload,
   DeliveryPlan,
+  LandedCostActual,
   PartnerCapability,
   PartnerProfile,
+  PaymentProof,
   Invoice,
   ImportProjectWorkspaceResponse,
   MatchResult,
@@ -1006,6 +1008,43 @@ export function createContingencyOption(bookingId: string, payload: Partial<Cont
 export function updateContingencyOption(optionId: string, payload: Partial<ContingencyOption>) {
   return request<ContingencyOption>(`/contingency-options/${optionId}`, {
     method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+}
+
+// --- Payment proofs + landed cost ---
+
+export function listPaymentProofs(bookingId: string) {
+  return request<PaymentProof[]>(`/bookings/${bookingId}/payment-proofs`)
+}
+
+export function recordPaymentProof(bookingId: string, payload: Partial<PaymentProof> & {
+  payment_type: PaymentProof['payment_type']
+  paid_amount: number
+  paid_currency: string
+  paid_at: string
+  paid_by: string
+}) {
+  return request<PaymentProof>(`/bookings/${bookingId}/payment-proofs`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function reconcilePaymentProof(proofId: string, payload: { reconciliation_status: PaymentProof['reconciliation_status']; variance_amount?: number; notes?: string }) {
+  return request<PaymentProof>(`/payment-proofs/${proofId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function getLandedCostActual(bookingId: string) {
+  return request<LandedCostActual>(`/bookings/${bookingId}/landed-cost-actual`)
+}
+
+export function recordLandedCostActual(bookingId: string, payload: Partial<LandedCostActual> & { actual_total_usd: number }) {
+  return request<LandedCostActual>(`/bookings/${bookingId}/landed-cost-actual`, {
+    method: 'POST',
     body: JSON.stringify(payload),
   })
 }

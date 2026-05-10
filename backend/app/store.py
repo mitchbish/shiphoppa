@@ -32,9 +32,11 @@ from .models import (
     ImportProjectVersion,
     Importer,
     Invoice,
+    LandedCostActual,
     Lane,
     Notification,
     OutboundMessage,
+    PaymentProof,
     PaymentRecord,
     ProductionMilestone,
     PurchaseOrder,
@@ -86,6 +88,8 @@ class Store:
         self.partner_profiles: Dict[str, PartnerProfile] = {}
         self.partner_capabilities: Dict[str, PartnerCapability] = {}
         self.contingency_options: Dict[str, ContingencyOption] = {}
+        self.payment_proofs: Dict[str, PaymentProof] = {}
+        self.landed_cost_actuals: Dict[str, LandedCostActual] = {}
         self.admin_tasks: Dict[str, AdminTask] = {}
         self.purchase_orders: Dict[str, PurchaseOrder] = {}
         self.production_milestones: Dict[str, ProductionMilestone] = {}

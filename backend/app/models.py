@@ -1899,6 +1899,125 @@ class ContingencyOptionUpdate(BaseModel):
     status: Optional[ContingencyStatus] = None
 
 
+class PaymentProofType(str, Enum):
+    supplier_invoice = "supplier_invoice"
+    freight_invoice = "freight_invoice"
+    duty_gst = "duty_gst"
+    customs_brokerage = "customs_brokerage"
+    destination_delivery = "destination_delivery"
+    other = "other"
+
+
+class PaymentProofMethod(str, Enum):
+    bank_transfer = "bank_transfer"
+    card = "card"
+    wise = "wise"
+    ofx = "ofx"
+    other = "other"
+
+
+class PaymentProofReconciliationStatus(str, Enum):
+    pending_review = "pending_review"
+    matched = "matched"
+    variance = "variance"
+    rejected = "rejected"
+
+
+class PaymentProof(BaseModel):
+    id: str
+    booking_id: str
+    invoice_id: Optional[str] = None
+    supplier_pay_request_id: Optional[str] = None
+    payment_type: PaymentProofType
+    paid_amount: float
+    paid_currency: str = "USD"
+    paid_at: datetime
+    paid_by: str
+    payment_method: PaymentProofMethod = PaymentProofMethod.bank_transfer
+    reference_number: Optional[str] = None
+    proof_document_id: Optional[str] = None
+    bank_account_last_digits: Optional[str] = None
+    reconciliation_status: PaymentProofReconciliationStatus = PaymentProofReconciliationStatus.pending_review
+    variance_amount: Optional[float] = None
+    reviewed_by: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    notes: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class PaymentProofCreate(BaseModel):
+    payment_type: PaymentProofType
+    paid_amount: float = Field(..., gt=0)
+    paid_currency: str = "USD"
+    paid_at: datetime
+    paid_by: str
+    payment_method: PaymentProofMethod = PaymentProofMethod.bank_transfer
+    invoice_id: Optional[str] = None
+    supplier_pay_request_id: Optional[str] = None
+    reference_number: Optional[str] = None
+    proof_document_id: Optional[str] = None
+    bank_account_last_digits: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class PaymentProofReconcileUpdate(BaseModel):
+    reconciliation_status: PaymentProofReconciliationStatus
+    variance_amount: Optional[float] = None
+    notes: Optional[str] = None
+
+
+class LandedCostActual(BaseModel):
+    id: str
+    booking_id: str
+    estimated_total_usd: Optional[float] = None
+    actual_total_usd: float
+    currency: str = "USD"
+    supplier_invoice_amount: Optional[float] = None
+    fx_cost: Optional[float] = None
+    international_freight: Optional[float] = None
+    platform_fee: Optional[float] = None
+    origin_pickup: Optional[float] = None
+    inspection: Optional[float] = None
+    warehouse_charges: Optional[float] = None
+    customs_duty: Optional[float] = None
+    gst: Optional[float] = None
+    broker_fees: Optional[float] = None
+    port_charges: Optional[float] = None
+    destination_trucking: Optional[float] = None
+    insurance: Optional[float] = None
+    storage_demurrage_detention: Optional[float] = None
+    adjustments: Optional[float] = None
+    variance_amount_usd: Optional[float] = None
+    variance_reason: Optional[str] = None
+    finalised_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class LandedCostActualUpsert(BaseModel):
+    actual_total_usd: float = Field(..., ge=0)
+    currency: str = "USD"
+    estimated_total_usd: Optional[float] = None
+    supplier_invoice_amount: Optional[float] = None
+    fx_cost: Optional[float] = None
+    international_freight: Optional[float] = None
+    platform_fee: Optional[float] = None
+    origin_pickup: Optional[float] = None
+    inspection: Optional[float] = None
+    warehouse_charges: Optional[float] = None
+    customs_duty: Optional[float] = None
+    gst: Optional[float] = None
+    broker_fees: Optional[float] = None
+    port_charges: Optional[float] = None
+    destination_trucking: Optional[float] = None
+    insurance: Optional[float] = None
+    storage_demurrage_detention: Optional[float] = None
+    adjustments: Optional[float] = None
+    variance_reason: Optional[str] = None
+    finalised: bool = False
+
+
 class GrowthAttributionCreate(BaseModel):
     event_type: GrowthAttributionEventType
     source: str = Field(..., min_length=1)

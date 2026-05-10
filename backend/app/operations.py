@@ -73,7 +73,13 @@ from .models import (
     ImportWorkflowType,
     Invoice,
     InvoiceLineItem,
+    LandedCostActual,
+    LandedCostActualUpsert,
     Notification,
+    PaymentProof,
+    PaymentProofCreate,
+    PaymentProofReconcileUpdate,
+    PaymentProofReconciliationStatus,
     OutboundChannel,
     OutboundMessage,
     OutboundMessageCreate,
@@ -4765,3 +4771,173 @@ def list_contingency_options_for_booking(store: Store, booking_id: str) -> List[
         key=lambda o: o.created_at,
         reverse=True,
     )
+
+
+def record_payment_proof(
+    store: Store,
+    booking_id: str,
+    payload: PaymentProofCreate,
+    actor_id: str,
+) -> PaymentProof:
+    if booking_id not in store.bookings:
+        raise ValueError("Booking not found")
+    timestamp = now_utc()
+    proof = PaymentProof(
+        id=store.next_id("PROOF"),
+        booking_id=booking_id,
+        invoice_id=payload.invoice_id,
+        supplier_pay_request_id=payload.supplier_pay_request_id,
+        payment_type=payload.payment_type,
+        paid_amount=payload.paid_amount,
+        paid_currency=payload.paid_currency,
+        paid_at=payload.paid_at,
+        paid_by=payload.paid_by,
+        payment_method=payload.payment_method,
+        reference_number=payload.reference_number,
+        proof_document_id=payload.proof_document_id,
+        bank_account_last_digits=payload.bank_account_last_digits,
+        notes=payload.notes,
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+    store.payment_proofs[proof.id] = proof
+    create_audit_event(
+        store,
+        ActorRole.importer,
+        actor_id,
+        "payment_proof_recorded",
+        "payment_proof",
+        proof.id,
+        f"Payment proof recorded for booking {booking_id} ({payload.payment_type.value}).",
+        {
+            "booking_id": booking_id,
+            "payment_type": payload.payment_type.value,
+            "paid_amount": payload.paid_amount,
+            "paid_currency": payload.paid_currency,
+        },
+    )
+    return proof
+
+
+def update_payment_proof_reconciliation(
+    store: Store,
+    proof_id: str,
+    payload: PaymentProofReconcileUpdate,
+    actor_id: str,
+) -> PaymentProof:
+    if proof_id not in store.payment_proofs:
+        raise ValueError("Payment proof not found")
+    proof = store.payment_proofs[proof_id]
+    previous_status = proof.reconciliation_status
+    proof.reconciliation_status = payload.reconciliation_status
+    if payload.variance_amount is not None:
+        proof.variance_amount = payload.variance_amount
+    if payload.notes is not None:
+        proof.notes = payload.notes
+    proof.reviewed_by = actor_id
+    proof.reviewed_at = now_utc()
+    proof.updated_at = now_utc()
+    store.payment_proofs[proof.id] = proof
+    create_audit_event(
+        store,
+        ActorRole.admin,
+        actor_id,
+        "payment_proof_reconciled",
+        "payment_proof",
+        proof.id,
+        f"Payment proof reconciliation moved from {previous_status.value} to {proof.reconciliation_status.value}.",
+        {
+            "previous_status": previous_status.value,
+            "new_status": proof.reconciliation_status.value,
+        },
+    )
+    return proof
+
+
+def list_payment_proofs_for_booking(store: Store, booking_id: str) -> List[PaymentProof]:
+    return sorted(
+        [p for p in store.payment_proofs.values() if p.booking_id == booking_id],
+        key=lambda p: (p.paid_at, p.id),
+        reverse=True,
+    )
+
+
+def get_landed_cost_actual_for_booking(store: Store, booking_id: str) -> Optional[LandedCostActual]:
+    return next(
+        (l for l in store.landed_cost_actuals.values() if l.booking_id == booking_id),
+        None,
+    )
+
+
+def record_landed_cost_actual(
+    store: Store,
+    booking_id: str,
+    payload: LandedCostActualUpsert,
+    actor_id: str,
+) -> LandedCostActual:
+    if booking_id not in store.bookings:
+        raise ValueError("Booking not found")
+    timestamp = now_utc()
+    existing = get_landed_cost_actual_for_booking(store, booking_id)
+    variance_amount = (
+        payload.actual_total_usd - payload.estimated_total_usd
+        if payload.estimated_total_usd is not None
+        else None
+    )
+    if existing:
+        update_fields = payload.model_dump(exclude={"finalised"})
+        for key, value in update_fields.items():
+            setattr(existing, key, value)
+        existing.variance_amount_usd = variance_amount
+        if payload.finalised:
+            existing.finalised_at = timestamp
+        existing.updated_at = timestamp
+        store.landed_cost_actuals[existing.id] = existing
+        actual = existing
+        action = "updated"
+    else:
+        actual = LandedCostActual(
+            id=store.next_id("LCACT"),
+            booking_id=booking_id,
+            estimated_total_usd=payload.estimated_total_usd,
+            actual_total_usd=payload.actual_total_usd,
+            currency=payload.currency,
+            supplier_invoice_amount=payload.supplier_invoice_amount,
+            fx_cost=payload.fx_cost,
+            international_freight=payload.international_freight,
+            platform_fee=payload.platform_fee,
+            origin_pickup=payload.origin_pickup,
+            inspection=payload.inspection,
+            warehouse_charges=payload.warehouse_charges,
+            customs_duty=payload.customs_duty,
+            gst=payload.gst,
+            broker_fees=payload.broker_fees,
+            port_charges=payload.port_charges,
+            destination_trucking=payload.destination_trucking,
+            insurance=payload.insurance,
+            storage_demurrage_detention=payload.storage_demurrage_detention,
+            adjustments=payload.adjustments,
+            variance_amount_usd=variance_amount,
+            variance_reason=payload.variance_reason,
+            finalised_at=timestamp if payload.finalised else None,
+            created_at=timestamp,
+            updated_at=timestamp,
+        )
+        store.landed_cost_actuals[actual.id] = actual
+        action = "recorded"
+    create_audit_event(
+        store,
+        ActorRole.admin,
+        actor_id,
+        f"landed_cost_actual_{action}",
+        "landed_cost_actual",
+        actual.id,
+        f"Landed cost actual {action} for booking {booking_id}.",
+        {
+            "booking_id": booking_id,
+            "actual_total_usd": payload.actual_total_usd,
+            "variance_amount_usd": variance_amount,
+            "finalised": payload.finalised,
+        },
+    )
+    return actual

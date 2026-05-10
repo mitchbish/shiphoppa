@@ -58,12 +58,17 @@ from .models import (
     ContingencyOption,
     ContingencyOptionCreate,
     ContingencyOptionUpdate,
+    LandedCostActual,
+    LandedCostActualUpsert,
     PartnerCapability,
     PartnerCapabilityCreate,
     PartnerCapabilityUpdate,
     PartnerProfile,
     PartnerProfileCreate,
     PartnerProfileUpdate,
+    PaymentProof,
+    PaymentProofCreate,
+    PaymentProofReconcileUpdate,
     ApprovalRequest,
     ApprovalStatus,
     AuditEvent,
@@ -195,16 +200,21 @@ from .operations import (
     create_partner_profile,
     create_sentinel_subscriber,
     create_supplier_claim_link,
+    get_landed_cost_actual_for_booking,
     get_supplier_claim_by_token,
     list_contingency_options_for_booking,
     list_delivery_jobs_for_booking,
     list_partner_capabilities,
+    list_payment_proofs_for_booking,
     opt_out_sentinel_subscriber,
+    record_landed_cost_actual,
+    record_payment_proof,
     request_approval_review,
     update_contingency_option,
     update_delivery_job,
     update_partner_capability,
     update_partner_profile,
+    update_payment_proof_reconciliation,
     sailing_search,
     shipment_workspace,
     create_seo_opportunity,
@@ -349,6 +359,14 @@ def reset_store_for_tests() -> None:
     store.notifications.clear()
     store.audit_events.clear()
     store.space_opportunities.clear()
+    store.delivery_jobs.clear()
+    store.partner_profiles.clear()
+    store.partner_capabilities.clear()
+    store.contingency_options.clear()
+    store.payment_proofs.clear()
+    store.landed_cost_actuals.clear()
+    store.sentinel_subscribers.clear()
+    store.supplier_profile_claims.clear()
     store.idempotency_records.clear()
     store._counters.clear()
     seed_data(store)
@@ -1867,6 +1885,75 @@ def patch_contingency_option(
         return persist_result(update_contingency_option(store, option_id, payload, principal.actor_id))
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post(
+    "/bookings/{booking_id}/payment-proofs",
+    response_model=PaymentProof,
+    status_code=201,
+)
+def post_payment_proof(
+    booking_id: str,
+    payload: PaymentProofCreate,
+    principal: Principal = Depends(require_importer),
+) -> PaymentProof:
+    try:
+        return persist_result(record_payment_proof(store, booking_id, payload, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/bookings/{booking_id}/payment-proofs", response_model=List[PaymentProof])
+def get_payment_proofs(
+    booking_id: str,
+    _principal: Principal = Depends(require_importer),
+) -> List[PaymentProof]:
+    if booking_id not in store.bookings:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return list_payment_proofs_for_booking(store, booking_id)
+
+
+@app.patch("/payment-proofs/{proof_id}", response_model=PaymentProof)
+def patch_payment_proof(
+    proof_id: str,
+    payload: PaymentProofReconcileUpdate,
+    principal: Principal = Depends(require_admin),
+) -> PaymentProof:
+    try:
+        return persist_result(
+            update_payment_proof_reconciliation(store, proof_id, payload, principal.actor_id)
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post(
+    "/bookings/{booking_id}/landed-cost-actual",
+    response_model=LandedCostActual,
+    status_code=201,
+)
+def post_landed_cost_actual(
+    booking_id: str,
+    payload: LandedCostActualUpsert,
+    principal: Principal = Depends(require_admin),
+) -> LandedCostActual:
+    try:
+        return persist_result(record_landed_cost_actual(store, booking_id, payload, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/bookings/{booking_id}/landed-cost-actual", response_model=LandedCostActual)
+def get_landed_cost_actual(
+    booking_id: str,
+    _principal: Principal = Depends(require_importer),
+) -> LandedCostActual:
+    if booking_id not in store.bookings:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    actual = get_landed_cost_actual_for_booking(store, booking_id)
+    if not actual:
+        raise HTTPException(status_code=404, detail="Landed cost actual not recorded yet")
+    return actual
 
 
 @app.put("/bookings/{booking_id}/delivery-plan", response_model=DeliveryPlan)

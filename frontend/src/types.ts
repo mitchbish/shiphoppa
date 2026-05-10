@@ -1086,6 +1086,73 @@ export interface DeliveryJobUpdatePayload extends Partial<DeliveryJobCreatePaylo
   pod_document_id?: string
 }
 
+export type PaymentProofType =
+  | 'supplier_invoice'
+  | 'freight_invoice'
+  | 'duty_gst'
+  | 'customs_brokerage'
+  | 'destination_delivery'
+  | 'other'
+
+export type PaymentProofMethod = 'bank_transfer' | 'card' | 'wise' | 'ofx' | 'other'
+
+export type PaymentProofReconciliationStatus =
+  | 'pending_review'
+  | 'matched'
+  | 'variance'
+  | 'rejected'
+
+export interface PaymentProof {
+  id: string
+  booking_id: string
+  invoice_id: string | null
+  supplier_pay_request_id: string | null
+  payment_type: PaymentProofType
+  paid_amount: number
+  paid_currency: string
+  paid_at: string
+  paid_by: string
+  payment_method: PaymentProofMethod
+  reference_number: string | null
+  proof_document_id: string | null
+  bank_account_last_digits: string | null
+  reconciliation_status: PaymentProofReconciliationStatus
+  variance_amount: number | null
+  reviewed_by: string | null
+  reviewed_at: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface LandedCostActual {
+  id: string
+  booking_id: string
+  estimated_total_usd: number | null
+  actual_total_usd: number
+  currency: string
+  supplier_invoice_amount: number | null
+  fx_cost: number | null
+  international_freight: number | null
+  platform_fee: number | null
+  origin_pickup: number | null
+  inspection: number | null
+  warehouse_charges: number | null
+  customs_duty: number | null
+  gst: number | null
+  broker_fees: number | null
+  port_charges: number | null
+  destination_trucking: number | null
+  insurance: number | null
+  storage_demurrage_detention: number | null
+  adjustments: number | null
+  variance_amount_usd: number | null
+  variance_reason: string | null
+  finalised_at: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface SupplierProfileClaim {
   id: string
   lead_id: string
