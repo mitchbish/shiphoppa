@@ -84,6 +84,8 @@ from .models import (
     SailingSearchResult,
     SentinelSubscriber,
     SentinelSubscriberStatus,
+    SupplierProfileClaim,
+    SupplierProfileClaimStatus,
     SEOOpportunity,
     SEOOpportunityCreate,
     SEOOpportunityStatus,
@@ -2261,6 +2263,103 @@ def summarise_growth_attribution(
         "total_events": sum(row["event_count"] for row in rows),
         "total_value_usd": round(sum(row["total_value_usd"] for row in rows), 2),
     }
+
+
+def create_supplier_claim_link(
+    store: Store,
+    lead_id: str,
+    actor_id: str,
+    expires_in_days: int = 30,
+) -> SupplierProfileClaim:
+    lead = store.supplier_leads.get(lead_id)
+    if not lead:
+        raise ValueError("Supplier lead not found")
+    if lead.verification_status != SupplierVerificationStatus.verified:
+        raise ValueError("Supplier lead is not verified")
+    for existing in store.supplier_profile_claims.values():
+        if (
+            existing.lead_id == lead_id
+            and existing.status == SupplierProfileClaimStatus.pending
+            and existing.expires_at > now_utc()
+        ):
+            return existing
+    timestamp = now_utc()
+    claim = SupplierProfileClaim(
+        id=store.next_id("CLAIM"),
+        lead_id=lead_id,
+        token=secrets.token_hex(16),
+        status=SupplierProfileClaimStatus.pending,
+        expires_at=timestamp + timedelta(days=expires_in_days),
+        created_at=timestamp,
+    )
+    store.supplier_profile_claims[claim.id] = claim
+    create_audit_event(
+        store,
+        ActorRole.admin,
+        actor_id,
+        "supplier_claim_link_created",
+        "supplier_lead",
+        lead_id,
+        f"Profile claim link generated for verified supplier lead {lead_id}.",
+        {"claim_id": claim.id, "actor": actor_id},
+    )
+    return claim
+
+
+def get_supplier_claim_by_token(store: Store, token: str) -> SupplierProfileClaim:
+    for claim in store.supplier_profile_claims.values():
+        if claim.token == token:
+            if claim.status == SupplierProfileClaimStatus.pending and claim.expires_at <= now_utc():
+                claim.status = SupplierProfileClaimStatus.expired
+                store.supplier_profile_claims[claim.id] = claim
+            return claim
+    raise ValueError("Claim not found")
+
+
+def accept_supplier_claim(
+    store: Store,
+    token: str,
+    contact_email: str,
+    contact_name: str,
+) -> SupplierProfileClaim:
+    claim = get_supplier_claim_by_token(store, token)
+    if claim.status == SupplierProfileClaimStatus.expired:
+        raise ValueError("Claim has expired")
+    if claim.status == SupplierProfileClaimStatus.claimed:
+        return claim
+    lead = store.supplier_leads.get(claim.lead_id)
+    if not lead:
+        raise ValueError("Supplier lead no longer exists")
+    timestamp = now_utc()
+    claim.status = SupplierProfileClaimStatus.claimed
+    claim.claimed_at = timestamp
+    claim.claimed_by_email = contact_email
+    claim.claimed_contact_name = contact_name
+    store.supplier_profile_claims[claim.id] = claim
+
+    lead.outreach_status = SupplierOutreachStatus.onboarded
+    if not lead.public_email:
+        lead.public_email = contact_email
+    lead.updated_at = timestamp
+    store.supplier_leads[lead.id] = lead
+
+    create_audit_event(
+        store,
+        ActorRole.system,
+        "supplier_claim",
+        "supplier_claim_accepted",
+        "supplier_lead",
+        lead.id,
+        f"Supplier {lead.company_name} accepted profile claim.",
+        {"claim_id": claim.id, "contact_email": contact_email},
+    )
+    create_growth_event(
+        store,
+        GrowthAttributionEventType.supplier_signed_up,
+        source="profile_claim",
+        supplier_lead_id=lead.id,
+    )
+    return claim
 
 
 def update_supplier_lead_verification(

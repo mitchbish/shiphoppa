@@ -1441,6 +1441,32 @@ class SentinelSubscriberOptOut(BaseModel):
     phone_number: str
 
 
+class SupplierProfileClaimStatus(str, Enum):
+    pending = "pending"
+    claimed = "claimed"
+    expired = "expired"
+
+
+class SupplierProfileClaim(BaseModel):
+    id: str
+    lead_id: str
+    token: str
+    status: SupplierProfileClaimStatus = SupplierProfileClaimStatus.pending
+    expires_at: datetime
+    created_at: datetime
+    claimed_at: Optional[datetime] = None
+    claimed_by_email: Optional[str] = None
+    claimed_contact_name: Optional[str] = None
+
+
+class SupplierProfileClaimAccept(BaseModel):
+    contact_email: str
+    contact_name: str
+
+
+# SupplierProfileClaimResponse is defined after SupplierLead (which is below).
+
+
 class OutboundMessage(BaseModel):
     id: str
     recipient_type: OutboundRecipientType
@@ -1599,6 +1625,11 @@ class SupplierLead(BaseModel):
 class SupplierVerificationUpdate(BaseModel):
     verification_status: SupplierVerificationStatus
     verification_notes: Optional[str] = None
+
+
+class SupplierProfileClaimResponse(BaseModel):
+    claim: SupplierProfileClaim
+    lead: SupplierLead
 
 
 class GrowthAttributionCreate(BaseModel):

@@ -49,6 +49,9 @@ from .models import (
     SentinelSubscriberCreate,
     SentinelSubscriberConfirm,
     SentinelSubscriberOptOut,
+    SupplierProfileClaim,
+    SupplierProfileClaimAccept,
+    SupplierProfileClaimResponse,
     ApprovalRequest,
     ApprovalStatus,
     AuditEvent,
@@ -172,8 +175,11 @@ from .operations import (
     mark_supplier_pay_paid_outside_app,
     mark_delivery_delivered,
     release_status_for_booking,
+    accept_supplier_claim,
     confirm_sentinel_subscriber,
     create_sentinel_subscriber,
+    create_supplier_claim_link,
+    get_supplier_claim_by_token,
     opt_out_sentinel_subscriber,
     request_approval_review,
     sailing_search,
@@ -1222,6 +1228,58 @@ def patch_supplier_lead_verification(
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post(
+    "/growth/supplier-leads/{lead_id}/claim-link",
+    response_model=SupplierProfileClaim,
+    status_code=201,
+)
+def post_supplier_claim_link(
+    lead_id: str,
+    principal: Principal = Depends(require_admin),
+) -> SupplierProfileClaim:
+    try:
+        return persist_result(create_supplier_claim_link(store, lead_id, principal.actor_id))
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 404 if message == "Supplier lead not found" else 400
+        raise HTTPException(status_code=status_code, detail=message)
+
+
+@app.get("/supplier-claim/{token}", response_model=SupplierProfileClaimResponse)
+def get_supplier_claim(token: str) -> SupplierProfileClaimResponse:
+    try:
+        claim = get_supplier_claim_by_token(store, token)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    lead = store.supplier_leads.get(claim.lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Supplier lead no longer exists")
+    return SupplierProfileClaimResponse(claim=claim, lead=lead)
+
+
+@app.post("/supplier-claim/{token}/accept", response_model=SupplierProfileClaimResponse)
+def accept_supplier_claim_endpoint(
+    token: str,
+    payload: SupplierProfileClaimAccept,
+) -> SupplierProfileClaimResponse:
+    try:
+        claim = accept_supplier_claim(store, token, payload.contact_email, payload.contact_name)
+    except ValueError as exc:
+        message = str(exc)
+        if message == "Claim not found":
+            status_code = 404
+        elif message == "Claim has expired":
+            status_code = 410
+        else:
+            status_code = 400
+        raise HTTPException(status_code=status_code, detail=message)
+    lead = store.supplier_leads.get(claim.lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Supplier lead no longer exists")
+    persist_store()
+    return SupplierProfileClaimResponse(claim=claim, lead=lead)
 
 
 @app.get("/growth/attribution-events", response_model=List[GrowthAttributionEvent])

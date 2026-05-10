@@ -39,6 +39,8 @@ import type {
   SourceMessage,
   SourceMessageType,
   SentinelSubscriber,
+  SupplierProfileClaim,
+  SupplierProfileClaimResponse,
   ShipmentDocument,
   ShipmentEvent,
   ShipmentEventStage,
@@ -950,6 +952,25 @@ export function extractFactsPreview(text: string, subject?: string) {
   return request<ExtractionPreviewResponse>('/automation/extract-preview', {
     method: 'POST',
     body: JSON.stringify({ text, subject }),
+  })
+}
+
+// --- Supplier profile claim ---
+
+export function createSupplierClaimLink(leadId: string) {
+  return request<SupplierProfileClaim>(`/growth/supplier-leads/${leadId}/claim-link`, {
+    method: 'POST',
+  })
+}
+
+export function getSupplierClaim(token: string) {
+  return request<SupplierProfileClaimResponse>(`/supplier-claim/${token}`)
+}
+
+export function acceptSupplierClaim(token: string, contact_email: string, contact_name: string) {
+  return request<SupplierProfileClaimResponse>(`/supplier-claim/${token}/accept`, {
+    method: 'POST',
+    body: JSON.stringify({ contact_email, contact_name }),
   })
 }
 

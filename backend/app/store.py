@@ -38,6 +38,7 @@ from .models import (
     ReleaseHold,
     SailingOption,
     SentinelSubscriber,
+    SupplierProfileClaim,
     SEOOpportunity,
     ShipmentDocument,
     ShipmentEvent,
@@ -101,6 +102,7 @@ class Store:
         self.audit_events: Dict[str, AuditEvent] = {}
         self.space_opportunities: Dict[str, SpaceOpportunity] = {}
         self.sentinel_subscribers: Dict[str, SentinelSubscriber] = {}
+        self.supplier_profile_claims: Dict[str, SupplierProfileClaim] = {}
         self.idempotency_records: Dict[str, Any] = {}
         self._counters = defaultdict(int)
 

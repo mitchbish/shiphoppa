@@ -927,6 +927,23 @@ export interface ImportProjectWorkspaceResponse {
   approvals: ApprovalRequest[]
 }
 
+export interface SupplierProfileClaim {
+  id: string
+  lead_id: string
+  token: string
+  status: 'pending' | 'claimed' | 'expired'
+  expires_at: string
+  created_at: string
+  claimed_at: string | null
+  claimed_by_email: string | null
+  claimed_contact_name: string | null
+}
+
+export interface SupplierProfileClaimResponse {
+  claim: SupplierProfileClaim
+  lead: unknown
+}
+
 export interface SentinelSubscriber {
   id: string
   phone_number: string
