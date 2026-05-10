@@ -557,11 +557,11 @@ const incotermLabels: Record<string, string> = {
 
 const invoiceSourceLabels: Record<string, string> = {
   freight_share: 'Container share',
-  platform_fee: 'Platform fee',
-  urgency_fee: 'Priority handling',
-  ship_hoppa_service_fee_standard: 'Standard timing - 7+ business days before cutoff',
-  ship_hoppa_service_fee_priority: 'Priority timing - 3-6 business days before cutoff',
-  ship_hoppa_service_fee_rush: 'Rush timing - 0-2 business days before cutoff',
+  platform_fee: 'Ship Hoppa service fee',
+  urgency_fee: 'Ship Hoppa service fee Priority',
+  ship_hoppa_service_fee_standard: 'Ship Hoppa service fee Standard - 7+ business days before sailing',
+  ship_hoppa_service_fee_priority: 'Ship Hoppa service fee Priority - 3-6 business days before sailing',
+  ship_hoppa_service_fee_rush: 'Ship Hoppa service fee Priority - 0-2 business days before sailing',
   pickup_fee: 'Pickup',
   customs_brokerage: 'Customs estimate',
   destination_charge: 'Destination estimate',
@@ -751,9 +751,9 @@ function integrationStatusClass(status: string) {
 }
 
 function serviceFeeCategory(urgencyFee: number | null | undefined) {
-  if ((urgencyFee ?? 0) >= 150) return 'Rush - 0-2 business days before cutoff'
-  if ((urgencyFee ?? 0) > 0) return 'Priority - 3-6 business days before cutoff'
-  return 'Standard - 7+ business days before cutoff'
+  if ((urgencyFee ?? 0) >= 150) return 'Priority - 0-2 business days before sailing'
+  if ((urgencyFee ?? 0) > 0) return 'Priority - 3-6 business days before sailing'
+  return 'Standard - 7+ business days before sailing'
 }
 
 function serviceFeeTotal(booking: Booking) {
@@ -1078,11 +1078,11 @@ function viewIntroCopy(view: View, phase: CustomerPhase) {
     },
     money: {
       title: 'Ship Hoppa invoice and release.',
-      summary: 'Show freight, service fees, pickup, customs, destination charges, payment status, and release blockers clearly.',
+      summary: 'Show freight, service fees, pickup, customs, destination charges, payment status, and what is blocking release.',
     },
     delivery: {
       title: 'Final delivery.',
-      summary: 'Prepare destination delivery only when customs, documents, payment, and release holds are clear.',
+      summary: 'Prepare final delivery only when customs, documents, payment, and delivery holds are clear.',
     },
     profile: {
       title: 'Saved account details.',
@@ -1871,7 +1871,7 @@ function ShipmentJourneyMap({
         <aside className="journey-detail-panel">
           <div className="journey-detail-grid">
             <span>
-              <small>Warehouse cutoff</small>
+              <small>Arrive at warehouse by</small>
               <strong>{formatDateFriendly(booking.warehouse_receipt_cutoff)}</strong>
             </span>
             <span>
@@ -8000,7 +8000,7 @@ function App() {
                     </div>
                     <div className="document-review-grid">
                       <DetailTile icon={<UserRound size={18} />} label="Supplier access" value={supplierLink ? 'Link created' : 'Not invited'} />
-                      <DetailTile icon={<CalendarClock size={18} />} label="Ready date" value={formatDateShort(activeBooking?.cargo_ready_date_latest)} />
+                      <DetailTile icon={<CalendarClock size={18} />} label="Goods ready by" value={formatDateShort(activeBooking?.cargo_ready_date_latest)} />
                       <DetailTile icon={<FileText size={18} />} label="Supplier files" value={`${supplierPortal?.checklist.documents.length ?? 0}`} />
                     </div>
                     <div className="action-panel-buttons">
@@ -8517,12 +8517,12 @@ function App() {
                       />
                       <DetailTile
                         icon={<MapPin size={18} />}
-                        label="Warehouse cutoff"
+                        label="Arrive at warehouse by"
                         value={formatDateShort(match.booking.warehouse_receipt_cutoff ?? match.container.warehouse_receipt_cutoff_date)}
                       />
                       <DetailTile
                         icon={<Truck size={18} />}
-                        label="Supplier ready"
+                        label="Goods ready by"
                         value={formatDateShort(match.booking.latest_supplier_ready_date)}
                       />
                     </div>
@@ -9166,11 +9166,11 @@ function App() {
                     <div>
                       <span className="status-chip orange">{deliveryModeLabels[activeBooking?.delivery_mode ?? form.delivery_mode]}</span>
                       <h3>{activeBooking?.pickup_address ?? form.pickup_address ?? 'Pickup address needed'}</h3>
-                      <p>Pickup belongs in Ship because it controls warehouse receipt, cutoff feasibility, and container loading.</p>
+                      <p>Pickup belongs in Ship because it controls warehouse arrival, sailing feasibility, and container loading.</p>
                     </div>
                   </div>
                   <div className="hero-summary-grid">
-                    <DetailTile icon={<CalendarClock size={18} />} label="Warehouse cutoff" value={formatDateShort(activeBooking?.warehouse_receipt_cutoff ?? selectedContainer?.warehouse_receipt_cutoff_date)} />
+                    <DetailTile icon={<CalendarClock size={18} />} label="Arrive at warehouse by" value={formatDateShort(activeBooking?.warehouse_receipt_cutoff ?? selectedContainer?.warehouse_receipt_cutoff_date)} />
                     <DetailTile icon={<Truck size={18} />} label="Pickup window" value={`${formatDateShort(activeBooking?.pickup_window_start ?? form.pickup_window_start)} - ${formatDateShort(activeBooking?.pickup_window_end ?? form.pickup_window_end)}`} />
                     <DetailTile icon={<UserRound size={18} />} label="Contact" value={activeBooking?.pickup_contact_name ?? form.pickup_contact_name ?? 'TBC'} />
                   </div>
@@ -9199,14 +9199,14 @@ function App() {
                     <div className="form-section-heading">
                       <span>2</span>
                       <div>
-                        <strong>Cutoff protection</strong>
-                        <small>Pickup should only proceed if it can reach Ship Hoppa before warehouse receipt cutoff.</small>
+                        <strong>Make the sailing</strong>
+                        <small>Pickup should only proceed if cargo can reach the Ship Hoppa warehouse in time for the sailing.</small>
                       </div>
                     </div>
                     <div className="document-review-grid">
-                      <DetailTile icon={<CalendarClock size={18} />} label="Warehouse cutoff" value={formatDateShort(activeBooking?.warehouse_receipt_cutoff ?? selectedContainer?.warehouse_receipt_cutoff_date)} />
-                      <DetailTile icon={<Truck size={18} />} label="Latest supplier ready" value={formatDateShort(activeBooking?.latest_supplier_ready_date)} />
-                      <DetailTile icon={<Gauge size={18} />} label="Feasibility" value={activeBooking?.feasibility_status ? statusLabels[activeBooking.feasibility_status] : 'Not checked'} />
+                      <DetailTile icon={<CalendarClock size={18} />} label="Arrive at warehouse by" value={formatDateShort(activeBooking?.warehouse_receipt_cutoff ?? selectedContainer?.warehouse_receipt_cutoff_date)} />
+                      <DetailTile icon={<Truck size={18} />} label="Goods ready by" value={formatDateShort(activeBooking?.latest_supplier_ready_date)} />
+                      <DetailTile icon={<Gauge size={18} />} label="Can it make the sailing" value={activeBooking?.feasibility_status ? statusLabels[activeBooking.feasibility_status] : 'Not checked'} />
                     </div>
                   </section>
 
@@ -9627,7 +9627,7 @@ function App() {
                     <div className="hero-summary-grid">
                       <DetailTile icon={<CircleDollarSign size={18} />} label="Invoice total" value={formatMoney(invoice?.total_usd)} />
                       <DetailTile icon={<ShieldCheck size={18} />} label="Release status" value={releaseStatus ? sourceLabel(releaseStatus.release_status) : 'Loading'} />
-                      <DetailTile icon={<Gauge size={18} />} label="Active holds" value={`${activeReleaseHolds.length}`} />
+                      <DetailTile icon={<Gauge size={18} />} label="Delivery holds" value={`${activeReleaseHolds.length}`} />
                     </div>
                   </div>
 
@@ -9880,13 +9880,13 @@ function App() {
                         {releaseStatus?.can_release ? 'Ready to deliver' : 'Waiting for release'}
                       </span>
                       <h3>{profile.delivery_city}, {profile.delivery_country}</h3>
-                      <p>Delivery belongs in Clear because it should only book once customs, payment, and release holds are clear.</p>
+                      <p>Final delivery only books once customs, payment, and delivery holds are clear.</p>
                     </div>
                   </div>
                   <div className="hero-summary-grid">
                     <DetailTile icon={<ShieldCheck size={18} />} label="Release status" value={releaseStatus ? sourceLabel(releaseStatus.release_status) : 'Loading'} />
-                    <DetailTile icon={<Gauge size={18} />} label="Active holds" value={`${activeReleaseHolds.length}`} />
-                    <DetailTile icon={<Truck size={18} />} label="Delivery method" value={deliveryPlan ? deliveryPlanMethodLabels[deliveryPlan.delivery_method] : 'Loading'} />
+                    <DetailTile icon={<Gauge size={18} />} label="Delivery holds" value={`${activeReleaseHolds.length}`} />
+                    <DetailTile icon={<Truck size={18} />} label="Final delivery method" value={deliveryPlan ? deliveryPlanMethodLabels[deliveryPlan.delivery_method] : 'Loading'} />
                   </div>
                 </div>
                 {deliveryPlan ? (
@@ -9997,13 +9997,13 @@ function App() {
                         <span>2</span>
                         <div>
                           <strong>Release gate</strong>
-                          <small>Delivery booking stays blocked until customs, documents, payment, and review holds are clear.</small>
+                          <small>Final delivery booking stays blocked until customs, documents, payment, and review holds are clear.</small>
                         </div>
                       </div>
                       <div className="document-review-grid">
                         <DetailTile icon={<ShieldCheck size={18} />} label="Delivery status" value={sourceLabel(deliveryPlan.status)} />
-                        <DetailTile icon={<CircleDollarSign size={18} />} label="Trucking estimate" value={formatMoney(deliveryPlan.trucking_quote_usd)} />
-                        <DetailTile icon={<Gauge size={18} />} label="Release blockers" value={`${activeReleaseHolds.length}`} />
+                        <DetailTile icon={<CircleDollarSign size={18} />} label="Final delivery estimate" value={formatMoney(deliveryPlan.trucking_quote_usd)} />
+                        <DetailTile icon={<Gauge size={18} />} label="Delivery holds" value={`${activeReleaseHolds.length}`} />
                       </div>
                       <div className="hold-grid">
                         {activeReleaseHolds.length ? (
