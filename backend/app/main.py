@@ -823,7 +823,7 @@ def delivery_plan_delivered(delivery_plan_id: str, principal: Principal = Depend
 
 
 @app.get("/automation/shipment-state/{booking_id}")
-def get_shipment_state(booking_id: str, _principal: Principal = Depends(require_admin)) -> dict:
+def get_shipment_state(booking_id: str, _principal: Principal = Depends(require_importer)) -> dict:
     booking = store.bookings.get(booking_id)
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
@@ -836,7 +836,7 @@ def get_shipment_state(booking_id: str, _principal: Principal = Depends(require_
 
 
 @app.get("/automation/missing-data/{booking_id}", response_model=List[MissingDataItem])
-def get_missing_data(booking_id: str, _principal: Principal = Depends(require_admin)) -> List[MissingDataItem]:
+def get_missing_data(booking_id: str, _principal: Principal = Depends(require_importer)) -> List[MissingDataItem]:
     booking = store.bookings.get(booking_id)
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")

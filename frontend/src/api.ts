@@ -36,6 +36,10 @@ const IMPORTER_TOKEN = import.meta.env.VITE_IMPORTER_TOKEN ?? (import.meta.env.D
 const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN ?? (import.meta.env.DEV ? 'shiphoppa-admin-dev' : '')
 
 function tokenFor(path: string, method: string) {
+  // Importer-readable automation endpoints (informational, per-shipment)
+  if (path.startsWith('/automation/shipment-state/') || path.startsWith('/automation/missing-data/')) {
+    return IMPORTER_TOKEN
+  }
   if (
     path === '/summary' ||
     path === '/bookings' && method === 'GET' ||

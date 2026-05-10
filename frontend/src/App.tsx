@@ -2259,6 +2259,8 @@ function App() {
   const [allApprovals, setAllApprovals] = useState<ApprovalRequestRecord[]>([])
   const [inboxMessages, setInboxMessages] = useState<SourceMessage[]>([])
   const [landedCost, setLandedCost] = useState<LandedCostSummary | null>(null)
+  const [activeShipmentState, setActiveShipmentState] = useState<ShipmentStateResponse | null>(null)
+  const [activeMissingData, setActiveMissingData] = useState<APIMissingDataItem[]>([])
   const [adminEmail, setAdminEmail] = useState('ops@shiphoppa.example')
   const [adminPassword, setAdminPassword] = useState('')
   const [adminLoginError, setAdminLoginError] = useState<string | null>(null)
@@ -2396,6 +2398,16 @@ function App() {
       getLandedCostSummary(activeBooking.id).then(setLandedCost).catch(() => setLandedCost(null))
     }
   }, [view, activeBooking?.id])
+
+  useEffect(() => {
+    if (!activeBooking) {
+      setActiveShipmentState(null)
+      setActiveMissingData([])
+      return
+    }
+    getShipmentState(activeBooking.id).then(setActiveShipmentState).catch(() => setActiveShipmentState(null))
+    getMissingData(activeBooking.id).then(setActiveMissingData).catch(() => setActiveMissingData([]))
+  }, [activeBooking?.id])
 
   const selectedContainer = useMemo(() => {
     if (match?.container) {
@@ -4407,6 +4419,36 @@ function App() {
           </div>
         )}
         {releaseMessage && <div className="notice success">{releaseMessage}</div>}
+
+        {activeBooking && activeShipmentState && view !== 'admin' && view !== 'profile' && view !== 'help' && view !== 'inbox' && (
+          <section className="panel next-steps-banner">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Where this shipment is</p>
+                <h2>{activeShipmentState.lifecycle_state.replaceAll('_', ' ')}</h2>
+                <p className="next-action-line">
+                  <strong>Next:</strong> {activeShipmentState.next_action}
+                </p>
+              </div>
+              <Truck size={22} />
+            </div>
+            {activeMissingData.length > 0 && (
+              <div className="missing-data-grid">
+                <strong>Missing items ({activeMissingData.length}):</strong>
+                <ul>
+                  {activeMissingData.slice(0, 6).map((item) => (
+                    <li key={item.field}>
+                      <span className={`status-chip ${item.urgency === 'high' ? 'orange' : 'blue'}`}>
+                        {item.urgency}
+                      </span>
+                      {item.label} <small>({item.responsible_party})</small>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </section>
+        )}
 
         {allPendingApprovals.length > 0 && view !== 'admin' && (
           <section className="panel approvals-banner">

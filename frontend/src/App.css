@@ -4793,3 +4793,44 @@ textarea:focus {
   padding-top: 12px;
   font-size: 15px;
 }
+
+/* --- Next steps banner --- */
+.next-steps-banner {
+  background: #f5f7fa;
+  border: 1px solid #d8dde6;
+}
+
+.next-steps-banner h2 {
+  text-transform: capitalize;
+}
+
+.next-action-line {
+  margin: 8px 0 0;
+  font-size: 14px;
+  color: #444;
+}
+
+.missing-data-grid {
+  margin-top: 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.missing-data-grid ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.missing-data-grid li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.missing-data-grid li small {
+  color: var(--muted);
+}
