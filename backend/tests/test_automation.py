@@ -1456,3 +1456,61 @@ class TestProviderTestEndpoints:
             json={"to": "test@example.com"},
         )
         assert response.status_code == 403
+
+
+class TestHsCodeSuggestion:
+    def test_porcelain_tile_specific_match(self) -> None:
+        from app.customs import suggest_hs_code
+        from app.models import CargoCategory
+        suggestions = suggest_hs_code("Porcelain bathroom tiles 600x600", CargoCategory.tiles_stone)
+        assert any(s.hs_code == "6907.21" for s in suggestions)
+
+    def test_category_fallback_when_no_keyword_match(self) -> None:
+        from app.customs import suggest_hs_code
+        from app.models import CargoCategory
+        suggestions = suggest_hs_code(None, CargoCategory.furniture)
+        assert any(s.hs_code == "9403" for s in suggestions)
+
+    def test_no_match_returns_empty(self) -> None:
+        from app.customs import suggest_hs_code
+        suggestions = suggest_hs_code("random unknown widget", None)
+        assert suggestions == []
+
+    def test_best_suggestion_picks_highest_confidence(self) -> None:
+        from app.customs import best_suggestion
+        from app.models import CargoCategory
+        # Description matches a verified rule (porcelain tile) AND has a category fallback (estimated)
+        best = best_suggestion("Porcelain tile order", CargoCategory.tiles_stone)
+        assert best is not None
+        assert best.hs_code == "6907.21"
+        assert best.confidence.value == "verified"
+
+    def test_hs_suggestion_endpoint(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        booking_id = create_booking()
+        response = client.get(
+            f"/bookings/{booking_id}/hs-suggestions", headers=IMPORTER_HEADERS
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["booking_id"] == booking_id
+        assert "suggestions" in body
+        # Default booking is tiles_stone with description "ceramic tiles"; should match
+        assert len(body["suggestions"]) >= 1
+        assert any(s["hs_code"].startswith("6907") for s in body["suggestions"])
+
+    def test_accept_hs_suggestion_endpoint(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        booking_id = create_booking()
+        response = client.post(
+            f"/bookings/{booking_id}/customs-profile/accept-hs-suggestion",
+            headers=IMPORTER_HEADERS,
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["hs_code"]
+        assert body["hs_code"].startswith("6907")
+        # Booking itself should have the code too
+        assert store.bookings[booking_id].hs_code == body["hs_code"]

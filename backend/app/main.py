@@ -103,6 +103,7 @@ from .models import (
     SupplierReadyRequest,
     SystemHealthResponse,
 )
+from .customs import HSCodeSuggestion, best_suggestion, suggest_hs_code
 from .invoices import ParsedInvoice, extract_invoice_from_pdf, extract_invoice_from_text
 from .operations import (
     apply_parsed_invoice,
@@ -1001,6 +1002,46 @@ def put_customs_profile(
     if booking_id not in store.bookings:
         raise HTTPException(status_code=404, detail="Booking not found")
     return persist_result(update_customs_profile(store, booking_id, payload))
+
+
+@app.get("/bookings/{booking_id}/hs-suggestions")
+def booking_hs_suggestions(
+    booking_id: str, _principal: Principal = Depends(require_importer)
+) -> dict:
+    booking = store.bookings.get(booking_id)
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    suggestions = suggest_hs_code(booking.cargo_description, booking.cargo_category)
+    return {
+        "booking_id": booking_id,
+        "current_hs_code": booking.hs_code,
+        "suggestions": [
+            {
+                "hs_code": s.hs_code,
+                "description": s.description,
+                "confidence": s.confidence.value,
+                "rationale": s.rationale,
+            }
+            for s in suggestions
+        ],
+    }
+
+
+@app.post("/bookings/{booking_id}/customs-profile/accept-hs-suggestion")
+def accept_hs_suggestion(
+    booking_id: str, _principal: Principal = Depends(require_importer)
+) -> CustomsProfile:
+    booking = store.bookings.get(booking_id)
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    suggestion = best_suggestion(booking.cargo_description, booking.cargo_category)
+    if not suggestion:
+        raise HTTPException(status_code=404, detail="No HS code suggestion available for this cargo.")
+    profile = ensure_customs_profile(store, booking)
+    profile.hs_code = suggestion.hs_code
+    booking.hs_code = suggestion.hs_code
+    persist_store()
+    return profile
 
 
 @app.get("/bookings/{booking_id}/delivery-plan", response_model=DeliveryPlan)

@@ -75,6 +75,8 @@ import {
   parseInvoicePdf,
   getBookingInspections,
   bookInspection,
+  getHsSuggestions,
+  acceptHsSuggestion,
   supplierReady,
   updateAccountIntegration,
   updateAccountProfile,
@@ -88,6 +90,7 @@ import type {
   AdminTaskSummary,
   ApprovalRequestRecord,
   AutomationRunAllResult,
+  HsSuggestionsResponse,
   LandedCostSummary,
   ParsedInvoice,
   QualityInspectionRecord,
@@ -2368,6 +2371,7 @@ function App() {
   const [parsingInvoice, setParsingInvoice] = useState(false)
   const [activeInspections, setActiveInspections] = useState<QualityInspectionRecord[]>([])
   const [inspectionDraft, setInspectionDraft] = useState({ provider: '', inspection_date: '', location: '' })
+  const [hsSuggestions, setHsSuggestions] = useState<HsSuggestionsResponse | null>(null)
   const [adminEmail, setAdminEmail] = useState('ops@shiphoppa.example')
   const [adminPassword, setAdminPassword] = useState('')
   const [adminLoginError, setAdminLoginError] = useState<string | null>(null)
@@ -2538,6 +2542,24 @@ function App() {
       getLandedCostSummary(activeBooking.id).then(setLandedCost).catch(() => setLandedCost(null))
     }
   }, [view, activeBooking?.id])
+
+  useEffect(() => {
+    if (view === 'customs' && activeBooking) {
+      getHsSuggestions(activeBooking.id).then(setHsSuggestions).catch(() => setHsSuggestions(null))
+    }
+  }, [view, activeBooking?.id])
+
+  async function handleAcceptHsSuggestion() {
+    if (!activeBooking) return
+    try {
+      await acceptHsSuggestion(activeBooking.id)
+      const refreshed = await getHsSuggestions(activeBooking.id)
+      setHsSuggestions(refreshed)
+      setReleaseMessage('HS code applied to the customs profile.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not accept HS suggestion')
+    }
+  }
 
   useEffect(() => {
     if (!activeBooking) {
@@ -6825,6 +6847,25 @@ function App() {
                           <b>{formatIncoterm(customsProfile?.incoterm)}</b>
                         </span>
                       </div>
+                      {hsSuggestions && hsSuggestions.suggestions.length > 0 && !customsProfile?.hs_code && (
+                        <div className="hs-suggestion-block">
+                          <small>Suggested classification (review before lodging):</small>
+                          <div className="hs-suggestion-grid">
+                            {hsSuggestions.suggestions.slice(0, 3).map((s) => (
+                              <div className="hs-suggestion-card" key={s.hs_code}>
+                                <strong>{s.hs_code}</strong>
+                                <span className={`status-chip ${s.confidence === 'verified' ? 'green' : 'orange'}`}>{s.confidence}</span>
+                                <p>{s.description}</p>
+                                <small>{s.rationale}</small>
+                              </div>
+                            ))}
+                          </div>
+                          <button className="primary-action small" type="button" onClick={handleAcceptHsSuggestion}>
+                            <Check size={14} />
+                            Use {hsSuggestions.suggestions[0].hs_code}
+                          </button>
+                        </div>
+                      )}
                     </article>
 
                     <article className="customs-step-card highlighted">

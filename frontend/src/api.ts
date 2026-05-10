@@ -474,6 +474,32 @@ export function bookInspection(
   })
 }
 
+// --- HS code suggestions ---
+
+export type HsSuggestion = {
+  hs_code: string
+  description: string
+  confidence: 'estimated' | 'verified' | 'confirmed'
+  rationale: string
+}
+
+export type HsSuggestionsResponse = {
+  booking_id: string
+  current_hs_code: string | null
+  suggestions: HsSuggestion[]
+}
+
+export function getHsSuggestions(bookingId: string) {
+  return request<HsSuggestionsResponse>(`/bookings/${bookingId}/hs-suggestions`)
+}
+
+export function acceptHsSuggestion(bookingId: string) {
+  return request<CustomsProfile>(
+    `/bookings/${bookingId}/customs-profile/accept-hs-suggestion`,
+    { method: 'POST' },
+  )
+}
+
 export async function parseInvoicePdf(
   file: File,
   options?: { booking_id?: string; apply?: boolean },
