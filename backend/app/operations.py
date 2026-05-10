@@ -994,6 +994,120 @@ def list_quality_inspections_for_booking(store: Store, booking_id: str) -> List[
     return [qc for qc in store.quality_inspections.values() if qc.purchase_order_id in pos]
 
 
+# --- Carrier ETA monitoring ---
+
+ETA_NOTIFY_THRESHOLD_DAYS = 1
+ETA_APPROVAL_THRESHOLD_DAYS = 3
+
+
+def update_container_eta(
+    store: Store,
+    container_id: str,
+    new_eta: date,
+    actor_id: str,
+    source: str = "carrier_api",
+) -> Dict[str, Any]:
+    """
+    Update a container's ETA. If the baseline is empty, set it. If the new
+    ETA differs from the previous by >= ETA_NOTIFY_THRESHOLD_DAYS, notify
+    importers on every booking in the container. If it slipped >= 3 days
+    past the baseline, also create an approve-sailing-change approval.
+    Returns a result dict.
+    """
+    container = store.containers.get(container_id)
+    if not container:
+        raise ValueError(f"Container {container_id} not found")
+
+    previous = container.estimated_arrival
+    baseline = container.baseline_estimated_arrival
+    if baseline is None:
+        container.baseline_estimated_arrival = new_eta
+
+    container.estimated_arrival = new_eta
+    container.eta_last_changed_at = now_utc()
+
+    delta_days_from_previous = (new_eta - previous).days if previous else 0
+    delta_days_from_baseline = (new_eta - container.baseline_estimated_arrival).days
+
+    notifications_sent = 0
+    approvals_created = 0
+    related_booking_ids: List[str] = []
+    for booking in store.bookings.values():
+        if booking.container_id == container_id:
+            related_booking_ids.append(booking.id)
+
+    if previous and abs(delta_days_from_previous) >= ETA_NOTIFY_THRESHOLD_DAYS:
+        for booking_id in related_booking_ids:
+            create_notification(
+                store,
+                recipient_type="importer",
+                recipient_id="dev-importer",
+                trigger="eta_changed",
+                message=(
+                    f"ETA for {booking_id} changed from {previous.isoformat()} to "
+                    f"{new_eta.isoformat()} ({'+' if delta_days_from_previous >= 0 else ''}"
+                    f"{delta_days_from_previous} days)."
+                ),
+            )
+            notifications_sent += 1
+
+    if abs(delta_days_from_baseline) >= ETA_APPROVAL_THRESHOLD_DAYS:
+        for booking_id in related_booking_ids:
+            existing = next(
+                (
+                    a for a in store.approval_requests.values()
+                    if a.related_booking_id == booking_id
+                    and a.request_type == ApprovalRequestType.accept_sailing_change
+                    and a.status == ApprovalStatus.pending
+                ),
+                None,
+            )
+            if not existing:
+                create_approval_request(
+                    store,
+                    ApprovalRequestType.accept_sailing_change,
+                    f"Confirm sailing change for {booking_id}",
+                    (
+                        f"The carrier moved the arrival to {new_eta.isoformat()} "
+                        f"(originally {container.baseline_estimated_arrival.isoformat()}, "
+                        f"a {delta_days_from_baseline} day shift). "
+                        "Confirm the new dates work or request alternatives."
+                    ),
+                    related_booking_id=booking_id,
+                )
+                approvals_created += 1
+
+    create_audit_event(
+        store,
+        ActorRole.system,
+        actor_id,
+        "container_eta_updated",
+        "container",
+        container_id,
+        f"ETA updated to {new_eta.isoformat()} (source: {source}).",
+        {
+            "previous_eta": previous.isoformat() if previous else None,
+            "new_eta": new_eta.isoformat(),
+            "baseline_eta": container.baseline_estimated_arrival.isoformat() if container.baseline_estimated_arrival else None,
+            "delta_days_from_previous": delta_days_from_previous,
+            "delta_days_from_baseline": delta_days_from_baseline,
+            "source": source,
+        },
+    )
+
+    return {
+        "container_id": container_id,
+        "previous_eta": previous.isoformat() if previous else None,
+        "new_eta": new_eta.isoformat(),
+        "baseline_eta": container.baseline_estimated_arrival.isoformat() if container.baseline_estimated_arrival else None,
+        "delta_days_from_previous": delta_days_from_previous,
+        "delta_days_from_baseline": delta_days_from_baseline,
+        "notifications_sent": notifications_sent,
+        "approvals_created": approvals_created,
+        "affected_booking_ids": related_booking_ids,
+    }
+
+
 def create_notification(
     store: Store,
     recipient_type: str,

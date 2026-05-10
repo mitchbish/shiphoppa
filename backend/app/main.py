@@ -117,6 +117,7 @@ from .operations import (
     list_quality_inspections_for_booking,
     list_space_opportunities_for_booking,
     record_quality_inspection_result,
+    update_container_eta,
     create_supplier_pay_request,
     decide_document,
     decide_approval_request,
@@ -689,6 +690,31 @@ def commit(
     if not result.released:
         raise HTTPException(status_code=409, detail=result.reasons)
     return persist_result(result)
+
+
+class ContainerEtaUpdateRequest(BaseModel):
+    new_eta: date
+    source: str = "manual_admin"
+
+
+@app.post("/containers/{container_id}/eta")
+def post_container_eta_update(
+    container_id: str,
+    payload: ContainerEtaUpdateRequest,
+    principal: Principal = Depends(require_admin),
+) -> dict:
+    try:
+        result = update_container_eta(
+            store,
+            container_id,
+            payload.new_eta,
+            principal.actor_id,
+            source=payload.source,
+        )
+        persist_store()
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 @app.post("/ops/release-checks", response_model=List[ReleaseCheckResult])

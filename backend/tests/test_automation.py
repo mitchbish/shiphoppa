@@ -1128,3 +1128,122 @@ class TestQualityInspection:
             json={"provider": "SGS", "inspection_date": "2026-06-01", "location": "x"},
         )
         assert response.status_code == 404
+
+
+class TestCarrierEtaMonitoring:
+    def _create_booking_with_container(self, client: TestClient) -> tuple:
+        booking_id = create_booking()
+        booking = store.bookings[booking_id]
+        # Wire booking to a synthetic container with a baseline ETA
+        from app.models import Container, ContainerStatus
+        from datetime import datetime as _dt
+        container = Container(
+            id=store.next_id("CTR"),
+            lane_id=booking.lane_id or "LANE-1",
+            status=ContainerStatus.committed,
+            target_sailing_date=date.today() + timedelta(days=20),
+            carrier_cutoff_date=date.today() + timedelta(days=10),
+            opened_at=_dt.utcnow(),
+            oldest_booking_date=date.today(),
+            estimated_arrival=date.today() + timedelta(days=30),
+            created_at=_dt.utcnow(),
+            updated_at=_dt.utcnow(),
+        )
+        store.containers[container.id] = container
+        booking.container_id = container.id
+        return booking_id, container.id
+
+    def test_first_eta_update_sets_baseline(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        booking_id, container_id = self._create_booking_with_container(client)
+        new_eta = (date.today() + timedelta(days=30)).isoformat()
+        response = client.post(
+            f"/containers/{container_id}/eta",
+            headers=ADMIN_HEADERS,
+            json={"new_eta": new_eta, "source": "carrier_api"},
+        )
+        assert response.status_code == 200
+        assert response.json()["new_eta"] == new_eta
+
+    def test_small_eta_change_does_not_notify(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        booking_id, container_id = self._create_booking_with_container(client)
+        # First call sets baseline; second small change shouldn't notify
+        first = (date.today() + timedelta(days=30)).isoformat()
+        client.post(
+            f"/containers/{container_id}/eta",
+            headers=ADMIN_HEADERS,
+            json={"new_eta": first, "source": "carrier_api"},
+        )
+        before = len(store.notifications)
+        same_day = first  # zero day change
+        response = client.post(
+            f"/containers/{container_id}/eta",
+            headers=ADMIN_HEADERS,
+            json={"new_eta": same_day, "source": "carrier_api"},
+        )
+        assert response.status_code == 200
+        assert response.json()["notifications_sent"] == 0
+        assert len(store.notifications) == before
+
+    def test_eta_slip_notifies_importer(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        booking_id, container_id = self._create_booking_with_container(client)
+        first = (date.today() + timedelta(days=30)).isoformat()
+        client.post(
+            f"/containers/{container_id}/eta",
+            headers=ADMIN_HEADERS,
+            json={"new_eta": first, "source": "carrier_api"},
+        )
+        before = len(store.notifications)
+        slipped = (date.today() + timedelta(days=32)).isoformat()
+        response = client.post(
+            f"/containers/{container_id}/eta",
+            headers=ADMIN_HEADERS,
+            json={"new_eta": slipped, "source": "carrier_api"},
+        )
+        assert response.status_code == 200
+        assert response.json()["notifications_sent"] >= 1
+        assert len(store.notifications) > before
+        eta_change_notifs = [n for n in store.notifications.values() if n.trigger == "eta_changed"]
+        assert any(booking_id in n.message for n in eta_change_notifs)
+
+    def test_large_eta_slip_creates_approval(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        booking_id, container_id = self._create_booking_with_container(client)
+        baseline = (date.today() + timedelta(days=30)).isoformat()
+        client.post(
+            f"/containers/{container_id}/eta",
+            headers=ADMIN_HEADERS,
+            json={"new_eta": baseline, "source": "carrier_api"},
+        )
+        before = len(store.approval_requests)
+        slipped = (date.today() + timedelta(days=35)).isoformat()
+        response = client.post(
+            f"/containers/{container_id}/eta",
+            headers=ADMIN_HEADERS,
+            json={"new_eta": slipped, "source": "carrier_api"},
+        )
+        assert response.status_code == 200
+        assert response.json()["approvals_created"] >= 1
+        assert len(store.approval_requests) > before
+        sailing_approvals = [
+            a for a in store.approval_requests.values()
+            if a.request_type.value == "accept_sailing_change"
+            and a.related_booking_id == booking_id
+        ]
+        assert len(sailing_approvals) == 1
+
+    def test_unknown_container_404s(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        response = client.post(
+            "/containers/CTR-9999/eta",
+            headers=ADMIN_HEADERS,
+            json={"new_eta": date.today().isoformat()},
+        )
+        assert response.status_code == 404

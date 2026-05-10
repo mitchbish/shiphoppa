@@ -880,6 +880,8 @@ class Container(BaseModel):
     actual_departure: Optional[date] = None
     estimated_arrival: Optional[date] = None
     actual_arrival: Optional[date] = None
+    baseline_estimated_arrival: Optional[date] = None
+    eta_last_changed_at: Optional[datetime] = None
     route_waypoints: List[RouteWaypoint] = Field(default_factory=list)
     route_geometry_source_type: SourceType = SourceType.manual_admin
     route_geometry_source_name: str = "Ship Hoppa route library"
