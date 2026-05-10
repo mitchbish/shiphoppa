@@ -4682,6 +4682,135 @@ textarea:focus {
   color: var(--muted);
 }
 
+.decision-cards {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.decision-card {
+  background: #fff;
+  border-radius: 10px;
+  border: 1px solid rgba(242, 106, 46, 0.25);
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.decision-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.decision-card-head h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.decision-card-summary {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.decision-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px 16px;
+  margin: 0;
+  padding: 0;
+}
+
+.decision-card-grid > div {
+  display: grid;
+  gap: 2px;
+}
+
+.decision-card-grid dt {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin: 0;
+}
+
+.decision-card-grid dd {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--deep-orange);
+}
+
+.decision-card-rationale {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  background: #fff8f3;
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.decision-card-rationale strong {
+  display: block;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.decision-card-rationale p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.decision-card-review-note {
+  margin: 0;
+  padding: 10px 12px;
+  background: #fff3e6;
+  border-left: 3px solid var(--deep-orange);
+  font-size: 13px;
+  color: #5b3a1f;
+  border-radius: 4px;
+}
+
+.decision-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ghost-action {
+  background: transparent;
+  border: 1px solid var(--border-soft, #d8d3cb);
+  color: #2c2a26;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.ghost-action.small {
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.ghost-action:hover:not(:disabled) {
+  background: #f6f4f0;
+}
+
+.ghost-action:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 /* --- Customer Inbox view --- */
 .inbox-list {
   list-style: none;

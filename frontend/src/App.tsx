@@ -14,6 +14,7 @@ import {
   Gauge,
   Loader2,
   MapPin,
+  MessageCircle,
   PackageCheck,
   Receipt,
   RefreshCw,
@@ -81,6 +82,7 @@ import {
   getApprovals,
   approveApprovalRequest,
   rejectApprovalRequest,
+  requestApprovalReview,
   getSourceMessages,
   getLandedCostSummary,
   getNotifications,
@@ -528,6 +530,65 @@ const releaseHoldLabels: Record<string, string> = {
   customs_hold: 'Customs not cleared',
   warehouse_variance: 'Warehouse check needed',
   admin_hold: 'Team review needed',
+}
+
+type DecisionCardCopy = {
+  why: string
+  ifApproved: string
+  ifNoAction: string
+}
+
+const decisionCardCopyByType: Record<string, DecisionCardCopy> = {
+  approve_payment: {
+    why: 'Ship Hoppa needs your sign off before we charge or release this payment.',
+    ifApproved: 'We move the payment forward today and update the money tab.',
+    ifNoAction: 'The payment stays on hold and the supplier or partner is not paid.',
+  },
+  approve_supplier_payment: {
+    why: 'The supplier invoice and bank details are checked. We need a green light before sending funds overseas.',
+    ifApproved: 'We trigger the FX transfer to the supplier and record the proof of payment.',
+    ifNoAction: 'Production may pause and the supplier may delay the goods ready date.',
+  },
+  approve_trucking: {
+    why: 'Final delivery to your warehouse is ready to book. We need confirmation before locking the slot.',
+    ifApproved: 'We confirm the truck and notify the warehouse and driver.',
+    ifNoAction: 'The slot is released and final delivery slips to the next available day.',
+  },
+  accept_sailing_change: {
+    why: 'The sailing schedule moved. You should know before we accept the new arrival date.',
+    ifApproved: 'We update the shipment timeline and adjust downstream pickup and delivery plans.',
+    ifNoAction: 'Your timeline still shows the old date and downstream bookings may clash.',
+  },
+  approve_customs_submission: {
+    why: 'The customs entry is ready. We do not lodge it until you confirm the HS code and value.',
+    ifApproved: 'The broker submits the customs entry and starts the clearance clock.',
+    ifNoAction: 'Customs is not lodged. Storage charges may begin once the vessel arrives.',
+  },
+  approve_spare_space_listing: {
+    why: 'We can list your spare container space for resale to recover cost. We need consent first.',
+    ifApproved: 'We list the space, and any sale offsets your container cost.',
+    ifNoAction: 'The empty space sails with you and the cost is not recovered.',
+  },
+  approve_release: {
+    why: 'All checks are clear. We need a final yes to release the cargo.',
+    ifApproved: 'The container is released and final delivery can begin.',
+    ifNoAction: 'The cargo stays in the holding yard. Storage charges may apply.',
+  },
+  approve_invoice_variance: {
+    why: 'The invoice is different from what we expected. We need you to confirm the new amount.',
+    ifApproved: 'We update the landed cost and clear the invoice for payment.',
+    ifNoAction: 'The variance stays open and the invoice is not paid.',
+  },
+}
+
+const decisionCardCopyDefault: DecisionCardCopy = {
+  why: 'This action needs a person to confirm before Ship Hoppa moves it forward.',
+  ifApproved: 'We will action this immediately.',
+  ifNoAction: 'The shipment stays paused until someone responds.',
+}
+
+function decisionCardCopy(requestType: string): DecisionCardCopy {
+  return decisionCardCopyByType[requestType] ?? decisionCardCopyDefault
 }
 
 const trackingStageLabels: Record<TrackingStage, string> = {
@@ -3997,6 +4058,20 @@ function App() {
       setError(err instanceof Error ? err.message : 'Approval decision failed')
     }
   }
+
+  async function handleApprovalAskReview(approvalId: string) {
+    const reason = window.prompt(
+      'Tell Ship Hoppa what you would like reviewed. We will reply before any decision is taken.',
+    )
+    if (!reason || !reason.trim()) return
+    try {
+      await requestApprovalReview(approvalId, reason.trim())
+      const refreshed = await getApprovals()
+      setAllApprovals(refreshed)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not request a review')
+    }
+  }
   const activeSourceMessages = projectWorkspace?.source_messages ?? []
   const selectedSailing = useMemo(
     () => sailings.find((sailing) => sailing.sailing_option_id === form.preferred_sailing_option_id) ?? null,
@@ -6308,39 +6383,96 @@ function App() {
               </div>
               <Bell size={22} />
             </div>
-            <ul className="approvals-list">
-              {allPendingApprovals.slice(0, 5).map((approval) => (
-                <li className="approval-item" key={approval.id}>
-                  <div className="approval-summary">
-                    <strong>{approval.title}</strong>
-                    <span>{approval.plain_language_summary}</span>
-                    {approval.amount_usd != null && (
-                      <em>USD ${approval.amount_usd.toLocaleString()}</em>
+            <div className="decision-cards">
+              {allPendingApprovals.slice(0, 5).map((approval) => {
+                const copy = decisionCardCopy(approval.request_type)
+                const reviewPending = Boolean(approval.review_requested_at)
+                return (
+                  <article className="decision-card" key={approval.id}>
+                    <header className="decision-card-head">
+                      <div>
+                        <h3>{approval.title}</h3>
+                        <p className="decision-card-summary">{approval.plain_language_summary}</p>
+                      </div>
+                      {reviewPending && (
+                        <span className="status-chip orange">Ship Hoppa is reviewing</span>
+                      )}
+                    </header>
+                    <dl className="decision-card-grid">
+                      {approval.amount_usd != null && (
+                        <div>
+                          <dt>Amount</dt>
+                          <dd>USD ${approval.amount_usd.toLocaleString()}</dd>
+                        </div>
+                      )}
+                      {approval.due_at && (
+                        <div>
+                          <dt>Needed by</dt>
+                          <dd>{formatDateFriendly(approval.due_at)}</dd>
+                        </div>
+                      )}
+                      {approval.related_booking_id && (
+                        <div>
+                          <dt>Shipment</dt>
+                          <dd>{approval.related_booking_id}</dd>
+                        </div>
+                      )}
+                      {approval.source_reference && (
+                        <div>
+                          <dt>Source</dt>
+                          <dd>{approval.source_reference}</dd>
+                        </div>
+                      )}
+                    </dl>
+                    <div className="decision-card-rationale">
+                      <div>
+                        <strong>Why this is needed</strong>
+                        <p>{copy.why}</p>
+                      </div>
+                      <div>
+                        <strong>If you approve</strong>
+                        <p>{copy.ifApproved}</p>
+                      </div>
+                      <div>
+                        <strong>If no one acts</strong>
+                        <p>{copy.ifNoAction}</p>
+                      </div>
+                    </div>
+                    {reviewPending && approval.review_requested_reason && (
+                      <p className="decision-card-review-note">
+                        Review requested: {approval.review_requested_reason}
+                      </p>
                     )}
-                    {approval.related_booking_id && (
-                      <small>Shipment {approval.related_booking_id}</small>
-                    )}
-                  </div>
-                  <div className="approval-actions">
-                    <button
-                      className="primary-action small"
-                      type="button"
-                      onClick={() => handleApprovalDecision(approval.id, 'approve')}
-                    >
-                      <Check size={14} />
-                      Approve
-                    </button>
-                    <button
-                      className="secondary-action small"
-                      type="button"
-                      onClick={() => handleApprovalDecision(approval.id, 'reject')}
-                    >
-                      Reject
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
+                    <div className="decision-card-actions">
+                      <button
+                        className="primary-action small"
+                        type="button"
+                        onClick={() => handleApprovalDecision(approval.id, 'approve')}
+                      >
+                        <Check size={14} />
+                        Approve
+                      </button>
+                      <button
+                        className="secondary-action small"
+                        type="button"
+                        onClick={() => handleApprovalDecision(approval.id, 'reject')}
+                      >
+                        Reject
+                      </button>
+                      <button
+                        className="ghost-action small"
+                        type="button"
+                        onClick={() => handleApprovalAskReview(approval.id)}
+                        disabled={reviewPending}
+                      >
+                        <MessageCircle size={14} />
+                        {reviewPending ? 'Review requested' : 'Ask Ship Hoppa'}
+                      </button>
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
             {allPendingApprovals.length > 5 && (
               <p className="approvals-overflow">
                 +{allPendingApprovals.length - 5} more pending. Open each shipment to review.
