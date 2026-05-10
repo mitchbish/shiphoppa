@@ -483,8 +483,38 @@ def mark_notification_read(
 
 
 @app.get("/audit-events", response_model=List[AuditEvent])
-def audit_events(_principal: Principal = Depends(require_admin)) -> List[AuditEvent]:
-    return sorted(store.audit_events.values(), key=lambda item: item.created_at, reverse=True)
+def audit_events(
+    actor_id: Optional[str] = None,
+    actor_role: Optional[ActorRole] = None,
+    event_type: Optional[str] = None,
+    entity_type: Optional[str] = None,
+    entity_id: Optional[str] = None,
+    since: Optional[date] = None,
+    until: Optional[date] = None,
+    limit: int = 200,
+    _principal: Principal = Depends(require_admin),
+) -> List[AuditEvent]:
+    """Return audit events newest-first, with optional filtering by actor, event,
+    entity, or date range. The default limit is 200; pass `limit=0` for all."""
+    events = list(store.audit_events.values())
+    if actor_id:
+        events = [event for event in events if event.actor_id == actor_id]
+    if actor_role:
+        events = [event for event in events if event.actor_role == actor_role]
+    if event_type:
+        events = [event for event in events if event.event_type == event_type]
+    if entity_type:
+        events = [event for event in events if event.entity_type == entity_type]
+    if entity_id:
+        events = [event for event in events if event.entity_id == entity_id]
+    if since:
+        events = [event for event in events if event.created_at.date() >= since]
+    if until:
+        events = [event for event in events if event.created_at.date() <= until]
+    events.sort(key=lambda item: item.created_at, reverse=True)
+    if limit and limit > 0:
+        events = events[:limit]
+    return events
 
 
 @app.get("/source-messages", response_model=List[SourceMessage])
