@@ -3,7 +3,7 @@ from pathlib import Path
 from datetime import date
 from typing import Callable, List, Optional, TypeVar
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -100,7 +100,7 @@ from .models import (
     SupplierReadyRequest,
     SystemHealthResponse,
 )
-from .invoices import ParsedInvoice, extract_invoice_from_text
+from .invoices import ParsedInvoice, extract_invoice_from_pdf, extract_invoice_from_text
 from .operations import (
     apply_parsed_invoice,
     approve_space_opportunity_listing,
@@ -953,6 +953,37 @@ def parse_invoice_text(
     if payload.apply:
         applied = apply_parsed_invoice(
             store, parsed, principal.actor_id, hint_booking_id=payload.booking_id
+        )
+        result["applied"] = applied
+        persist_store()
+    return result
+
+
+@app.post("/invoices/parse-pdf")
+async def parse_invoice_pdf(
+    file: UploadFile = File(...),
+    booking_id: Optional[str] = Form(default=None),
+    apply: bool = Form(default=False),
+    principal: Principal = Depends(require_importer),
+) -> dict:
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+    contents = await file.read()
+    if len(contents) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="PDF too large. Limit is 10 MB.")
+    parsed = extract_invoice_from_pdf(contents)
+    result: dict = {
+        "filename": file.filename,
+        "parsed": parsed.model_dump(mode="json"),
+    }
+    if not parsed.total_amount:
+        result["warning"] = (
+            "Could not extract a total amount. The PDF may be image-only "
+            "(scanned) or use a layout the parser does not recognise."
+        )
+    if apply and parsed.total_amount:
+        applied = apply_parsed_invoice(
+            store, parsed, principal.actor_id, hint_booking_id=booking_id
         )
         result["applied"] = applied
         persist_store()

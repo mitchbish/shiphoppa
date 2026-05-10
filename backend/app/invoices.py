@@ -13,6 +13,7 @@ notifications.
 
 from __future__ import annotations
 
+import io
 import re
 from datetime import date, datetime
 from typing import Dict, List, Optional, Tuple
@@ -262,3 +263,36 @@ def extract_invoice_from_text(text: str) -> ParsedInvoice:
             parsed.source_snippet = text[start:end].strip()
 
     return parsed
+
+
+def extract_text_from_pdf_bytes(pdf_bytes: bytes) -> str:
+    """
+    Extract plain text from a PDF byte stream using pypdf. Returns an
+    empty string if the PDF cannot be read or contains no extractable text
+    (e.g. scanned image-only PDFs without an OCR layer).
+    """
+    if not pdf_bytes:
+        return ""
+    try:
+        from pypdf import PdfReader  # imported lazily so the module loads cheaply
+    except ImportError:
+        return ""
+
+    try:
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+    except Exception:
+        return ""
+
+    pieces: List[str] = []
+    for page in reader.pages:
+        try:
+            pieces.append(page.extract_text() or "")
+        except Exception:
+            continue
+    return "\n".join(pieces).strip()
+
+
+def extract_invoice_from_pdf(pdf_bytes: bytes) -> ParsedInvoice:
+    """Convenience: extract text from PDF bytes then run the text extractor."""
+    text = extract_text_from_pdf_bytes(pdf_bytes)
+    return extract_invoice_from_text(text)

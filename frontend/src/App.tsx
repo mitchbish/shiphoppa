@@ -72,6 +72,7 @@ import {
   detectSpaceOpportunity,
   listSpaceOpportunity,
   parseInvoiceText,
+  parseInvoicePdf,
   supplierReady,
   updateAccountIntegration,
   updateAccountProfile,
@@ -2606,6 +2607,27 @@ function App() {
       setInvoiceText('')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not apply invoice')
+    } finally {
+      setParsingInvoice(false)
+    }
+  }
+
+  async function handleInvoicePdfUpload(file: File, apply: boolean) {
+    setParsingInvoice(true)
+    try {
+      const response = await parseInvoicePdf(file, { booking_id: activeBooking?.id, apply })
+      setParsedInvoice(response.parsed)
+      if (response.warning) {
+        setError(response.warning)
+      } else if (apply && response.applied?.supplier_pay_request_id) {
+        setReleaseMessage('Invoice PDF captured and supplier payment created. Approve in your queue.')
+        const refreshed = await getApprovals()
+        setAllApprovals(refreshed)
+      } else if (apply && !response.applied?.supplier_pay_request_id) {
+        setError('Parsed the PDF but could not match it to a purchase order. Check the PO reference and supplier name.')
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not parse the PDF')
     } finally {
       setParsingInvoice(false)
     }
@@ -6157,6 +6179,22 @@ function App() {
                       {parsingInvoice ? <Loader2 size={16} className="spin" /> : <Check size={16} />}
                       Apply to shipment
                     </button>
+                    <label className="secondary-action invoice-pdf-upload">
+                      <FileText size={16} />
+                      <span>Upload PDF and apply</span>
+                      <input
+                        type="file"
+                        accept="application/pdf,.pdf"
+                        style={{ display: 'none' }}
+                        onChange={(event) => {
+                          const file = event.target.files?.[0]
+                          if (file) {
+                            void handleInvoicePdfUpload(file, true)
+                          }
+                          event.target.value = ''
+                        }}
+                      />
+                    </label>
                   </div>
                   {parsedInvoice && (
                     <div className="parsed-invoice-card">

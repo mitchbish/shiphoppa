@@ -438,6 +438,38 @@ export function extractInvoiceFromMessage(messageId: string, options?: { booking
   )
 }
 
+export type ParsePdfResponse = ParseInvoiceResponse & {
+  filename: string
+  warning?: string
+}
+
+export async function parseInvoicePdf(
+  file: File,
+  options?: { booking_id?: string; apply?: boolean },
+): Promise<ParsePdfResponse> {
+  if (!API_BASE_URL) throw new Error('Ship Hoppa is missing its API deployment settings.')
+  const token = tokenFor('/invoices/parse-pdf', 'POST')
+  if (!token) throw new Error('Ship Hoppa is missing its API deployment settings.')
+  const formData = new FormData()
+  formData.append('file', file)
+  if (options?.booking_id) formData.append('booking_id', options.booking_id)
+  if (options?.apply) formData.append('apply', 'true')
+  const response = await fetch(`${API_BASE_URL}/invoices/parse-pdf`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Idempotency-Key': idempotencyKey(),
+    },
+    body: formData,
+  })
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    const message = body?.detail ?? `${response.status} ${response.statusText}`
+    throw new Error(Array.isArray(message) ? message.join(', ') : message)
+  }
+  return response.json()
+}
+
 // --- Notifications ---
 
 export function getNotifications() {
