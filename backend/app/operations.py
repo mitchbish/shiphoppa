@@ -1405,7 +1405,45 @@ def ingest_source_message(
         confidence=message.confidence,
         audit_event_id=audit.id,
     )
+
+    if matched_booking and looks_like_invoice(request.subject, request.body):
+        from .invoices import extract_invoice_from_text
+        text = f"{request.subject or ''}\n{request.body or ''}"
+        parsed = extract_invoice_from_text(text)
+        if parsed.total_amount and parsed.currency:
+            apply_parsed_invoice(
+                store,
+                parsed,
+                actor_id,
+                hint_booking_id=matched_booking.id,
+                source_message_id=message.id,
+            )
+
     return message
+
+
+INVOICE_KEYWORDS = (
+    "invoice",
+    "proforma",
+    "amount due",
+    "balance due",
+    "payment due",
+    "remit",
+    "swift",
+    "iban",
+    "tax invoice",
+    "commercial invoice",
+)
+
+
+def looks_like_invoice(subject: Optional[str], body: Optional[str]) -> bool:
+    """Lightweight heuristic for whether an inbound message contains a payable
+    invoice. Used to gate automatic invoice extraction on ingest."""
+    haystack = f"{subject or ''}\n{body or ''}".lower()
+    if not haystack.strip():
+        return False
+    matches = sum(1 for keyword in INVOICE_KEYWORDS if keyword in haystack)
+    return matches >= 2
 
 
 def create_growth_event(

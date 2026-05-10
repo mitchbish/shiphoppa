@@ -864,6 +864,67 @@ class TestSupplierInvoiceExtraction:
         assert sp.currency == "USD"
         assert sp.supplier_invoice_reference == "INV-2026-0042"
 
+    def test_invoice_keywords_trigger_auto_extract(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        booking_id = create_booking()
+        po_response = client.post(
+            "/purchase-orders",
+            headers=IMPORTER_HEADERS,
+            json={
+                "booking_id": booking_id,
+                "order_reference": "SH-2026-0044",
+                "buyer_company_name": "Test Imports Pty Ltd",
+                "supplier_name": "Foshan Tiles Co Ltd",
+                "product_summary": "ceramic tiles",
+                "goods_value": 4250,
+                "deposit_amount": 1275,
+                "balance_amount": 2975,
+            },
+        )
+        assert po_response.status_code == 201
+        before_count = len(store.supplier_pay_requests)
+        msg = client.post(
+            "/source-messages",
+            headers=IMPORTER_HEADERS,
+            json={
+                "source_type": "forwarded_email",
+                "from_address": "supplier@factory.cn",
+                "to_addresses": ["pay@shiphoppa.com"],
+                "subject": f"Invoice INV-2026-0042 for booking {booking_id}",
+                "body": self.INVOICE_TEXT,
+            },
+        )
+        assert msg.status_code == 201
+        # Auto-extract should have created a SupplierPayRequest matching the invoice
+        new_pay_requests = [
+            sp for sp in store.supplier_pay_requests.values()
+            if sp.supplier_invoice_reference == "INV-2026-0042"
+        ]
+        assert len(new_pay_requests) == 1
+        assert new_pay_requests[0].amount == 4250.00
+        assert new_pay_requests[0].currency == "USD"
+
+    def test_non_invoice_message_does_not_trigger_extract(self) -> None:
+        reset_store_for_tests()
+        client = TestClient(app)
+        booking_id = create_booking()
+        before_count = len(store.supplier_pay_requests)
+        msg = client.post(
+            "/source-messages",
+            headers=IMPORTER_HEADERS,
+            json={
+                "source_type": "forwarded_email",
+                "from_address": "supplier@factory.cn",
+                "to_addresses": ["ops@shiphoppa.com"],
+                "subject": f"Production update for {booking_id}",
+                "body": "Hi, we just wanted to let you know the cargo is ready.",
+            },
+        )
+        assert msg.status_code == 201
+        after_count = len(store.supplier_pay_requests)
+        assert after_count == before_count
+
     def test_extract_from_source_message_endpoint(self) -> None:
         reset_store_for_tests()
         client = TestClient(app)
