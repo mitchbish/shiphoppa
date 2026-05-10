@@ -37,8 +37,12 @@ import type {
   MarketplaceOrder,
   PartnerCapability,
   PartnerProfile,
+  GrowthAttributionEvent,
+  GrowthAttributionEventType,
+  GrowthAttributionSummary,
   PaymentProof,
   Invoice,
+  ImportProject,
   ImportProjectWorkspaceResponse,
   MatchResult,
   Notification,
@@ -50,8 +54,10 @@ import type {
   SourceMessage,
   SourceMessageType,
   SentinelSubscriber,
+  SupplierLead,
   SupplierProfileClaim,
   SupplierProfileClaimResponse,
+  SupplierVerificationStatus,
   ShipmentDocument,
   ShipmentEvent,
   ShipmentEventStage,
@@ -87,6 +93,9 @@ function tokenFor(path: string, method: string) {
     path.startsWith('/release-holds') ||
     path.startsWith('/automation') ||
     path.startsWith('/admin-tasks') ||
+    path.startsWith('/sentinel/') ||
+    path.startsWith('/growth/') ||
+    path.startsWith('/partners') ||
     (path.includes('/events') && method !== 'GET') ||
     (path.includes('/customs-profile') && method !== 'GET')
   ) {
@@ -481,6 +490,55 @@ export function markDeliveryDelivered(deliveryPlanId: string) {
 
 export function getImportProjectWorkspace(bookingId: string) {
   return request<ImportProjectWorkspaceResponse>(`/bookings/${bookingId}/import-project`)
+}
+
+export function listImportProjects(includeDeleted = false) {
+  const suffix = includeDeleted ? '?include_deleted=true' : ''
+  return request<ImportProject[]>(`/import-projects${suffix}`)
+}
+
+export function createImportProject(payload: {
+  title: string
+  description?: string
+  workflow_type?: string
+  summary?: string
+  next_action?: string
+}) {
+  return request<ImportProject>('/import-projects', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function updateImportProject(
+  projectId: string,
+  payload: Partial<{
+    title: string
+    description: string
+    summary: string
+    status: string
+    current_step: string
+    next_action: string
+    blocked_reason: string
+  }>,
+) {
+  return request<ImportProject>(`/import-projects/${projectId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function cloneImportProject(projectId: string, newTitle?: string) {
+  const suffix = newTitle ? `?new_title=${encodeURIComponent(newTitle)}` : ''
+  return request<ImportProject>(`/import-projects/${projectId}/clone${suffix}`, {
+    method: 'POST',
+  })
+}
+
+export function softDeleteImportProject(projectId: string) {
+  return request<ImportProject>(`/import-projects/${projectId}`, {
+    method: 'DELETE',
+  })
 }
 
 export function createSourceMessage(payload: {
@@ -1121,6 +1179,56 @@ export function updateDeliveryJob(jobId: string, payload: DeliveryJobUpdatePaylo
 }
 
 // --- Supplier profile claim ---
+
+export function listSupplierLeads() {
+  return request<SupplierLead[]>('/growth/supplier-leads')
+}
+
+export function updateSupplierLeadVerification(
+  leadId: string,
+  payload: { verification_status: SupplierVerificationStatus; verification_notes?: string },
+) {
+  return request<SupplierLead>(`/growth/supplier-leads/${leadId}/verification`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function listGrowthAttributionEvents(filters: {
+  event_type?: GrowthAttributionEventType
+  source?: string
+  channel?: string
+  template_key?: string
+  category?: string
+  region?: string
+  supplier_lead_id?: string
+  shipment_id?: string
+  since?: string
+  until?: string
+  limit?: number
+} = {}) {
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== '' && value !== null) {
+      query.set(key, String(value))
+    }
+  }
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request<GrowthAttributionEvent[]>(`/growth/attribution-events${suffix}`)
+}
+
+export function getGrowthAttributionSummary(
+  group_by: 'source' | 'channel' | 'category' | 'region' | 'event_type' | 'campaign' = 'source',
+  filters: { event_type?: GrowthAttributionEventType; since?: string; until?: string } = {},
+) {
+  const query = new URLSearchParams({ group_by })
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== '' && value !== null) {
+      query.set(key, String(value))
+    }
+  }
+  return request<GrowthAttributionSummary>(`/growth/attribution-summary?${query.toString()}`)
+}
 
 export function createSupplierClaimLink(leadId: string) {
   return request<SupplierProfileClaim>(`/growth/supplier-leads/${leadId}/claim-link`, {

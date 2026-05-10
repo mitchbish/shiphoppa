@@ -765,11 +765,18 @@ export interface TruckerPortalResponse {
 export interface ImportProject {
   id: string
   title: string
+  description?: string | null
+  status?: string
   current_step: string
   next_action: string | null
+  blocked_reason?: string | null
   summary: string
   linked_purchase_order_ids: string[]
   linked_shipment_ids: string[]
+  created_at?: string
+  updated_at?: string
+  archived_at?: string | null
+  deleted_at?: string | null
 }
 
 export interface ImportProjectStepData {
@@ -1251,7 +1258,114 @@ export interface SupplierProfileClaim {
 
 export interface SupplierProfileClaimResponse {
   claim: SupplierProfileClaim
-  lead: unknown
+  lead: SupplierLead
+}
+
+export type SupplierVerificationStatus =
+  | 'unverified'
+  | 'pending_review'
+  | 'verified'
+  | 'restricted'
+  | 'rejected'
+
+export type SupplierOutreachStatus =
+  | 'discovered'
+  | 'enriched'
+  | 'scored'
+  | 'needs_human_review'
+  | 'approved_for_contact'
+  | 'contacted'
+  | 'replied'
+  | 'onboarded'
+  | 'referred_importer'
+  | 'do_not_contact'
+  | 'rejected'
+
+export type SupplierLeadSource =
+  | 'alibaba'
+  | 'made_in_china'
+  | 'global_sources'
+  | 'trade_show'
+  | 'supplier_website'
+  | 'partner_referral'
+  | 'importer_invite'
+  | 'supplier_referral'
+  | 'seo_engine'
+  | 'other'
+
+export interface SupplierLead {
+  id: string
+  company_name: string
+  country: string
+  city: string | null
+  product_categories: string[]
+  discovery_source: SupplierLeadSource
+  discovery_source_url: string
+  platform_profile_url: string | null
+  company_website: string | null
+  public_email: string | null
+  public_phone: string | null
+  public_wechat: string | null
+  preferred_language: string
+  exports_to_regions: string[]
+  bulky_goods_fit: boolean
+  lead_score: number
+  fit_reason: string
+  compliance_basis: string
+  outreach_status: SupplierOutreachStatus
+  do_not_contact: boolean
+  verification_status: SupplierVerificationStatus
+  verification_notes: string | null
+  verified_at: string | null
+  verified_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type GrowthAttributionEventType =
+  | 'lead_discovered'
+  | 'lead_enriched'
+  | 'lead_contacted'
+  | 'lead_replied'
+  | 'supplier_signed_up'
+  | 'buyer_invited'
+  | 'importer_claimed'
+  | 'shipment_created'
+  | 'invoice_issued'
+  | 'revenue_recognised'
+  | 'opt_out'
+  | 'complaint'
+
+export interface GrowthAttributionEvent {
+  id: string
+  event_type: GrowthAttributionEventType
+  supplier_lead_id: string | null
+  supplier_workspace_id: string | null
+  importer_organization_id: string | null
+  shipment_id: string | null
+  campaign_id: string | null
+  source: string
+  channel: string | null
+  template_key: string | null
+  category: string | null
+  region: string | null
+  value_usd: number | null
+  occurred_at: string
+}
+
+export interface GrowthAttributionSummaryRow {
+  group_key: string
+  event_count: number
+  total_value_usd: number
+  unique_supplier_leads: number
+  unique_shipments: number
+}
+
+export interface GrowthAttributionSummary {
+  group_by: string
+  rows: GrowthAttributionSummaryRow[]
+  total_events: number
+  total_value_usd: number
 }
 
 export interface SentinelSubscriber {

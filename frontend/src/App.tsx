@@ -11,7 +11,9 @@ import {
   ClipboardCheck,
   Container as ContainerIcon,
   FileText,
+  FolderOpen,
   Gauge,
+  LineChart,
   Loader2,
   MapPin,
   MessageCircle,
@@ -22,6 +24,7 @@ import {
   Ship,
   ShieldCheck,
   Truck,
+  UserCheck,
   UserRound,
 } from 'lucide-react'
 import './App.css'
@@ -83,6 +86,19 @@ import {
   approveApprovalRequest,
   rejectApprovalRequest,
   requestApprovalReview,
+  getSentinelSubscribers,
+  createSentinelSubscriber,
+  confirmSentinelSubscriber,
+  optOutSentinelSubscriber,
+  listSupplierLeads,
+  updateSupplierLeadVerification,
+  createSupplierClaimLink,
+  listGrowthAttributionEvents,
+  getGrowthAttributionSummary,
+  listImportProjects,
+  createImportProject,
+  cloneImportProject,
+  softDeleteImportProject,
   getSourceMessages,
   getLandedCostSummary,
   getNotifications,
@@ -120,6 +136,14 @@ import type {
   ShipmentStateResponse,
   StaleCheckAlert,
 } from './api'
+import type {
+  GrowthAttributionEvent,
+  GrowthAttributionSummary,
+  ImportProject,
+  SentinelSubscriber,
+  SupplierLead,
+  SupplierVerificationStatus,
+} from './types'
 import type {
   AccountIntegration,
   AccountIntegrationProvider,
@@ -183,7 +207,20 @@ type View =
   | 'delivery'
   | 'admin'
 type WorkspaceMode = 'customer' | 'admin-login' | 'admin' | 'broker-portal' | 'warehouse-portal' | 'carrier-portal' | 'trucker-portal'
-type AdminView = 'overview' | 'containers' | 'exceptions' | 'documents' | 'tracking' | 'payments' | 'customs' | 'automation' | 'audit'
+type AdminView =
+  | 'overview'
+  | 'containers'
+  | 'exceptions'
+  | 'documents'
+  | 'tracking'
+  | 'payments'
+  | 'customs'
+  | 'automation'
+  | 'audit'
+  | 'sentinel'
+  | 'growth'
+  | 'suppliers'
+  | 'projects'
 type TrackingStage = ShipmentEvent['stage']
 type MapPoint = { lat: number; lng: number }
 type MapPlotPoint = { x: number; y: number }
@@ -3653,6 +3690,24 @@ function App() {
   const [auditResults, setAuditResults] = useState<AuditEvent[] | null>(null)
   const [auditLoading, setAuditLoading] = useState(false)
   const [auditError, setAuditError] = useState<string | null>(null)
+  const [sentinelSubscribers, setSentinelSubscribers] = useState<SentinelSubscriber[]>([])
+  const [sentinelDraft, setSentinelDraft] = useState({ phone_number: '', label: '' })
+  const [sentinelConfirmToken, setSentinelConfirmToken] = useState('')
+  const [sentinelMessage, setSentinelMessage] = useState<string | null>(null)
+  const [sentinelError, setSentinelError] = useState<string | null>(null)
+  const [supplierLeads, setSupplierLeads] = useState<SupplierLead[]>([])
+  const [supplierVerifyDraft, setSupplierVerifyDraft] = useState<Record<string, { status: SupplierVerificationStatus; notes: string }>>({})
+  const [supplierMessage, setSupplierMessage] = useState<string | null>(null)
+  const [supplierError, setSupplierError] = useState<string | null>(null)
+  const [growthEvents, setGrowthEvents] = useState<GrowthAttributionEvent[]>([])
+  const [growthSummary, setGrowthSummary] = useState<GrowthAttributionSummary | null>(null)
+  const [growthGroupBy, setGrowthGroupBy] = useState<'source' | 'channel' | 'category' | 'region' | 'event_type' | 'campaign'>('source')
+  const [growthError, setGrowthError] = useState<string | null>(null)
+  const [adminImportProjects, setAdminImportProjects] = useState<ImportProject[]>([])
+  const [importProjectDraft, setImportProjectDraft] = useState({ title: '', description: '' })
+  const [importProjectMessage, setImportProjectMessage] = useState<string | null>(null)
+  const [importProjectError, setImportProjectError] = useState<string | null>(null)
+  const [includeDeletedProjects, setIncludeDeletedProjects] = useState(false)
   const [inboxMessages, setInboxMessages] = useState<SourceMessage[]>([])
   const [landedCost, setLandedCost] = useState<LandedCostSummary | null>(null)
   const [notifications, setNotifications] = useState<Notification[]>([])
@@ -3819,6 +3874,33 @@ function App() {
       getAdminTaskSummary().then(setAdminTaskSummary).catch(() => {})
     }
   }, [workspaceMode, adminView])
+
+  useEffect(() => {
+    if (workspaceMode !== 'admin') return
+    if (adminView === 'sentinel') {
+      getSentinelSubscribers().then(setSentinelSubscribers).catch((err) => {
+        setSentinelError(err instanceof Error ? err.message : 'Could not load subscribers')
+      })
+    }
+    if (adminView === 'suppliers') {
+      listSupplierLeads().then(setSupplierLeads).catch((err) => {
+        setSupplierError(err instanceof Error ? err.message : 'Could not load supplier leads')
+      })
+    }
+    if (adminView === 'growth') {
+      listGrowthAttributionEvents({ limit: 100 }).then(setGrowthEvents).catch((err) => {
+        setGrowthError(err instanceof Error ? err.message : 'Could not load growth events')
+      })
+      getGrowthAttributionSummary(growthGroupBy).then(setGrowthSummary).catch((err) => {
+        setGrowthError(err instanceof Error ? err.message : 'Could not load growth summary')
+      })
+    }
+    if (adminView === 'projects') {
+      listImportProjects(includeDeletedProjects).then(setAdminImportProjects).catch((err) => {
+        setImportProjectError(err instanceof Error ? err.message : 'Could not load import projects')
+      })
+    }
+  }, [workspaceMode, adminView, growthGroupBy, includeDeletedProjects])
 
   useEffect(() => {
     if (view === 'inbox') {
@@ -4795,6 +4877,10 @@ function App() {
     { view: 'payments', label: 'Payments', icon: <Receipt size={17} /> },
     { view: 'customs', label: 'Customs', icon: <ShieldCheck size={17} /> },
     { view: 'automation', label: 'Automation', icon: <RefreshCw size={17} /> },
+    { view: 'projects', label: 'Imports', icon: <FolderOpen size={17} /> },
+    { view: 'suppliers', label: 'Suppliers', icon: <UserCheck size={17} /> },
+    { view: 'growth', label: 'Growth', icon: <LineChart size={17} /> },
+    { view: 'sentinel', label: 'Sentinel SMS', icon: <MessageCircle size={17} /> },
     { view: 'audit', label: 'Audit log', icon: <Bell size={17} /> },
   ]
   const adminTitles: Record<AdminView, { eyebrow: string; title: string; summary: string; automation: string }> = {
@@ -4852,6 +4938,30 @@ function App() {
       summary: 'A read-only record of automation decisions, operator actions, and notifications.',
       automation: 'Automated: every system or operator decision writes an audit event. Human action should not be required here.',
     },
+    sentinel: {
+      eyebrow: 'Sentinel SMS',
+      title: 'On-call subscribers',
+      summary: 'People who receive Sentinel P0 and P1 SMS alerts. Each phone confirms by replying with the token before alerts fire.',
+      automation: 'Automated: confirm tokens are generated on add, opt-out is recorded immediately, and alerts respect a 10-minute cooldown per code.',
+    },
+    growth: {
+      eyebrow: 'Growth',
+      title: 'Attribution and discovery activity',
+      summary: 'Where supplier leads, signups, invites, and shipments came from, plus the value attached.',
+      automation: 'Automated: every growth signal writes an attribution event. The summary groups events by source, channel, category, or campaign.',
+    },
+    suppliers: {
+      eyebrow: 'Suppliers',
+      title: 'Verification queue',
+      summary: 'Supplier leads waiting on a human verification call. Verify, restrict, or generate a claim link to onboard them.',
+      automation: 'Automated: discovery and enrichment populate the queue. A person reviews each lead before contact begins.',
+    },
+    projects: {
+      eyebrow: 'Imports',
+      title: 'Saved import projects',
+      summary: 'Import projects across all customers. Use this to clone a known-good project or recover one that was soft deleted.',
+      automation: 'Automated: import projects save and version automatically. Clone or soft delete only when a project needs admin help.',
+    },
   }
   const adminTabAudit: { view: AdminView; label: string; necessary: string; human: string }[] = [
     {
@@ -4907,6 +5017,30 @@ function App() {
       label: 'Audit log',
       necessary: 'Yes, but read-only. It is not daily work.',
       human: 'Investigate why automation or an operator made a decision.',
+    },
+    {
+      view: 'sentinel',
+      label: 'Sentinel SMS',
+      necessary: 'Yes. P0 and P1 alerts page real people, so this list must stay current.',
+      human: 'Add a phone, paste the confirm token, and remove people who leave the on-call rotation.',
+    },
+    {
+      view: 'growth',
+      label: 'Growth',
+      necessary: 'Yes. Acquisition and supplier-discovery have to be traceable to a source.',
+      human: 'Read the summary and click into events when a number looks wrong.',
+    },
+    {
+      view: 'suppliers',
+      label: 'Suppliers',
+      necessary: 'Yes for v1. Outreach is gated on a person verifying the lead.',
+      human: 'Verify, restrict, or reject a lead, then create a claim link if the supplier is approved.',
+    },
+    {
+      view: 'projects',
+      label: 'Imports',
+      necessary: 'Yes. Cloning a known-good import is the fastest way to start a repeat order.',
+      human: 'Clone, rename, or soft delete an import project on a customer request.',
     },
   ]
   const customerPhases: CustomerPhase[] = [
@@ -6219,6 +6353,550 @@ function App() {
                       </table>
                     )}
                   </div>
+                )}
+              </section>
+            </div>
+          )}
+
+          {adminView === 'sentinel' && (
+            <div className="workspace admin-workspace">
+              <section className="panel admin-panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">Add a subscriber</p>
+                    <h2>Send a confirm token to a phone.</h2>
+                  </div>
+                  <MessageCircle size={22} />
+                </div>
+                <form
+                  className="audit-filter-form"
+                  style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, alignItems: 'end' }}
+                  onSubmit={async (event) => {
+                    event.preventDefault()
+                    setSentinelMessage(null)
+                    setSentinelError(null)
+                    if (!sentinelDraft.phone_number.trim()) return
+                    try {
+                      const subscriber = await createSentinelSubscriber(
+                        sentinelDraft.phone_number.trim(),
+                        sentinelDraft.label.trim() || undefined,
+                      )
+                      setSentinelDraft({ phone_number: '', label: '' })
+                      setSentinelSubscribers(await getSentinelSubscribers())
+                      setSentinelMessage(`Token for ${subscriber.phone_number}: ${subscriber.confirmation_token}`)
+                    } catch (err) {
+                      setSentinelError(err instanceof Error ? err.message : 'Could not add subscriber')
+                    }
+                  }}
+                >
+                  <label>
+                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Phone in E.164 format</span>
+                    <input
+                      type="tel"
+                      placeholder="+61..."
+                      value={sentinelDraft.phone_number}
+                      onChange={(e) => setSentinelDraft((d) => ({ ...d, phone_number: e.target.value }))}
+                      required
+                    />
+                  </label>
+                  <label>
+                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Label (optional)</span>
+                    <input
+                      type="text"
+                      placeholder="e.g. Mitch on-call"
+                      value={sentinelDraft.label}
+                      onChange={(e) => setSentinelDraft((d) => ({ ...d, label: e.target.value }))}
+                    />
+                  </label>
+                  <button type="submit" className="primary">Send confirm token</button>
+                </form>
+                {sentinelMessage && <p style={{ color: '#059669', marginTop: 12 }}>{sentinelMessage}</p>}
+                {sentinelError && <p style={{ color: '#dc2626', marginTop: 12 }}>{sentinelError}</p>}
+              </section>
+
+              <section className="panel admin-panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">Confirm a subscriber</p>
+                    <h2>Paste the token the phone replied with.</h2>
+                  </div>
+                  <MessageCircle size={22} />
+                </div>
+                <form
+                  style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}
+                  onSubmit={async (event) => {
+                    event.preventDefault()
+                    setSentinelMessage(null)
+                    setSentinelError(null)
+                    if (!sentinelConfirmToken.trim()) return
+                    try {
+                      const subscriber = await confirmSentinelSubscriber(sentinelConfirmToken.trim())
+                      setSentinelConfirmToken('')
+                      setSentinelSubscribers(await getSentinelSubscribers())
+                      setSentinelMessage(`${subscriber.phone_number} is now active.`)
+                    } catch (err) {
+                      setSentinelError(err instanceof Error ? err.message : 'Could not confirm subscriber')
+                    }
+                  }}
+                >
+                  <label style={{ flex: 1, minWidth: 220 }}>
+                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Confirmation token</span>
+                    <input
+                      type="text"
+                      placeholder="6-character token"
+                      value={sentinelConfirmToken}
+                      onChange={(e) => setSentinelConfirmToken(e.target.value)}
+                      required
+                    />
+                  </label>
+                  <button type="submit" className="primary">Confirm</button>
+                </form>
+              </section>
+
+              <section className="panel admin-panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">Subscribers</p>
+                    <h2>{sentinelSubscribers.length} on the list.</h2>
+                  </div>
+                  <Bell size={22} />
+                </div>
+                {sentinelSubscribers.length === 0 ? (
+                  <p>No subscribers yet. Add a phone above to start receiving alerts.</p>
+                ) : (
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Phone</th>
+                        <th>Label</th>
+                        <th>Status</th>
+                        <th>Confirmed</th>
+                        <th>Created</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sentinelSubscribers.map((sub) => (
+                        <tr key={sub.id}>
+                          <td>{sub.phone_number}</td>
+                          <td>{sub.label ?? '—'}</td>
+                          <td>
+                            <span className={`status-chip ${sub.status === 'active' ? 'green' : sub.status === 'pending' ? 'orange' : ''}`}>
+                              {sub.status === 'active' ? 'Active' : sub.status === 'pending' ? 'Pending' : 'Opted out'}
+                            </span>
+                          </td>
+                          <td>{sub.confirmed_at ? formatDateFriendly(sub.confirmed_at) : '—'}</td>
+                          <td>{formatDateFriendly(sub.created_at)}</td>
+                          <td>
+                            {sub.status !== 'opted_out' && (
+                              <button
+                                type="button"
+                                className="ghost-action small"
+                                onClick={async () => {
+                                  setSentinelMessage(null)
+                                  setSentinelError(null)
+                                  try {
+                                    await optOutSentinelSubscriber(sub.phone_number)
+                                    setSentinelSubscribers(await getSentinelSubscribers())
+                                    setSentinelMessage(`${sub.phone_number} has opted out.`)
+                                  } catch (err) {
+                                    setSentinelError(err instanceof Error ? err.message : 'Opt-out failed')
+                                  }
+                                }}
+                              >
+                                Opt out
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </section>
+            </div>
+          )}
+
+          {adminView === 'growth' && (
+            <div className="workspace admin-workspace">
+              <section className="panel admin-panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">Attribution summary</p>
+                    <h2>Where the leads, signups, and shipments came from.</h2>
+                  </div>
+                  <LineChart size={22} />
+                </div>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 12 }}>
+                  <label>
+                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Group by</span>
+                    <select
+                      value={growthGroupBy}
+                      onChange={(e) => setGrowthGroupBy(e.target.value as typeof growthGroupBy)}
+                    >
+                      <option value="source">Source</option>
+                      <option value="channel">Channel</option>
+                      <option value="category">Category</option>
+                      <option value="region">Region</option>
+                      <option value="event_type">Event type</option>
+                      <option value="campaign">Campaign</option>
+                    </select>
+                  </label>
+                </div>
+                {growthError && <p style={{ color: '#dc2626' }}>{growthError}</p>}
+                {growthSummary && (
+                  <>
+                    <p style={{ fontSize: 13, color: '#64748b' }}>
+                      {growthSummary.total_events} event{growthSummary.total_events === 1 ? '' : 's'} totalling USD ${growthSummary.total_value_usd.toLocaleString()}
+                    </p>
+                    {growthSummary.rows.length === 0 ? (
+                      <p>No events match yet.</p>
+                    ) : (
+                      <table className="data-table">
+                        <thead>
+                          <tr>
+                            <th>{growthGroupBy.replace('_', ' ')}</th>
+                            <th>Events</th>
+                            <th>Value (USD)</th>
+                            <th>Unique leads</th>
+                            <th>Unique shipments</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {growthSummary.rows.map((row) => (
+                            <tr key={row.group_key}>
+                              <td>{row.group_key}</td>
+                              <td>{row.event_count}</td>
+                              <td>${row.total_value_usd.toLocaleString()}</td>
+                              <td>{row.unique_supplier_leads}</td>
+                              <td>{row.unique_shipments}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </>
+                )}
+              </section>
+
+              <section className="panel admin-panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">Recent events</p>
+                    <h2>{growthEvents.length} event{growthEvents.length === 1 ? '' : 's'}</h2>
+                  </div>
+                  <ClipboardCheck size={22} />
+                </div>
+                {growthEvents.length === 0 ? (
+                  <p>No attribution events yet.</p>
+                ) : (
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>When</th>
+                        <th>Type</th>
+                        <th>Source</th>
+                        <th>Channel</th>
+                        <th>Category</th>
+                        <th>Value (USD)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {growthEvents.map((event) => (
+                        <tr key={event.id}>
+                          <td>{new Date(event.occurred_at).toLocaleString()}</td>
+                          <td>{event.event_type.replaceAll('_', ' ')}</td>
+                          <td>{event.source}</td>
+                          <td>{event.channel ?? '—'}</td>
+                          <td>{event.category ?? '—'}</td>
+                          <td>{event.value_usd != null ? `$${event.value_usd.toLocaleString()}` : '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </section>
+            </div>
+          )}
+
+          {adminView === 'suppliers' && (
+            <div className="workspace admin-workspace">
+              <section className="panel admin-panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">Verification queue</p>
+                    <h2>{supplierLeads.length} lead{supplierLeads.length === 1 ? '' : 's'}</h2>
+                  </div>
+                  <UserCheck size={22} />
+                </div>
+                {supplierMessage && <p style={{ color: '#059669', marginBottom: 12 }}>{supplierMessage}</p>}
+                {supplierError && <p style={{ color: '#dc2626', marginBottom: 12 }}>{supplierError}</p>}
+                {supplierLeads.length === 0 ? (
+                  <p>No supplier leads yet.</p>
+                ) : (
+                  <div className="decision-cards">
+                    {supplierLeads.map((lead) => {
+                      const draft = supplierVerifyDraft[lead.id] ?? {
+                        status: lead.verification_status,
+                        notes: lead.verification_notes ?? '',
+                      }
+                      return (
+                        <article className="decision-card" key={lead.id}>
+                          <header className="decision-card-head">
+                            <div>
+                              <h3>{lead.company_name}</h3>
+                              <p className="decision-card-summary">
+                                {lead.city ? `${lead.city}, ` : ''}{lead.country} · score {Math.round(lead.lead_score)}
+                              </p>
+                            </div>
+                            <span
+                              className={`status-chip ${
+                                lead.verification_status === 'verified' ? 'green' :
+                                lead.verification_status === 'rejected' ? '' :
+                                lead.verification_status === 'restricted' ? 'orange' : 'orange'
+                              }`}
+                            >
+                              {lead.verification_status.replace('_', ' ')}
+                            </span>
+                          </header>
+                          <dl className="decision-card-grid">
+                            <div>
+                              <dt>Source</dt>
+                              <dd>{lead.discovery_source.replace('_', ' ')}</dd>
+                            </div>
+                            {lead.public_email && (
+                              <div>
+                                <dt>Public email</dt>
+                                <dd>{lead.public_email}</dd>
+                              </div>
+                            )}
+                            {lead.public_phone && (
+                              <div>
+                                <dt>Public phone</dt>
+                                <dd>{lead.public_phone}</dd>
+                              </div>
+                            )}
+                            <div>
+                              <dt>Outreach</dt>
+                              <dd>{lead.outreach_status.replace('_', ' ')}</dd>
+                            </div>
+                          </dl>
+                          {lead.fit_reason && (
+                            <p style={{ fontSize: 13, color: '#64748b' }}>{lead.fit_reason}</p>
+                          )}
+                          <form
+                            style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}
+                            onSubmit={async (event) => {
+                              event.preventDefault()
+                              setSupplierMessage(null)
+                              setSupplierError(null)
+                              try {
+                                await updateSupplierLeadVerification(lead.id, {
+                                  verification_status: draft.status,
+                                  verification_notes: draft.notes || undefined,
+                                })
+                                setSupplierLeads(await listSupplierLeads())
+                                setSupplierMessage(`${lead.company_name} marked ${draft.status.replace('_', ' ')}.`)
+                              } catch (err) {
+                                setSupplierError(err instanceof Error ? err.message : 'Verification failed')
+                              }
+                            }}
+                          >
+                            <label>
+                              <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>New status</span>
+                              <select
+                                value={draft.status}
+                                onChange={(e) =>
+                                  setSupplierVerifyDraft((s) => ({
+                                    ...s,
+                                    [lead.id]: { ...draft, status: e.target.value as SupplierVerificationStatus },
+                                  }))
+                                }
+                              >
+                                <option value="unverified">unverified</option>
+                                <option value="pending_review">pending review</option>
+                                <option value="verified">verified</option>
+                                <option value="restricted">restricted</option>
+                                <option value="rejected">rejected</option>
+                              </select>
+                            </label>
+                            <label style={{ flex: 1, minWidth: 200 }}>
+                              <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Notes</span>
+                              <input
+                                type="text"
+                                value={draft.notes}
+                                onChange={(e) =>
+                                  setSupplierVerifyDraft((s) => ({
+                                    ...s,
+                                    [lead.id]: { ...draft, notes: e.target.value },
+                                  }))
+                                }
+                              />
+                            </label>
+                            <button type="submit" className="primary-action small">
+                              Save verification
+                            </button>
+                            <button
+                              type="button"
+                              className="ghost-action small"
+                              onClick={async () => {
+                                setSupplierMessage(null)
+                                setSupplierError(null)
+                                try {
+                                  const claim = await createSupplierClaimLink(lead.id)
+                                  const url = `${window.location.origin}/supplier-claim/${claim.token}`
+                                  setSupplierMessage(`Claim link for ${lead.company_name}: ${url}`)
+                                  await navigator.clipboard?.writeText(url).catch(() => {})
+                                } catch (err) {
+                                  setSupplierError(err instanceof Error ? err.message : 'Could not generate claim link')
+                                }
+                              }}
+                            >
+                              Generate claim link
+                            </button>
+                          </form>
+                        </article>
+                      )
+                    })}
+                  </div>
+                )}
+              </section>
+            </div>
+          )}
+
+          {adminView === 'projects' && (
+            <div className="workspace admin-workspace">
+              <section className="panel admin-panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">Create import project</p>
+                    <h2>Start a fresh project from a title.</h2>
+                  </div>
+                  <FolderOpen size={22} />
+                </div>
+                <form
+                  style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}
+                  onSubmit={async (event) => {
+                    event.preventDefault()
+                    setImportProjectMessage(null)
+                    setImportProjectError(null)
+                    if (!importProjectDraft.title.trim()) return
+                    try {
+                      const created = await createImportProject({
+                        title: importProjectDraft.title.trim(),
+                        description: importProjectDraft.description.trim() || undefined,
+                      })
+                      setImportProjectDraft({ title: '', description: '' })
+                      setAdminImportProjects(await listImportProjects(includeDeletedProjects))
+                      setImportProjectMessage(`Created ${created.title}.`)
+                    } catch (err) {
+                      setImportProjectError(err instanceof Error ? err.message : 'Could not create project')
+                    }
+                  }}
+                >
+                  <label style={{ flex: 1, minWidth: 220 }}>
+                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Title</span>
+                    <input
+                      type="text"
+                      value={importProjectDraft.title}
+                      onChange={(e) => setImportProjectDraft((d) => ({ ...d, title: e.target.value }))}
+                      required
+                      minLength={2}
+                    />
+                  </label>
+                  <label style={{ flex: 1, minWidth: 220 }}>
+                    <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Description</span>
+                    <input
+                      type="text"
+                      value={importProjectDraft.description}
+                      onChange={(e) => setImportProjectDraft((d) => ({ ...d, description: e.target.value }))}
+                    />
+                  </label>
+                  <button type="submit" className="primary">Create</button>
+                </form>
+                {importProjectMessage && <p style={{ color: '#059669', marginTop: 12 }}>{importProjectMessage}</p>}
+                {importProjectError && <p style={{ color: '#dc2626', marginTop: 12 }}>{importProjectError}</p>}
+              </section>
+
+              <section className="panel admin-panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">Saved projects</p>
+                    <h2>{adminImportProjects.length} project{adminImportProjects.length === 1 ? '' : 's'}</h2>
+                  </div>
+                  <FolderOpen size={22} />
+                </div>
+                <label style={{ display: 'inline-flex', gap: 6, marginBottom: 12 }}>
+                  <input
+                    type="checkbox"
+                    checked={includeDeletedProjects}
+                    onChange={(e) => setIncludeDeletedProjects(e.target.checked)}
+                  />
+                  <span>Include soft-deleted</span>
+                </label>
+                {adminImportProjects.length === 0 ? (
+                  <p>No import projects yet.</p>
+                ) : (
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Title</th>
+                        <th>Status</th>
+                        <th>Current step</th>
+                        <th>Updated</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {adminImportProjects.map((project) => (
+                        <tr key={project.id}>
+                          <td>{project.title}</td>
+                          <td>{project.status ?? 'active'}</td>
+                          <td>{project.current_step}</td>
+                          <td>{project.updated_at ? formatDateFriendly(project.updated_at) : '—'}</td>
+                          <td style={{ display: 'flex', gap: 6 }}>
+                            <button
+                              type="button"
+                              className="ghost-action small"
+                              onClick={async () => {
+                                setImportProjectMessage(null)
+                                setImportProjectError(null)
+                                try {
+                                  const cloned = await cloneImportProject(project.id)
+                                  setAdminImportProjects(await listImportProjects(includeDeletedProjects))
+                                  setImportProjectMessage(`Cloned to ${cloned.title}.`)
+                                } catch (err) {
+                                  setImportProjectError(err instanceof Error ? err.message : 'Clone failed')
+                                }
+                              }}
+                            >
+                              Clone
+                            </button>
+                            {project.status !== 'deleted' && project.status !== 'deleted_pending_retention' && (
+                              <button
+                                type="button"
+                                className="ghost-action small"
+                                onClick={async () => {
+                                  if (!window.confirm(`Soft delete ${project.title}? It can be recovered for 30 days.`)) return
+                                  setImportProjectMessage(null)
+                                  setImportProjectError(null)
+                                  try {
+                                    await softDeleteImportProject(project.id)
+                                    setAdminImportProjects(await listImportProjects(includeDeletedProjects))
+                                    setImportProjectMessage(`Soft deleted ${project.title}.`)
+                                  } catch (err) {
+                                    setImportProjectError(err instanceof Error ? err.message : 'Delete failed')
+                                  }
+                                }}
+                              >
+                                Soft delete
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 )}
               </section>
             </div>
