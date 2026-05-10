@@ -96,6 +96,7 @@ class SourceType(str, Enum):
     carrier_api = "carrier_api"
     visibility_provider = "visibility_provider"
     warehouse_event = "warehouse_event"
+    partner_update = "partner_update"
 
 
 class SourceConfidence(str, Enum):
@@ -1993,6 +1994,94 @@ class LandedCostActual(BaseModel):
     finalised_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+
+
+class InsurancePolicy(BaseModel):
+    id: str
+    booking_id: str
+    insurance_required: bool = True
+    waived_by: Optional[str] = None
+    insured_value: Optional[float] = None
+    currency: str = "USD"
+    provider: Optional[str] = None
+    policy_reference: Optional[str] = None
+    premium_usd: Optional[float] = None
+    coverage_notes: Optional[str] = None
+    document_id: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class InsurancePolicyUpsert(BaseModel):
+    insurance_required: bool = True
+    waived_by: Optional[str] = None
+    insured_value: Optional[float] = None
+    currency: str = "USD"
+    provider: Optional[str] = None
+    policy_reference: Optional[str] = None
+    premium_usd: Optional[float] = None
+    coverage_notes: Optional[str] = None
+    document_id: Optional[str] = None
+
+
+class ClaimType(str, Enum):
+    damage = "damage"
+    loss = "loss"
+    shortage = "shortage"
+    delay = "delay"
+    other = "other"
+
+
+class ClaimStatus(str, Enum):
+    draft = "draft"
+    submitted = "submitted"
+    under_review = "under_review"
+    approved = "approved"
+    rejected = "rejected"
+    paid = "paid"
+    closed = "closed"
+
+
+class ClaimRecord(BaseModel):
+    id: str
+    booking_id: str
+    insurance_policy_id: Optional[str] = None
+    claim_type: ClaimType
+    claim_status: ClaimStatus = ClaimStatus.draft
+    claim_amount_usd: float = 0
+    evidence_document_ids: List[str] = Field(default_factory=list)
+    photo_document_ids: List[str] = Field(default_factory=list)
+    survey_report_document_id: Optional[str] = None
+    submitted_at: Optional[datetime] = None
+    resolved_at: Optional[datetime] = None
+    recovery_amount_usd: Optional[float] = None
+    notes: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ClaimRecordCreate(BaseModel):
+    claim_type: ClaimType
+    claim_amount_usd: float = Field(0, ge=0)
+    insurance_policy_id: Optional[str] = None
+    evidence_document_ids: List[str] = Field(default_factory=list)
+    photo_document_ids: List[str] = Field(default_factory=list)
+    survey_report_document_id: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class ClaimRecordUpdate(BaseModel):
+    claim_type: Optional[ClaimType] = None
+    claim_status: Optional[ClaimStatus] = None
+    claim_amount_usd: Optional[float] = None
+    insurance_policy_id: Optional[str] = None
+    evidence_document_ids: Optional[List[str]] = None
+    photo_document_ids: Optional[List[str]] = None
+    survey_report_document_id: Optional[str] = None
+    submitted_at: Optional[datetime] = None
+    resolved_at: Optional[datetime] = None
+    recovery_amount_usd: Optional[float] = None
+    notes: Optional[str] = None
 
 
 class MarketplaceProvider(str, Enum):

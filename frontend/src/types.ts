@@ -29,6 +29,7 @@ export type SourceType =
   | 'carrier_api'
   | 'visibility_provider'
   | 'warehouse_event'
+  | 'partner_update'
 
 export type SourceConfidence = 'estimated' | 'verified' | 'confirmed'
 
@@ -1084,6 +1085,51 @@ export interface DeliveryJobCreatePayload {
 export interface DeliveryJobUpdatePayload extends Partial<DeliveryJobCreatePayload> {
   status?: DeliveryJobStatus
   pod_document_id?: string
+}
+
+export interface InsurancePolicy {
+  id: string
+  booking_id: string
+  insurance_required: boolean
+  waived_by: string | null
+  insured_value: number | null
+  currency: string
+  provider: string | null
+  policy_reference: string | null
+  premium_usd: number | null
+  coverage_notes: string | null
+  document_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type ClaimType = 'damage' | 'loss' | 'shortage' | 'delay' | 'other'
+
+export type ClaimStatus =
+  | 'draft'
+  | 'submitted'
+  | 'under_review'
+  | 'approved'
+  | 'rejected'
+  | 'paid'
+  | 'closed'
+
+export interface ClaimRecord {
+  id: string
+  booking_id: string
+  insurance_policy_id: string | null
+  claim_type: ClaimType
+  claim_status: ClaimStatus
+  claim_amount_usd: number
+  evidence_document_ids: string[]
+  photo_document_ids: string[]
+  survey_report_document_id: string | null
+  submitted_at: string | null
+  resolved_at: string | null
+  recovery_amount_usd: number | null
+  notes: string | null
+  created_at: string
+  updated_at: string
 }
 
 export type MarketplaceProvider =

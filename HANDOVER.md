@@ -39,12 +39,16 @@ The previous Claude session shipped 11 features overnight (broker /
 warehouse / carrier / trucker portals end to end, inbound email
 webhook, saved import projects CRUD, audit log filtering, supplier
 verification state machine, growth attribution, purchase order
-clone). The 2026-05-11 session then shipped another 8 (cron-job.org
-wiring + 7 code features: shipments aggregator, approval request-
-review, supplier portal preview, Sentinel SMS opt-in, email
-extraction preview, audit log filter UI, supplier profile claim).
-269 backend tests pass. Frontend builds clean. All bundled in PR #1.
-See the ledger below for what's left.
+clone). The 2026-05-11 session then shipped another 14: cron-job.org
+wiring, shipments aggregator, approval request-review, supplier
+portal preview, Sentinel SMS opt-in, email extraction preview,
+audit log filter UI, supplier profile claim, DeliveryJob CRUD,
+PartnerProfile + PartnerCapability + ContingencyOption skeleton,
+PaymentProof + LandedCostActual upsert with variance derivation,
+MarketplaceOrder ingest, InsurancePolicy + ClaimRecord skeleton,
+and a `partner_update` SourceType cleanup. 306 backend tests pass.
+Frontend builds clean. All bundled in PR #1. See the ledger below
+for what's left.
 
 ## Critical paths (full absolute paths)
 
@@ -191,7 +195,7 @@ Not yet set (operator follow-ups):
 ## Commands you'll need
 
 ```bash
-# Run the full backend test suite (must stay green; 269 as of 2026-05-11)
+# Run the full backend test suite (must stay green; 306 as of 2026-05-11)
 cd /Users/mitchbishop/Public/Projects/Ship-Hoppa/.claude/worktrees/reverent-maxwell-263429/backend && python3 -m pytest tests/
 
 # Build the frontend the same way Railway does (NEVER use tsc --noEmit alone)
@@ -279,6 +283,8 @@ Each row references the section in
 | Partner capability + contingency option skeleton | DONE 2026-05-11 | Model spec (line 2712-2759), Phase 1-2 foundational (line 1939-1987) | `backend/app/operations.py` partner/capability/contingency operations, `/partners`, `/partners/{id}/capabilities`, `/partner-capabilities/{id}`, `/bookings/{id}/contingency-options`, `/contingency-options/{id}`, frontend types + clients | `docs/plans/partner-capability-skeleton/` |
 | PaymentProof + LandedCostActual skeleton | DONE 2026-05-11 | Model spec (line 3056-3122), Phase 6 (line 3732-3849) | `backend/app/operations.py:record_payment_proof..record_landed_cost_actual`, endpoints `POST/GET /bookings/{id}/payment-proofs`, `PATCH /payment-proofs/{id}`, `POST/GET /bookings/{id}/landed-cost-actual`, frontend types + clients | `docs/plans/payment-proof-landed-cost/` |
 | MarketplaceOrder model + ingest | DONE 2026-05-11 | Model spec (line 2535-2553), Step 2 Order (line 110-115), Account Integrations (line 102-106) | `backend/app/operations.py:record_marketplace_order..list_marketplace_orders`, endpoints `POST/GET /marketplace-orders`, frontend types + clients | `docs/plans/marketplace-order/` |
+| InsurancePolicy + ClaimRecord skeleton | DONE 2026-05-11 | Model spec (line 3123-3157), Insurance/Claims/Exception Recovery (line 2130-2148) | `backend/app/operations.py:record_insurance_policy..update_claim_record`, endpoints `POST/GET /bookings/{id}/insurance-policy`, `POST/GET /bookings/{id}/claims`, `PATCH /claims/{id}`, frontend types + clients | `docs/plans/insurance-claim/` |
+| `partner_update` SourceType enum value (cleanup) | DONE 2026-05-11 | Internal cleanup | Broker/carrier/trucker portal events now emit `source_type=partner_update`; `forwarder_confirmation` reserved for actual forwarder events. Frontend `SourceType` type updated. | (no separate plan; ad-hoc commit) |
 | Cron-job.org wiring (was operator-blocked, unblocked) | DONE 2026-05-11 | Phase 5 Automation (line 174-181) | cron-job.org Job 7583175 hits `POST /automation/cron/run` every 15 minutes; `SHIP_HOPPA_CRON_TOKEN` rotated and matched between Railway and cron-job.org | (ops change, no code; verified HTTP 200 in cron-job.org history) |
 
 ### No-blocker, autonomous — NOT STARTED (the new chat picks from here)
@@ -336,7 +342,7 @@ already shipped.
 | Real binary file upload across portals | Production-Grade Standard (line 209-225) | Replaces placeholder JSON-only doc upload with multipart/binary |
 | Shared `PartnerPortal` React component refactor | Internal architecture | Extract common shape from broker/warehouse/carrier/trucker portals (3+ instances now warrants the abstraction) |
 | Rate limiting on token-based portals | Security best practice | Generic limiter shared across all four partner portals |
-| Add `partner_update` `SourceType` enum value | Internal cleanup | Broker / carrier / trucker currently use `forwarder_confirmation` as a closest fit |
+| Add `partner_update` `SourceType` enum value (DONE 2026-05-11) | Internal cleanup | Broker / carrier / trucker portal events now emit `source_type=partner_update`; `forwarder_confirmation` is reserved for actual forwarder events |
 
 ## How to start as the new chat
 
@@ -347,7 +353,7 @@ already shipped.
 4. `git fetch && git status -sb` — should be clean on
    `claude/reverent-maxwell-263429`.
 5. `git log --oneline -15` — see what was last shipped.
-6. `cd backend && python3 -m pytest tests/ -q` — confirm 269 pass.
+6. `cd backend && python3 -m pytest tests/ -q` — confirm 306 pass.
 7. `cd ../frontend && npm run build` — confirm clean build.
 8. Pick the next item from the **No-blocker, autonomous** section
    above. Plan it in

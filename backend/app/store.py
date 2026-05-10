@@ -30,7 +30,9 @@ from .models import (
     ImportProjectSnapshot,
     ImportProjectStepData,
     ImportProjectVersion,
+    ClaimRecord,
     Importer,
+    InsurancePolicy,
     Invoice,
     LandedCostActual,
     Lane,
@@ -92,6 +94,8 @@ class Store:
         self.payment_proofs: Dict[str, PaymentProof] = {}
         self.landed_cost_actuals: Dict[str, LandedCostActual] = {}
         self.marketplace_orders: Dict[str, MarketplaceOrder] = {}
+        self.insurance_policies: Dict[str, InsurancePolicy] = {}
+        self.claim_records: Dict[str, ClaimRecord] = {}
         self.admin_tasks: Dict[str, AdminTask] = {}
         self.purchase_orders: Dict[str, PurchaseOrder] = {}
         self.production_milestones: Dict[str, ProductionMilestone] = {}

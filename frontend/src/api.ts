@@ -24,9 +24,11 @@ import type {
   Container,
   ConfirmBookingResponse,
   ContingencyOption,
+  ClaimRecord,
   CustomsProfile,
   DocumentType,
   DashboardSummary,
+  InsurancePolicy,
   DeliveryJob,
   DeliveryJobCreatePayload,
   DeliveryJobUpdatePayload,
@@ -1008,6 +1010,37 @@ export function createContingencyOption(bookingId: string, payload: Partial<Cont
 
 export function updateContingencyOption(optionId: string, payload: Partial<ContingencyOption>) {
   return request<ContingencyOption>(`/contingency-options/${optionId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+}
+
+// --- Insurance + claims ---
+
+export function getInsurancePolicy(bookingId: string) {
+  return request<InsurancePolicy>(`/bookings/${bookingId}/insurance-policy`)
+}
+
+export function recordInsurancePolicy(bookingId: string, payload: Partial<InsurancePolicy>) {
+  return request<InsurancePolicy>(`/bookings/${bookingId}/insurance-policy`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function listClaims(bookingId: string) {
+  return request<ClaimRecord[]>(`/bookings/${bookingId}/claims`)
+}
+
+export function createClaim(bookingId: string, payload: Partial<ClaimRecord> & { claim_type: ClaimRecord['claim_type'] }) {
+  return request<ClaimRecord>(`/bookings/${bookingId}/claims`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function updateClaim(claimId: string, payload: Partial<ClaimRecord>) {
+  return request<ClaimRecord>(`/claims/${claimId}`, {
     method: 'PATCH',
     body: JSON.stringify(payload),
   })

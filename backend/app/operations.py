@@ -73,6 +73,12 @@ from .models import (
     ImportWorkflowType,
     Invoice,
     InvoiceLineItem,
+    ClaimRecord,
+    ClaimRecordCreate,
+    ClaimRecordUpdate,
+    ClaimStatus,
+    InsurancePolicy,
+    InsurancePolicyUpsert,
     LandedCostActual,
     LandedCostActualUpsert,
     MarketplaceOrder,
@@ -3792,7 +3798,7 @@ def broker_clearance_update(store: Store, token: str, request: BrokerClearanceUp
                 stage=ShipmentEventStage.customs_cleared,
                 label="Customs cleared by broker",
                 occurred_at=now_utc(),
-                source_type=SourceType.forwarder_confirmation,
+                source_type=SourceType.partner_update,
                 source_name="Broker portal",
                 confidence=SourceConfidence.verified,
                 notes=request.customs_entry_number and f"Entry {request.customs_entry_number}." or None,
@@ -4028,7 +4034,7 @@ def carrier_event_update(store: Store, token: str, request: CarrierEventUpdate) 
             stage=request.stage,
             label=request.label or request.stage.value.replace("_", " ").title(),
             occurred_at=now_utc(),
-            source_type=SourceType.forwarder_confirmation,
+            source_type=SourceType.partner_update,
             source_name="Carrier portal",
             confidence=SourceConfidence.confirmed,
             notes=request.notes,
@@ -4146,7 +4152,7 @@ def trucker_status_update(store: Store, token: str, request: TruckerStatusUpdate
             stage=request.stage,
             label=TRUCKER_STAGE_LABELS.get(request.stage, request.stage.value),
             occurred_at=now_utc(),
-            source_type=SourceType.forwarder_confirmation,
+            source_type=SourceType.partner_update,
             source_name="Trucker portal",
             confidence=SourceConfidence.confirmed,
             notes=request.notes,
@@ -4992,6 +4998,168 @@ def record_marketplace_order(
         },
     )
     return order
+
+
+def get_insurance_policy_for_booking(store: Store, booking_id: str) -> Optional[InsurancePolicy]:
+    return next(
+        (p for p in store.insurance_policies.values() if p.booking_id == booking_id),
+        None,
+    )
+
+
+def record_insurance_policy(
+    store: Store,
+    booking_id: str,
+    payload: InsurancePolicyUpsert,
+    actor_id: str,
+) -> InsurancePolicy:
+    if booking_id not in store.bookings:
+        raise ValueError("Booking not found")
+    timestamp = now_utc()
+    existing = get_insurance_policy_for_booking(store, booking_id)
+    if existing:
+        for key, value in payload.model_dump().items():
+            setattr(existing, key, value)
+        existing.updated_at = timestamp
+        store.insurance_policies[existing.id] = existing
+        action = "updated"
+        policy = existing
+    else:
+        policy = InsurancePolicy(
+            id=store.next_id("INSPOL"),
+            booking_id=booking_id,
+            insurance_required=payload.insurance_required,
+            waived_by=payload.waived_by,
+            insured_value=payload.insured_value,
+            currency=payload.currency,
+            provider=payload.provider,
+            policy_reference=payload.policy_reference,
+            premium_usd=payload.premium_usd,
+            coverage_notes=payload.coverage_notes,
+            document_id=payload.document_id,
+            created_at=timestamp,
+            updated_at=timestamp,
+        )
+        store.insurance_policies[policy.id] = policy
+        action = "recorded"
+    create_audit_event(
+        store,
+        ActorRole.admin,
+        actor_id,
+        f"insurance_policy_{action}",
+        "insurance_policy",
+        policy.id,
+        f"Insurance policy {action} for booking {booking_id}.",
+        {"booking_id": booking_id, "insurance_required": payload.insurance_required},
+    )
+    return policy
+
+
+def create_claim_record(
+    store: Store,
+    booking_id: str,
+    payload: ClaimRecordCreate,
+    actor_id: str,
+) -> ClaimRecord:
+    if booking_id not in store.bookings:
+        raise ValueError("Booking not found")
+    if (
+        payload.insurance_policy_id
+        and payload.insurance_policy_id not in store.insurance_policies
+    ):
+        raise ValueError("Insurance policy not found")
+    timestamp = now_utc()
+    claim = ClaimRecord(
+        id=store.next_id("CLAIM"),
+        booking_id=booking_id,
+        insurance_policy_id=payload.insurance_policy_id,
+        claim_type=payload.claim_type,
+        claim_status=ClaimStatus.draft,
+        claim_amount_usd=payload.claim_amount_usd,
+        evidence_document_ids=list(payload.evidence_document_ids),
+        photo_document_ids=list(payload.photo_document_ids),
+        survey_report_document_id=payload.survey_report_document_id,
+        notes=payload.notes,
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+    store.claim_records[claim.id] = claim
+    create_audit_event(
+        store,
+        ActorRole.importer,
+        actor_id,
+        "claim_created",
+        "claim_record",
+        claim.id,
+        f"Claim ({payload.claim_type.value}) opened on booking {booking_id}.",
+        {
+            "booking_id": booking_id,
+            "claim_type": payload.claim_type.value,
+            "claim_amount_usd": payload.claim_amount_usd,
+        },
+    )
+    return claim
+
+
+def update_claim_record(
+    store: Store,
+    claim_id: str,
+    payload: ClaimRecordUpdate,
+    actor_id: str,
+) -> ClaimRecord:
+    if claim_id not in store.claim_records:
+        raise ValueError("Claim not found")
+    claim = store.claim_records[claim_id]
+    previous_status = claim.claim_status
+    fields = payload.model_dump(exclude_unset=True)
+    for key, value in fields.items():
+        setattr(claim, key, value)
+    if (
+        "claim_status" in fields
+        and fields["claim_status"] == ClaimStatus.submitted
+        and claim.submitted_at is None
+    ):
+        claim.submitted_at = now_utc()
+    if "claim_status" in fields and fields["claim_status"] in {
+        ClaimStatus.approved,
+        ClaimStatus.rejected,
+        ClaimStatus.paid,
+        ClaimStatus.closed,
+    } and claim.resolved_at is None:
+        claim.resolved_at = now_utc()
+    claim.updated_at = now_utc()
+    store.claim_records[claim.id] = claim
+    if "claim_status" in fields and fields["claim_status"] != previous_status:
+        create_audit_event(
+            store,
+            ActorRole.admin,
+            actor_id,
+            "claim_status_changed",
+            "claim_record",
+            claim.id,
+            f"Claim status moved from {previous_status.value} to {claim.claim_status.value}.",
+            {"previous_status": previous_status.value, "new_status": claim.claim_status.value},
+        )
+    else:
+        create_audit_event(
+            store,
+            ActorRole.admin,
+            actor_id,
+            "claim_updated",
+            "claim_record",
+            claim.id,
+            f"Claim {claim.id} updated.",
+            {"fields": list(fields.keys())},
+        )
+    return claim
+
+
+def list_claim_records_for_booking(store: Store, booking_id: str) -> List[ClaimRecord]:
+    return sorted(
+        [c for c in store.claim_records.values() if c.booking_id == booking_id],
+        key=lambda c: (c.created_at, c.id),
+        reverse=True,
+    )
 
 
 def list_marketplace_orders(

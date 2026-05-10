@@ -58,6 +58,11 @@ from .models import (
     ContingencyOption,
     ContingencyOptionCreate,
     ContingencyOptionUpdate,
+    ClaimRecord,
+    ClaimRecordCreate,
+    ClaimRecordUpdate,
+    InsurancePolicy,
+    InsurancePolicyUpsert,
     LandedCostActual,
     LandedCostActualUpsert,
     MarketplaceOrder,
@@ -196,24 +201,29 @@ from .operations import (
     release_status_for_booking,
     accept_supplier_claim,
     confirm_sentinel_subscriber,
+    create_claim_record,
     create_contingency_option,
     create_delivery_job,
     create_partner_capability,
     create_partner_profile,
     create_sentinel_subscriber,
     create_supplier_claim_link,
+    get_insurance_policy_for_booking,
     get_landed_cost_actual_for_booking,
     get_supplier_claim_by_token,
+    list_claim_records_for_booking,
     list_contingency_options_for_booking,
     list_delivery_jobs_for_booking,
     list_marketplace_orders,
     list_partner_capabilities,
     list_payment_proofs_for_booking,
     opt_out_sentinel_subscriber,
+    record_insurance_policy,
     record_landed_cost_actual,
     record_marketplace_order,
     record_payment_proof,
     request_approval_review,
+    update_claim_record,
     update_contingency_option,
     update_delivery_job,
     update_partner_capability,
@@ -370,6 +380,8 @@ def reset_store_for_tests() -> None:
     store.payment_proofs.clear()
     store.landed_cost_actuals.clear()
     store.marketplace_orders.clear()
+    store.insurance_policies.clear()
+    store.claim_records.clear()
     store.sentinel_subscribers.clear()
     store.supplier_profile_claims.clear()
     store.idempotency_records.clear()
@@ -1979,6 +1991,65 @@ def get_marketplace_orders(
     _principal: Principal = Depends(require_importer),
 ) -> List[MarketplaceOrder]:
     return list_marketplace_orders(store, booking_id, import_project_id)
+
+
+@app.post("/bookings/{booking_id}/insurance-policy", response_model=InsurancePolicy, status_code=201)
+def post_insurance_policy(
+    booking_id: str,
+    payload: InsurancePolicyUpsert,
+    principal: Principal = Depends(require_admin),
+) -> InsurancePolicy:
+    try:
+        return persist_result(record_insurance_policy(store, booking_id, payload, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/bookings/{booking_id}/insurance-policy", response_model=InsurancePolicy)
+def get_insurance_policy(
+    booking_id: str,
+    _principal: Principal = Depends(require_importer),
+) -> InsurancePolicy:
+    if booking_id not in store.bookings:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    policy = get_insurance_policy_for_booking(store, booking_id)
+    if not policy:
+        raise HTTPException(status_code=404, detail="Insurance policy not recorded yet")
+    return policy
+
+
+@app.post("/bookings/{booking_id}/claims", response_model=ClaimRecord, status_code=201)
+def post_claim(
+    booking_id: str,
+    payload: ClaimRecordCreate,
+    principal: Principal = Depends(require_importer),
+) -> ClaimRecord:
+    try:
+        return persist_result(create_claim_record(store, booking_id, payload, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/bookings/{booking_id}/claims", response_model=List[ClaimRecord])
+def get_claims(
+    booking_id: str,
+    _principal: Principal = Depends(require_importer),
+) -> List[ClaimRecord]:
+    if booking_id not in store.bookings:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return list_claim_records_for_booking(store, booking_id)
+
+
+@app.patch("/claims/{claim_id}", response_model=ClaimRecord)
+def patch_claim(
+    claim_id: str,
+    payload: ClaimRecordUpdate,
+    principal: Principal = Depends(require_admin),
+) -> ClaimRecord:
+    try:
+        return persist_result(update_claim_record(store, claim_id, payload, principal.actor_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 @app.put("/bookings/{booking_id}/delivery-plan", response_model=DeliveryPlan)
