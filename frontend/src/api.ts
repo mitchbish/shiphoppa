@@ -456,3 +456,39 @@ export function resolveAdminTask(taskId: string) {
 export function dismissAdminTask(taskId: string) {
   return request<AdminTask>(`/admin-tasks/${taskId}/dismiss`, { method: 'POST' })
 }
+
+// --- Approvals ---
+
+export type ApprovalRequestRecord = {
+  id: string
+  request_type: string
+  status: 'pending' | 'approved' | 'rejected' | 'expired'
+  title: string
+  plain_language_summary: string
+  amount_usd: number | null
+  due_at: string | null
+  related_import_project_id: string | null
+  related_booking_id: string | null
+  source_reference: string | null
+  created_at: string
+  decided_at: string | null
+  decided_by: string | null
+}
+
+export function getApprovals() {
+  return request<ApprovalRequestRecord[]>('/approvals')
+}
+
+export function approveApprovalRequest(approvalId: string, reason?: string) {
+  return request<ApprovalRequestRecord>(`/approvals/${approvalId}/approve`, {
+    method: 'POST',
+    body: JSON.stringify({ reason: reason ?? 'Approved' }),
+  })
+}
+
+export function rejectApprovalRequest(approvalId: string, reason?: string) {
+  return request<ApprovalRequestRecord>(`/approvals/${approvalId}/reject`, {
+    method: 'POST',
+    body: JSON.stringify({ reason: reason ?? 'Rejected' }),
+  })
+}

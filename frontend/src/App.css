@@ -4623,3 +4623,61 @@ textarea:focus {
     text-align: left;
   }
 }
+
+/* --- Customer pending-approvals banner --- */
+.approvals-banner {
+  border: 1px solid var(--deep-orange);
+  background: var(--light-orange);
+}
+
+.approvals-list {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  display: grid;
+  gap: 10px;
+}
+
+.approval-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 14px;
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid rgba(242, 106, 46, 0.25);
+}
+
+.approval-summary {
+  display: grid;
+  gap: 4px;
+  font-size: 14px;
+}
+
+.approval-summary strong {
+  font-size: 15px;
+}
+
+.approval-summary em {
+  font-style: normal;
+  color: var(--deep-orange);
+  font-weight: 600;
+}
+
+.approval-summary small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.approval-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.approvals-overflow {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}

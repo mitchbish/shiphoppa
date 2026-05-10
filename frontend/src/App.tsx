@@ -60,6 +60,9 @@ import {
   getAdminTaskSummary,
   resolveAdminTask,
   dismissAdminTask,
+  getApprovals,
+  approveApprovalRequest,
+  rejectApprovalRequest,
   supplierReady,
   updateAccountIntegration,
   updateAccountProfile,
@@ -71,6 +74,7 @@ import {
 import type {
   AdminTask,
   AdminTaskSummary,
+  ApprovalRequestRecord,
   AutomationRunAllResult,
   ShipmentStateResponse,
   StaleCheckAlert,
@@ -2248,6 +2252,7 @@ function App() {
   const [shipmentStates, setShipmentStates] = useState<Record<string, ShipmentStateResponse>>({})
   const [adminTasks, setAdminTasks] = useState<AdminTask[]>([])
   const [adminTaskSummary, setAdminTaskSummary] = useState<AdminTaskSummary | null>(null)
+  const [allApprovals, setAllApprovals] = useState<ApprovalRequestRecord[]>([])
   const [adminEmail, setAdminEmail] = useState('ops@shiphoppa.example')
   const [adminPassword, setAdminPassword] = useState('')
   const [adminLoginError, setAdminLoginError] = useState<string | null>(null)
@@ -2312,6 +2317,11 @@ function App() {
 
   useEffect(() => {
     let cancelled = false
+    getApprovals()
+      .then((data) => {
+        if (!cancelled) setAllApprovals(data)
+      })
+      .catch(() => {})
     Promise.all([getSummary(), getContainers(), getBookings(), getSailings(), getAccountProfile(), getAccountIntegrations()])
       .then(([summaryData, containerData, bookingData, sailingData, profileData, integrationData]) => {
         if (cancelled) return
@@ -2422,6 +2432,21 @@ function App() {
     (quote) => quote.supplier_pay_request_id === activeSupplierPayRequest?.id,
   ) ?? []
   const openApprovals = projectWorkspace?.approvals.filter((approval) => approval.status === 'pending') ?? []
+  const allPendingApprovals = allApprovals.filter((approval) => approval.status === 'pending')
+
+  async function handleApprovalDecision(approvalId: string, decision: 'approve' | 'reject') {
+    try {
+      if (decision === 'approve') {
+        await approveApprovalRequest(approvalId)
+      } else {
+        await rejectApprovalRequest(approvalId)
+      }
+      const refreshed = await getApprovals()
+      setAllApprovals(refreshed)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Approval decision failed')
+    }
+  }
   const activeSourceMessages = projectWorkspace?.source_messages ?? []
   const selectedSailing = useMemo(
     () => sailings.find((sailing) => sailing.sailing_option_id === form.preferred_sailing_option_id) ?? null,
@@ -4355,6 +4380,58 @@ function App() {
           </div>
         )}
         {releaseMessage && <div className="notice success">{releaseMessage}</div>}
+
+        {allPendingApprovals.length > 0 && view !== 'admin' && (
+          <section className="panel approvals-banner">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Action needed</p>
+                <h2>
+                  {allPendingApprovals.length} approval{allPendingApprovals.length === 1 ? '' : 's'} waiting on you
+                </h2>
+              </div>
+              <Bell size={22} />
+            </div>
+            <ul className="approvals-list">
+              {allPendingApprovals.slice(0, 5).map((approval) => (
+                <li className="approval-item" key={approval.id}>
+                  <div className="approval-summary">
+                    <strong>{approval.title}</strong>
+                    <span>{approval.plain_language_summary}</span>
+                    {approval.amount_usd != null && (
+                      <em>USD ${approval.amount_usd.toLocaleString()}</em>
+                    )}
+                    {approval.related_booking_id && (
+                      <small>Shipment {approval.related_booking_id}</small>
+                    )}
+                  </div>
+                  <div className="approval-actions">
+                    <button
+                      className="primary-action small"
+                      type="button"
+                      onClick={() => handleApprovalDecision(approval.id, 'approve')}
+                    >
+                      <Check size={14} />
+                      Approve
+                    </button>
+                    <button
+                      className="secondary-action small"
+                      type="button"
+                      onClick={() => handleApprovalDecision(approval.id, 'reject')}
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            {allPendingApprovals.length > 5 && (
+              <p className="approvals-overflow">
+                +{allPendingApprovals.length - 5} more pending. Open each shipment to review.
+              </p>
+            )}
+          </section>
+        )}
 
         {view !== 'admin' ? (
           <>
