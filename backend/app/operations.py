@@ -109,6 +109,11 @@ from .models import (
     SupplierPayMarkPaidRequest,
     SupplierPortalResponse,
     SupplierReadyRequest,
+    BrokerAccessLink,
+    BrokerBookingSummary,
+    BrokerClearanceUpdate,
+    BrokerCustomsSummary,
+    BrokerPortalResponse,
 )
 from .store import Store
 
@@ -3084,6 +3089,143 @@ def supplier_ready(store: Store, token: str, request: SupplierReadyRequest) -> S
     )
     create_audit_event(store, ActorRole.system, "supplier-portal", "supplier_ready_confirmed", "booking", booking.id, "Supplier confirmed cargo readiness.")
     return supplier_portal(store, token)
+
+
+BROKER_ALLOWED_STATUSES = {
+    CustomsStatus.submitted,
+    CustomsStatus.queried,
+    CustomsStatus.cleared,
+}
+
+
+def create_broker_link(store: Store, booking_id: str) -> BrokerAccessLink:
+    if booking_id not in store.bookings:
+        raise ValueError("Booking not found")
+    for link in store.broker_links.values():
+        if link.booking_id == booking_id and link.active:
+            return link
+    link = BrokerAccessLink(
+        id=store.next_id("BRK"),
+        booking_id=booking_id,
+        token=secrets.token_urlsafe(24),
+        expires_at=now_utc() + timedelta(days=45),
+        created_at=now_utc(),
+    )
+    store.broker_links[link.id] = link
+    create_audit_event(store, ActorRole.admin, "ops", "broker_link_created", "booking", booking_id, f"Broker link created for {booking_id}.")
+    return link
+
+
+def broker_link_by_token(store: Store, token: str) -> BrokerAccessLink:
+    for link in store.broker_links.values():
+        if link.token == token and link.active:
+            if link.expires_at and link.expires_at < now_utc():
+                raise ValueError("Broker link has expired")
+            return link
+    raise ValueError("Broker link not found")
+
+
+def _broker_portal_response(store: Store, booking: Booking) -> BrokerPortalResponse:
+    profile = ensure_customs_profile(store, booking)
+    importer = store.importers.get(booking.importer_id)
+    company_name = importer.company_name if importer else None
+    importer_abn = profile.importer_abn or (importer.abn if importer else None)
+    booking_summary = BrokerBookingSummary(
+        id=booking.id,
+        importer_company_name=company_name,
+        importer_abn=importer_abn,
+        supplier_country=booking.supplier_country,
+        delivery_country=booking.delivery_country,
+        delivery_city=booking.delivery_city,
+        cargo_description=booking.cargo_description,
+        cargo_category=booking.cargo_category,
+        cbm_estimate=booking.cbm_estimate,
+        weight_kg_estimate=booking.weight_kg_estimate,
+        cargo_ready_date_latest=booking.cargo_ready_date_latest,
+        status=booking.status,
+    )
+    customs_summary = BrokerCustomsSummary(
+        incoterm=profile.incoterm,
+        goods_value_usd=profile.goods_value_usd,
+        currency=profile.currency,
+        hs_code=profile.hs_code,
+        biosecurity_flags=list(profile.biosecurity_flags),
+        customs_status=profile.customs_status,
+        duty_estimate_usd=profile.duty_estimate_usd,
+        gst_estimate_usd=profile.gst_estimate_usd,
+        landed_cost_estimate_usd=profile.landed_cost_estimate_usd,
+        customs_entry_number=profile.customs_entry_number,
+        duty_paid_usd=profile.duty_paid_usd,
+        gst_paid_usd=profile.gst_paid_usd,
+        broker_notes=profile.broker_notes,
+        updated_at=profile.updated_at,
+    )
+    holds = [
+        hold for hold in store.release_holds.values()
+        if hold.booking_id == booking.id and hold.status == ReleaseHoldStatus.active
+    ]
+    return BrokerPortalResponse(
+        booking=booking_summary,
+        customs=customs_summary,
+        holds=holds,
+        documents=documents_for_booking(store, booking.id),
+        events=events_for_booking(store, booking.id),
+    )
+
+
+def broker_portal(store: Store, token: str) -> BrokerPortalResponse:
+    link = broker_link_by_token(store, token)
+    link.last_used_at = now_utc()
+    store.broker_links[link.id] = link
+    booking = store.bookings[link.booking_id]
+    return _broker_portal_response(store, booking)
+
+
+def broker_clearance_update(store: Store, token: str, request: BrokerClearanceUpdate) -> BrokerPortalResponse:
+    if request.customs_status not in BROKER_ALLOWED_STATUSES:
+        raise ValueError("Broker may only set status to submitted, queried, or cleared")
+    link = broker_link_by_token(store, token)
+    booking = store.bookings[link.booking_id]
+    profile = ensure_customs_profile(store, booking)
+    profile.customs_status = request.customs_status
+    if request.customs_entry_number is not None:
+        profile.customs_entry_number = request.customs_entry_number
+    if request.duty_paid_usd is not None:
+        profile.duty_paid_usd = request.duty_paid_usd
+    if request.gst_paid_usd is not None:
+        profile.gst_paid_usd = request.gst_paid_usd
+    if request.broker_notes is not None:
+        profile.broker_notes = request.broker_notes
+    profile.updated_at = now_utc()
+    store.customs_profiles[profile.id] = profile
+    update_release_holds(store, booking)
+    update_booking_health(store, booking)
+    if request.customs_status == CustomsStatus.cleared:
+        create_shipment_event(
+            store,
+            booking.id,
+            ShipmentEventCreate(
+                stage=ShipmentEventStage.customs_cleared,
+                label="Customs cleared by broker",
+                occurred_at=now_utc(),
+                source_type=SourceType.forwarder_confirmation,
+                source_name="Broker portal",
+                confidence=SourceConfidence.verified,
+                notes=request.customs_entry_number and f"Entry {request.customs_entry_number}." or None,
+            ),
+        )
+    create_audit_event(
+        store,
+        ActorRole.system,
+        "broker-portal",
+        "broker_clearance_update",
+        "booking",
+        booking.id,
+        f"Broker set customs status to {request.customs_status.value}.",
+    )
+    link.last_used_at = now_utc()
+    store.broker_links[link.id] = link
+    return _broker_portal_response(store, booking)
 
 
 def sailing_search(store: Store) -> List[SailingSearchResult]:

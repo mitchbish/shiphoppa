@@ -1036,6 +1036,10 @@ class CustomsProfile(BaseModel):
     gst_estimate_usd: float = 0
     brokerage_fee_usd: float = 175
     landed_cost_estimate_usd: float = 0
+    customs_entry_number: Optional[str] = None
+    duty_paid_usd: Optional[float] = None
+    gst_paid_usd: Optional[float] = None
+    broker_notes: Optional[str] = None
     updated_at: datetime
 
 
@@ -1659,6 +1663,68 @@ class SupplierPortalResponse(BaseModel):
     supplier_instructions: str
     checklist: BookingChecklistResponse
     events: List[ShipmentEvent]
+
+
+class BrokerLinkCreate(BaseModel):
+    booking_id: str
+
+
+class BrokerClearanceUpdate(BaseModel):
+    customs_status: CustomsStatus
+    customs_entry_number: Optional[str] = None
+    duty_paid_usd: Optional[float] = Field(None, ge=0)
+    gst_paid_usd: Optional[float] = Field(None, ge=0)
+    broker_notes: Optional[str] = None
+
+
+class BrokerBookingSummary(BaseModel):
+    id: str
+    importer_company_name: Optional[str] = None
+    importer_abn: Optional[str] = None
+    supplier_country: str
+    delivery_country: str
+    delivery_city: str
+    cargo_description: Optional[str] = None
+    cargo_category: CargoCategory
+    cbm_estimate: float
+    weight_kg_estimate: float
+    cargo_ready_date_latest: date
+    status: BookingStatus
+
+
+class BrokerCustomsSummary(BaseModel):
+    incoterm: str
+    goods_value_usd: float
+    currency: str
+    hs_code: Optional[str] = None
+    biosecurity_flags: List[str]
+    customs_status: CustomsStatus
+    duty_estimate_usd: float
+    gst_estimate_usd: float
+    landed_cost_estimate_usd: float
+    customs_entry_number: Optional[str] = None
+    duty_paid_usd: Optional[float] = None
+    gst_paid_usd: Optional[float] = None
+    broker_notes: Optional[str] = None
+    updated_at: datetime
+
+
+class BrokerPortalResponse(BaseModel):
+    booking: BrokerBookingSummary
+    customs: BrokerCustomsSummary
+    holds: List[ReleaseHold]
+    documents: List[ShipmentDocument]
+    events: List[ShipmentEvent]
+
+
+class BrokerAccessLink(BaseModel):
+    id: str
+    booking_id: str
+    token: str
+    active: bool = True
+    expires_at: Optional[datetime] = None
+    last_used_at: Optional[datetime] = None
+    created_at: datetime
 
 
 class ReleaseStatusResponse(BaseModel):

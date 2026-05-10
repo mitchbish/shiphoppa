@@ -5,6 +5,7 @@ from .models import (
     AccountIntegration,
     AccountProfile,
     Booking,
+    BrokerAccessLink,
     AuditEvent,
     AdminTask,
     ApprovalRequest,
@@ -63,6 +64,7 @@ class Store:
         self.shipment_documents: Dict[str, ShipmentDocument] = {}
         self.shipment_events: Dict[str, ShipmentEvent] = {}
         self.supplier_links: Dict[str, SupplierAccessLink] = {}
+        self.broker_links: Dict[str, BrokerAccessLink] = {}
         self.invoices: Dict[str, Invoice] = {}
         self.payment_records: Dict[str, PaymentRecord] = {}
         self.release_holds: Dict[str, ReleaseHold] = {}

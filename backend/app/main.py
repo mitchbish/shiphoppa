@@ -102,6 +102,10 @@ from .models import (
     SupplierPortalResponse,
     SupplierReadyRequest,
     SystemHealthResponse,
+    BrokerAccessLink,
+    BrokerClearanceUpdate,
+    BrokerLinkCreate,
+    BrokerPortalResponse,
 )
 from .customs import HSCodeSuggestion, best_suggestion, suggest_hs_code
 from .invoices import ParsedInvoice, extract_invoice_from_pdf, extract_invoice_from_text
@@ -145,6 +149,10 @@ from .operations import (
     supplier_portal,
     supplier_ready,
     supplier_link_by_token,
+    broker_clearance_update,
+    broker_link_by_token,
+    broker_portal,
+    create_broker_link,
     update_account_integration,
     update_account_profile,
     update_customs_profile,
@@ -220,6 +228,7 @@ def reset_store_for_tests() -> None:
     store.shipment_documents.clear()
     store.shipment_events.clear()
     store.supplier_links.clear()
+    store.broker_links.clear()
     store.invoices.clear()
     store.payment_records.clear()
     store.release_holds.clear()
@@ -915,6 +924,41 @@ def supplier_document(token: str, payload: DocumentUploadRequest) -> ShipmentDoc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     return persist_result(upload_document(store, link.booking_id, payload, ActorRole.system, "supplier-portal"))
+
+
+@app.post("/broker-links", response_model=BrokerAccessLink, status_code=201)
+def broker_link(payload: BrokerLinkCreate, _principal: Principal = Depends(require_admin)) -> BrokerAccessLink:
+    try:
+        return persist_result(create_broker_link(store, payload.booking_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/broker/{token}", response_model=BrokerPortalResponse)
+def get_broker_portal(token: str) -> BrokerPortalResponse:
+    try:
+        return broker_portal(store, token)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post("/broker/{token}/clearance", response_model=BrokerPortalResponse)
+def broker_clearance(token: str, payload: BrokerClearanceUpdate) -> BrokerPortalResponse:
+    try:
+        return persist_result(broker_clearance_update(store, token, payload))
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 400 if "may only" in message else 404
+        raise HTTPException(status_code=status_code, detail=message)
+
+
+@app.post("/broker/{token}/documents", response_model=ShipmentDocument, status_code=201)
+def broker_document(token: str, payload: DocumentUploadRequest) -> ShipmentDocument:
+    try:
+        link = broker_link_by_token(store, token)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return persist_result(upload_document(store, link.booking_id, payload, ActorRole.system, "broker-portal"))
 
 
 @app.get("/bookings/{booking_id}/invoice", response_model=Invoice)
