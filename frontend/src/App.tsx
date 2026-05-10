@@ -66,6 +66,7 @@ import {
   rejectApprovalRequest,
   getSourceMessages,
   getLandedCostSummary,
+  getNotifications,
   supplierReady,
   updateAccountIntegration,
   updateAccountProfile,
@@ -106,6 +107,7 @@ import type {
   MatchResult,
   ReleaseStatusResponse,
   SailingSearchResult,
+  Notification,
   ShipmentEvent,
   SourceMessage,
   SupplierAccessLink,
@@ -118,6 +120,7 @@ type View =
   | 'integrations'
   | 'help'
   | 'inbox'
+  | 'notifications'
   | 'production'
   | 'inspection'
   | 'supplier_pay'
@@ -946,6 +949,10 @@ function viewIntroCopy(view: View, phase: CustomerPhase) {
     inbox: {
       title: 'Inbox.',
       summary: 'Forwarded supplier emails, partner updates, and uploaded source documents with extraction status.',
+    },
+    notifications: {
+      title: 'Notifications.',
+      summary: 'Recent activity, automation events, and updates that need your attention.',
     },
     admin: {
       title: 'Admin.',
@@ -2266,6 +2273,7 @@ function App() {
   const [allApprovals, setAllApprovals] = useState<ApprovalRequestRecord[]>([])
   const [inboxMessages, setInboxMessages] = useState<SourceMessage[]>([])
   const [landedCost, setLandedCost] = useState<LandedCostSummary | null>(null)
+  const [notifications, setNotifications] = useState<Notification[]>([])
   const [activeShipmentState, setActiveShipmentState] = useState<ShipmentStateResponse | null>(null)
   const [activeMissingData, setActiveMissingData] = useState<APIMissingDataItem[]>([])
   const [adminEmail, setAdminEmail] = useState('ops@shiphoppa.example')
@@ -2335,6 +2343,11 @@ function App() {
     getApprovals()
       .then((data) => {
         if (!cancelled) setAllApprovals(data)
+      })
+      .catch(() => {})
+    getNotifications()
+      .then((data) => {
+        if (!cancelled) setNotifications(data)
       })
       .catch(() => {})
     Promise.all([getSummary(), getContainers(), getBookings(), getSailings(), getAccountProfile(), getAccountIntegrations()])
@@ -2471,6 +2484,7 @@ function App() {
   ) ?? []
   const openApprovals = projectWorkspace?.approvals.filter((approval) => approval.status === 'pending') ?? []
   const allPendingApprovals = allApprovals.filter((approval) => approval.status === 'pending')
+  const unreadNotificationCount = notifications.filter((n) => !n.read).length
 
   async function handleApprovalDecision(approvalId: string, decision: 'approve' | 'reject') {
     try {
@@ -4377,8 +4391,19 @@ function App() {
             onClick={() => setView('inbox')}
             aria-label="Inbox: forwarded supplier and partner messages"
           >
-            <Bell size={18} />
+            <FileText size={18} />
             Inbox
+          </button>
+          <button
+            className={`customer-help-button notifications-bell ${view === 'notifications' ? 'active' : ''}`}
+            type="button"
+            onClick={() => setView('notifications')}
+            aria-label={`Notifications${unreadNotificationCount ? ` (${unreadNotificationCount} unread)` : ''}`}
+          >
+            <Bell size={18} />
+            {unreadNotificationCount > 0 && (
+              <span className="notifications-count">{unreadNotificationCount}</span>
+            )}
           </button>
         </div>
         <div className="customer-nav-shell">
@@ -4742,6 +4767,40 @@ function App() {
                             ))}
                           </div>
                         )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            )}
+
+            {view === 'notifications' && (
+              <section className="panel tracking-panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">Notifications</p>
+                    <h2>{notifications.length ? `${notifications.length} recent` : 'No notifications yet'}</h2>
+                  </div>
+                  <Bell size={24} />
+                </div>
+                {notifications.length === 0 ? (
+                  <div className="empty-state">
+                    <Bell size={42} />
+                    <p>No notifications yet. As shipments move through their lifecycle, updates will appear here.</p>
+                  </div>
+                ) : (
+                  <ul className="notifications-list">
+                    {notifications.slice(0, 50).map((notification) => (
+                      <li className={`notification-item ${notification.read ? '' : 'unread'}`} key={notification.id}>
+                        <div className="notification-row">
+                          <div className="notification-meta">
+                            <strong>{notification.message}</strong>
+                            <small>
+                              {sourceLabel(notification.trigger)} {' . '} {formatDateFriendly(notification.created_at)}
+                            </small>
+                          </div>
+                          {!notification.read && <span className="status-chip orange">Unread</span>}
+                        </div>
                       </li>
                     ))}
                   </ul>
