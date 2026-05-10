@@ -1,4 +1,5 @@
 import base64
+import os
 import secrets
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -81,6 +82,8 @@ from .models import (
     ReleaseStatus,
     ReleaseStatusResponse,
     SailingSearchResult,
+    SentinelSubscriber,
+    SentinelSubscriberStatus,
     SEOOpportunity,
     SEOOpportunityCreate,
     SEOOpportunityStatus,
@@ -4101,6 +4104,113 @@ def sailing_search(store: Store) -> List[SailingSearchResult]:
             )
         )
     return sorted(results, key=lambda item: item.etd)
+
+
+def create_sentinel_subscriber(
+    store: Store,
+    phone_number: str,
+    label: Optional[str],
+    actor_id: str,
+) -> SentinelSubscriber:
+    normalized_phone = phone_number.strip()
+    if not normalized_phone:
+        raise ValueError("phone_number is required")
+    for existing in store.sentinel_subscribers.values():
+        if existing.phone_number == normalized_phone and existing.status != SentinelSubscriberStatus.opted_out:
+            return existing
+    subscriber = SentinelSubscriber(
+        id=store.next_id("SENTSUB"),
+        phone_number=normalized_phone,
+        label=label,
+        status=SentinelSubscriberStatus.pending,
+        confirmation_token=secrets.token_hex(16),
+        created_at=now_utc(),
+    )
+    store.sentinel_subscribers[subscriber.id] = subscriber
+
+    from .providers import send_sms_via_twilio
+
+    try:
+        send_sms_via_twilio(
+            normalized_phone,
+            f"Ship Hoppa Sentinel opt-in: confirm with token {subscriber.confirmation_token}.",
+        )
+    except Exception:
+        # Don't fail the API if Twilio is misconfigured; the token is still stored.
+        pass
+
+    create_audit_event(
+        store,
+        ActorRole.admin,
+        actor_id,
+        "sentinel_subscriber_created",
+        "sentinel_subscriber",
+        subscriber.id,
+        f"Sentinel SMS subscriber created for {normalized_phone}.",
+        {"phone": normalized_phone, "actor": actor_id},
+    )
+    return subscriber
+
+
+def confirm_sentinel_subscriber(store: Store, token: str) -> SentinelSubscriber:
+    for subscriber in store.sentinel_subscribers.values():
+        if subscriber.confirmation_token == token:
+            if subscriber.status == SentinelSubscriberStatus.opted_out:
+                raise ValueError("Subscriber has opted out")
+            subscriber.status = SentinelSubscriberStatus.active
+            subscriber.confirmed_at = now_utc()
+            store.sentinel_subscribers[subscriber.id] = subscriber
+            create_audit_event(
+                store,
+                ActorRole.system,
+                subscriber.id,
+                "sentinel_subscriber_confirmed",
+                "sentinel_subscriber",
+                subscriber.id,
+                f"Sentinel SMS subscriber {subscriber.phone_number} confirmed.",
+                {"phone": subscriber.phone_number},
+            )
+            return subscriber
+    raise ValueError("Confirmation token not found")
+
+
+def opt_out_sentinel_subscriber(
+    store: Store,
+    phone_number: str,
+    actor_id: str,
+) -> Optional[SentinelSubscriber]:
+    normalized_phone = phone_number.strip()
+    for subscriber in store.sentinel_subscribers.values():
+        if subscriber.phone_number == normalized_phone:
+            if subscriber.status == SentinelSubscriberStatus.opted_out:
+                return subscriber
+            subscriber.status = SentinelSubscriberStatus.opted_out
+            subscriber.opted_out_at = now_utc()
+            store.sentinel_subscribers[subscriber.id] = subscriber
+            create_audit_event(
+                store,
+                ActorRole.admin,
+                actor_id,
+                "sentinel_subscriber_opted_out",
+                "sentinel_subscriber",
+                subscriber.id,
+                f"Sentinel SMS subscriber {normalized_phone} opted out.",
+                {"phone": normalized_phone, "actor": actor_id},
+            )
+            return subscriber
+    return None
+
+
+def active_sentinel_phone_numbers(store: Store) -> List[str]:
+    active = [
+        s.phone_number
+        for s in store.sentinel_subscribers.values()
+        if s.status == SentinelSubscriberStatus.active
+    ]
+    if active:
+        return active
+    fallback = os.getenv("SHIP_HOPPA_OPS_PHONE")
+    return [fallback] if fallback else []
 
 
 def shipment_summary_for_booking(store: Store, booking: Booking) -> ShipmentSummary:

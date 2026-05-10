@@ -37,6 +37,7 @@ import type {
   SailingSearchResult,
   SourceMessage,
   SourceMessageType,
+  SentinelSubscriber,
   ShipmentDocument,
   ShipmentEvent,
   ShipmentEventStage,
@@ -900,4 +901,31 @@ export function getShipmentWorkspace(bookingId: string) {
 
 export function getSupplierPortalPreview(bookingId: string) {
   return request<SupplierPortalResponse>(`/bookings/${bookingId}/supplier-preview`)
+}
+
+// --- Sentinel SMS subscribers ---
+
+export function getSentinelSubscribers() {
+  return request<SentinelSubscriber[]>('/sentinel/subscribers')
+}
+
+export function createSentinelSubscriber(phone_number: string, label?: string) {
+  return request<SentinelSubscriber>('/sentinel/subscribers', {
+    method: 'POST',
+    body: JSON.stringify({ phone_number, label }),
+  })
+}
+
+export function confirmSentinelSubscriber(token: string) {
+  return request<SentinelSubscriber>('/sentinel/subscribers/confirm', {
+    method: 'POST',
+    body: JSON.stringify({ token }),
+  })
+}
+
+export function optOutSentinelSubscriber(phone_number: string) {
+  return request<SentinelSubscriber>('/sentinel/subscribers/opt-out', {
+    method: 'POST',
+    body: JSON.stringify({ phone_number }),
+  })
 }

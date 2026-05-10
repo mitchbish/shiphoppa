@@ -1411,6 +1411,36 @@ class ApprovalReviewRequest(BaseModel):
     reason: str
 
 
+class SentinelSubscriberStatus(str, Enum):
+    pending = "pending"
+    active = "active"
+    opted_out = "opted_out"
+
+
+class SentinelSubscriber(BaseModel):
+    id: str
+    phone_number: str
+    label: Optional[str] = None
+    status: SentinelSubscriberStatus = SentinelSubscriberStatus.pending
+    confirmation_token: str
+    created_at: datetime
+    confirmed_at: Optional[datetime] = None
+    opted_out_at: Optional[datetime] = None
+
+
+class SentinelSubscriberCreate(BaseModel):
+    phone_number: str
+    label: Optional[str] = None
+
+
+class SentinelSubscriberConfirm(BaseModel):
+    token: str
+
+
+class SentinelSubscriberOptOut(BaseModel):
+    phone_number: str
+
+
 class OutboundMessage(BaseModel):
     id: str
     recipient_type: OutboundRecipientType

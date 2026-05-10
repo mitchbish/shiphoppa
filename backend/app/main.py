@@ -44,6 +44,10 @@ from .models import (
     AdminTaskStatus,
     ApprovalDecisionRequest,
     ApprovalReviewRequest,
+    SentinelSubscriber,
+    SentinelSubscriberCreate,
+    SentinelSubscriberConfirm,
+    SentinelSubscriberOptOut,
     ApprovalRequest,
     ApprovalStatus,
     AuditEvent,
@@ -167,6 +171,9 @@ from .operations import (
     mark_supplier_pay_paid_outside_app,
     mark_delivery_delivered,
     release_status_for_booking,
+    confirm_sentinel_subscriber,
+    create_sentinel_subscriber,
+    opt_out_sentinel_subscriber,
     request_approval_review,
     sailing_search,
     shipment_workspace,
@@ -341,6 +348,47 @@ def get_system_health(_principal: Principal = Depends(require_admin)) -> SystemH
 @app.get("/sentinel/error-codes", response_model=List[SentinelErrorDefinition])
 def sentinel_error_codes(_principal: Principal = Depends(require_admin)) -> List[SentinelErrorDefinition]:
     return sentinel_error_definitions()
+
+
+@app.get("/sentinel/subscribers", response_model=List[SentinelSubscriber])
+def sentinel_subscribers(_principal: Principal = Depends(require_admin)) -> List[SentinelSubscriber]:
+    return sorted(store.sentinel_subscribers.values(), key=lambda s: s.created_at, reverse=True)
+
+
+@app.post("/sentinel/subscribers", response_model=SentinelSubscriber, status_code=201)
+def post_sentinel_subscriber(
+    payload: SentinelSubscriberCreate,
+    principal: Principal = Depends(require_admin),
+) -> SentinelSubscriber:
+    try:
+        return persist_result(
+            create_sentinel_subscriber(store, payload.phone_number, payload.label, principal.actor_id)
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/sentinel/subscribers/confirm", response_model=SentinelSubscriber)
+def confirm_sentinel_subscriber_endpoint(
+    payload: SentinelSubscriberConfirm,
+) -> SentinelSubscriber:
+    try:
+        return persist_result(confirm_sentinel_subscriber(store, payload.token))
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 404 if "not found" in message.lower() else 400
+        raise HTTPException(status_code=status_code, detail=message)
+
+
+@app.post("/sentinel/subscribers/opt-out", response_model=SentinelSubscriber)
+def opt_out_sentinel_subscriber_endpoint(
+    payload: SentinelSubscriberOptOut,
+    principal: Principal = Depends(require_admin),
+) -> SentinelSubscriber:
+    result = opt_out_sentinel_subscriber(store, payload.phone_number, principal.actor_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Subscriber not found")
+    return persist_result(result)
 
 
 @app.get("/summary", response_model=DashboardSummary)

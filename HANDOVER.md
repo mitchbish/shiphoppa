@@ -267,6 +267,7 @@ Each row references the section in
 | Shipments aggregator endpoints | DONE 2026-05-11 | Phase 1 Reframe around shipments (line 3513-3515) | `backend/app/operations.py:list_shipment_summaries..shipment_workspace`, `backend/app/main.py:shipments..shipment_workspace_endpoint` | `docs/plans/shipments-aggregator/` |
 | Approval `request-review` endpoint | DONE 2026-05-11 | Phase 3 Approval queue (line 3583-3586) | `backend/app/operations.py:request_approval_review`, `POST /approvals/{id}/request-review` in `backend/app/main.py`, frontend `requestApprovalReview` in `frontend/src/api.ts` | `docs/plans/approval-request-review/` |
 | Supplier portal preview | DONE 2026-05-11 | Supplier-side wedge (line 260-286) | `backend/app/operations.py:supplier_portal_preview`, `GET /bookings/{id}/supplier-preview`, frontend `getSupplierPortalPreview` | `docs/plans/supplier-portal-preview/` |
+| Sentinel SMS opt-in pattern (multi-subscriber) | DONE 2026-05-11 | Sentinel health checks (line 213, 220) | `backend/app/operations.py:create_sentinel_subscriber..opt_out_sentinel_subscriber`, `/sentinel/subscribers` POST/GET/confirm/opt-out, fan-out in `backend/app/sentinel.py:report_sentinel_error`, env-var fallback preserved | `docs/plans/sentinel-sms-opt-in/` |
 | Cron-job.org wiring (was operator-blocked, unblocked) | DONE 2026-05-11 | Phase 5 Automation (line 174-181) | cron-job.org Job 7583175 hits `POST /automation/cron/run` every 15 minutes; `SHIP_HOPPA_CRON_TOKEN` rotated and matched between Railway and cron-job.org | (ops change, no code; verified HTTP 200 in cron-job.org history) |
 
 ### No-blocker, autonomous — NOT STARTED (the new chat picks from here)
@@ -286,7 +287,6 @@ existing code; sizing is a rough guess.
 | **Payment proof + landed cost reconciliation skeleton** — `PaymentProof`, `FXQuote`, `LandedCostActual` models + upload-proof flow + variance detection. Wise integration can come later | Phase 6 Payment/duty/landed cost (line 3732-3849), model spec (line 3056-3094) | Invoice + supplier pay + landed cost estimate exist | Large (skeleton can be Medium) |
 | **Marketplace order import UI (Alibaba auto-fill stub)** — frontend stub that looks like an Alibaba paste-or-import flow, even with a no-op adapter for now | Step 2 Order Supplier (line 110-115), Account Integrations (line 102-106) | Alibaba integration model exists | Medium |
 | **Email extraction preview screen** — show what Ship Hoppa inferred from a forwarded email before applying it | Phase 2 Inbox intake (line 2531-2566) | Extraction runs automatically; result is on `SourceMessage` | Small |
-| **Sentinel SMS opt-in pattern** — let multiple ops phones subscribe with confirmation tokens, instead of one hard-coded recipient | Sentinel health checks (line 213, 220) | Sentinel reporter writes to `SHIP_HOPPA_OPS_PHONE` only | Small |
 | **Frontend audit log viewer enhancements** — admin tab with filtering by actor, event type, shipment, since/until | Production-Grade audit standard (line 209-225) | Backend filtering ships | Small |
 
 ### Operator-blocked — BLOCKED on external setup

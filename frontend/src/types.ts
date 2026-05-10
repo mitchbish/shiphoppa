@@ -927,6 +927,17 @@ export interface ImportProjectWorkspaceResponse {
   approvals: ApprovalRequest[]
 }
 
+export interface SentinelSubscriber {
+  id: string
+  phone_number: string
+  label: string | null
+  status: 'pending' | 'active' | 'opted_out'
+  confirmation_token: string
+  created_at: string
+  confirmed_at: string | null
+  opted_out_at: string | null
+}
+
 export interface ShipmentSummary {
   booking: Booking
   pending_approvals_count: number
